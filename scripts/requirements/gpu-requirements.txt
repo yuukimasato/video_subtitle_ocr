@@ -1,0 +1,24 @@
+# GPU 环境依赖汇总 (PaddleOCR 全模块)
+# 此文件包含所有模块的Python依赖
+# CUDA相关依赖请参考：cuda-requirements.txt
+
+# 主模块依赖 (PaddleOCR/requirements.txt)
+paddleocr>=2.10.0
+shapely
+scikit-image
+pyclipper
+lmdb
+tqdm
+numpy
+rapidfuzz
+opencv-python
+opencv-contrib-python
+cython
+Pillow
+pyyaml
+requests
+albumentations
+albucore
+packaging
+PySide6 
+Levenshtein

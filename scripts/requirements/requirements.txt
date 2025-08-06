@@ -1,0 +1,8 @@
+# requirements.txt
+PySide6
+opencv-python
+numpy
+paddlepaddle>=3.1.0
+paddleocr>=2.10.0
+Levenshtein
+scikit-image

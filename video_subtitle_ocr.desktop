@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=yup_video_subtitle_ocr
+Comment=启动Python虚拟环境并运行main.py
+Exec=/bin/bash -c "cd /home/hope/project/video_subtitle_ocr && python3 -m venv .venv && source ~/.bashrc && source .venv/bin/activate && python3 main.py"
+Path=/home/hope/
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;
+Name[zh_CN]=video_subtitle_ocr
