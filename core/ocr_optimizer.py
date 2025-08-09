@@ -6,6 +6,7 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple, Any, Callable
 from skimage.metrics import structural_similarity as ssim
 from collections import Counter, defaultdict
+from PySide6.QtCore import QCoreApplication 
 
 from . import ocr_processor
 
@@ -43,7 +44,12 @@ class OcrOptimizer:
                     self._image_cache[img_input] = img
                 return img
         
-        logger.warning(f"无法为帧 {frame_data[2]} 获取图像数据。输入类型: {type(img_input)}")
+        logger.warning(
+            QCoreApplication.translate(
+                "ocr_optimizer",
+                "Could not get image data for frame {}. Input type: {}"
+            ).format(frame_data[2], type(img_input))
+        )
         return None
 
     def _get_grayscale_image(self, frame_data: Tuple) -> Optional[np.ndarray]:
@@ -160,7 +166,7 @@ class OcrOptimizer:
 
         while i < len(roi_frames):
             if is_cancelled_func():
-                logger.info("OCR优化器检测到取消信号，提前终止。")
+                logger.info(QCoreApplication.translate("ocr_optimizer", "OCR optimizer detected cancellation signal, terminating early."))
                 return []
             current_frame_data = roi_frames[i]
             initial_result_tuple = self._run_single_ocr(current_frame_data)
@@ -218,7 +224,12 @@ class OcrOptimizer:
                 processed_results.append(filled_result)
             
             if last_similar_index > start_index:
-                logger.info(f"智能跳帧: ROI '{current_frame_data[3]}' 从帧 {current_frame_data[2]} 到 {roi_frames[last_similar_index][2]} 内容相似，跳过 {last_similar_index - start_index} 次OCR。")
+                logger.info(
+                    QCoreApplication.translate(
+                        "ocr_optimizer",
+                        "Smart frame skipping: ROI '{}' from frame {} to {} has similar content, skipping {} OCR operations."
+                    ).format(current_frame_data[3], current_frame_data[2], roi_frames[last_similar_index][2], last_similar_index - start_index)
+                )
             
             num_processed_in_batch = last_similar_index - start_index + 1
             i = last_similar_index + 1
@@ -231,4 +242,5 @@ class OcrOptimizer:
     def cleanup(self):
         self._image_cache.clear()
         self._feature_cache.clear()
-        logger.debug("清理缓存")
+        logger.debug(QCoreApplication.translate("ocr_optimizer", "Cleaning up cache."))
+

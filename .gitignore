@@ -63,6 +63,9 @@ venv.bak/
 .vscode/
 .idea/
 
+# shell 
+git_up.sh
+
 # Custom rules for video_subtitle_ocr
 *.log
 *.bak

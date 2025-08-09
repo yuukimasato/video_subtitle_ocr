@@ -5,6 +5,7 @@ import logging
 from typing import Generator, Tuple, Dict, Any, Optional, Union
 import numpy as np
 import cv2
+from PySide6.QtCore import QCoreApplication
 
 logger = logging.getLogger(__name__)
 
@@ -13,18 +14,28 @@ def restore_coordinates(
     work_dir: str
 ) -> Generator[Tuple[Dict, int, str], None, None]:
     if not work_dir:
-        logger.error("需要提供有效的工作目录 `work_dir`。")
+        logger.error(QCoreApplication.translate("coordinate_restorer", "A valid working directory `work_dir` must be provided."))
         return
 
     for roi_entry, ocr_data_or_path, frame_num, roi_identifier in ocr_result_generator:
         try:
             if ocr_data_or_path is None:
-                logger.warning(f"帧 {frame_num} (ROI: {roi_identifier}) 没有OCR结果，已跳过坐标还原。")
+                logger.warning(
+                    QCoreApplication.translate(
+                        "coordinate_restorer",
+                        "Frame {} (ROI: {}) has no OCR results, coordinate restoration skipped."
+                    ).format(frame_num, roi_identifier)
+                )
                 continue
 
             offset = _get_roi_offset(roi_entry)
             if offset is None:
-                logger.warning(f"无法为帧 {frame_num} (ROI: {roi_identifier}) 获取偏移量，已跳过。")
+                logger.warning(
+                    QCoreApplication.translate(
+                        "coordinate_restorer",
+                        "Could not get offset for frame {} (ROI: {}), skipped."
+                    ).format(frame_num, roi_identifier)
+                )
                 continue
             
             offset_x, offset_y = offset
@@ -33,14 +44,24 @@ def restore_coordinates(
             if isinstance(ocr_data_or_path, str):
                 json_path = ocr_data_or_path
                 if not os.path.exists(json_path):
-                    logger.warning(f"OCR结果文件不存在: {json_path}，已跳过。")
+                    logger.warning(
+                        QCoreApplication.translate(
+                            "coordinate_restorer",
+                            "OCR result file does not exist: {}, skipped."
+                        ).format(json_path)
+                    )
                     continue
                 with open(json_path, 'r', encoding='utf-8') as f:
                     original_data = json.load(f)
             elif isinstance(ocr_data_or_path, dict):
                 original_data = ocr_data_or_path
             else:
-                logger.warning(f"OCR结果数据类型未知 (帧 {frame_num}, ROI {roi_identifier})。类型: {type(ocr_data_or_path)}，已跳过。")
+                logger.warning(
+                    QCoreApplication.translate(
+                        "coordinate_restorer",
+                        "Unknown OCR result data type (Frame {}, ROI {}). Type: {}, skipped."
+                    ).format(frame_num, roi_identifier, type(ocr_data_or_path))
+                )
                 continue
 
             is_empty_ocr_result = not original_data.get('rec_texts')
@@ -50,7 +71,12 @@ def restore_coordinates(
                 transformed_data = _transform_json_coordinates(original_data, offset_x, offset_y)
             else:
                 transformed_data = original_data
-                logger.debug(f"帧 {frame_num} (ROI: {roi_identifier}) OCR结果为空，跳过坐标还原。")
+                logger.debug(
+                    QCoreApplication.translate(
+                        "coordinate_restorer",
+                        "Frame {} (ROI: {}) OCR result is empty, skipping coordinate restoration."
+                    ).format(frame_num, roi_identifier)
+                )
 
             output_dir = os.path.join(work_dir, "3_restored_json", roi_identifier)
             os.makedirs(output_dir, exist_ok=True)
@@ -63,7 +89,13 @@ def restore_coordinates(
             yield transformed_data, frame_num, roi_identifier
 
         except Exception as e:
-            logger.error(f"还原帧 {frame_num} (ROI: {roi_identifier}) 坐标时出错: {e}", exc_info=True)
+            logger.error(
+                QCoreApplication.translate(
+                    "coordinate_restorer",
+                    "Error restoring coordinates for frame {} (ROI: {}): {}"
+                ).format(frame_num, roi_identifier, e),
+                exc_info=True
+            )
             continue
 
 def _get_roi_offset(roi_entry: Dict) -> Optional[Tuple[int, int]]:
@@ -74,20 +106,40 @@ def _get_roi_offset(roi_entry: Dict) -> Optional[Tuple[int, int]]:
         if isinstance(points, list) and len(points) == 4:
             return int(points[0]), int(points[1])
         else:
-            logger.error(f"矩形ROI的points格式不正确: {points}")
+            logger.error(
+                QCoreApplication.translate(
+                    "coordinate_restorer",
+                    "Incorrect points format for rectangular ROI: {}"
+                ).format(points)
+            )
             return None
     elif roi_type == 'poly':
         try:
             poly_points = np.array(points, dtype=np.int32)
             if poly_points.ndim != 2 or poly_points.shape[1] != 2 or poly_points.shape[0] < 2:
-                logger.error(f"多边形ROI的points格式不正确: {points}")
+                logger.error(
+                    QCoreApplication.translate(
+                        "coordinate_restorer",
+                        "Incorrect points format for polygonal ROI: {}"
+                    ).format(points)
+                )
                 return None
             x, y, w, h = cv2.boundingRect(poly_points)
             return x, y
         except Exception as e:
-            logger.error(f"解析多边形ROI偏移量时出错: {e}")
+            logger.error(
+                QCoreApplication.translate(
+                    "coordinate_restorer",
+                    "Error parsing polygonal ROI offset: {}"
+                ).format(e)
+            )
             return None
-    logger.error(f"未知的ROI类型: {roi_type}")
+    logger.error(
+        QCoreApplication.translate(
+            "coordinate_restorer",
+            "Unknown ROI type: {}"
+        ).format(roi_type)
+    )
     return None
 
 def _transform_json_coordinates(data: Dict[str, Any], offset_x: int, offset_y: int) -> Dict[str, Any]:
@@ -111,3 +163,4 @@ def _transform_json_coordinates(data: Dict[str, Any], offset_x: int, offset_y: i
                 box[3] = float(box[3]) + offset_y
             
     return new_data
+

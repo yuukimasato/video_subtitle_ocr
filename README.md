@@ -22,18 +22,19 @@
 
 
 ![preview1](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview1.png)
-
-
-![preview2](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
-
+![preview2](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview2.png)
+![preview3](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
 软件提供了交互式的图形用户界面（GUI），用户可以直观地在视频上框选字幕区域（ROI），设置其生效的时间范围，并通过一键式操作启动后台OCR识别和字幕生成流程。项目内置了智能优化算法，能够大幅提升处理效率并保证识别的准确性。
 
 ## 核心功能
 
 - **交互式GUI界面**：基于 PySide6 构建，提供视频预览、时间轴控制、参数设置等功能，操作直观。
 - **灵活的ROI定义**：
-  - 支持 **矩形** 和 **多边形** 两种方式绘制字幕区域，适应各种不规则形状的字幕。
+  ROI(Region of Interest)指视频中需要特别关注的区域，本系统支持：
+  - 支持 **矩形** (矩形抓取区域)和 **多边形**(多边形抓取区域) 两种方式绘制字幕区域，适应各种不规则形状的字幕。
   - 支持定义多个ROI，每个ROI可以有独立的生效时间段，轻松应对多位置、多类型的字幕。
+  - **增强的帧导航**：通过短按按钮实现单帧步进，长按实现连续帧导航，精确调整ROI时间范围。
+  - **ROI复制/粘贴**：支持ROI的复制、粘贴到指定位置或列表末尾，方便快速复用已定义的区域。
 - **智能OCR优化**：
   - **跳帧处理**：通过 `skimage.metrics.ssim` 比较帧间图像的结构相似性，自动跳过内容未发生变化的冗余帧，极大缩短OCR处理时间。
   - **投票机制**：对内容相似的连续帧序列进行多点采样（首、中、尾），对OCR结果进行投票，选出最可信的文本，有效提高识别准确率，对抗单帧识别不稳定的问题。
@@ -45,14 +46,14 @@
   - 核心处理流程在独立的 `QThread` 中运行，避免UI冻结。
   - 提供实时的进度条和日志反馈，用户可随时了解处理阶段和状态。
 - **便捷的文件操作**：
-  - 支持拖拽加载视频文件、ROI配置文件 (`.json`) 和ASS模板文件 (`.ass`)。
+  - 支持 **拖拽加载** 视频文件、ROI配置文件 (`.json`) 和ASS模板文件 (`.ass`)。
   - ROI配置可以保存和加载，方便重复使用。
 
 ## 技术栈
 
 - **GUI框架**: `PySide6` (Qt for Python)
-- **OCR引擎**: `paddleocr` & `paddlepaddle`
-- **图像处理**: `OpenCV-Python`, `NumPy`
+- **OCR引擎**: `paddleocr` & `paddlepaddle` (推荐 `paddlepaddle-gpu` 以利用CUDA加速)
+- **图像处理**: `OpenCV-Python` (支持CUDA GPU加速ROI提取) , `NumPy`
 - **图像相似度计算**: `scikit-image`
 - **文本相似度计算**: `python-levenshtein`
 
@@ -83,6 +84,13 @@ core/                         # 核心业务逻辑模块
 ├── coordinate_restorer.py    # 将ROI内坐标还原为视频全局坐标
 └── subtitle_generator.py     # 从OCR结果生成ASS字幕文件
 
+├── app_ja_JP.qm			  # 翻译编译文件（翻译后生成）
+├── app_ja_JP.ts			  # 翻译源文件
+├── app_zh_CN.qm			  # 翻译编译文件（翻译后生成）
+├── app_zh_CN.ts			  # 翻译源文件
+└── translator.py			  # 翻译主程序
+
+
 utils/                        # 工具类模块
 ├── logger.py                 # 日志配置，包含一个Qt信号处理器
 └── time_utils.py             # 时间格式化与解析工具
@@ -92,7 +100,9 @@ scripts/                      # 脚本目录
 ├── download_paddleocr.sh
 ├── install_deps.sh
 ├── install_python.sh
+├── i18n_tools.sh
 └── install-common.sh
+
 ```
 
 ## 核心工作流详解
@@ -102,16 +112,20 @@ scripts/                      # 脚本目录
 1.  **【步骤一】ROI帧提取 (`roi_extractor.py`)**
     - 遍历所有ROI配置，计算出需要在哪些视频帧上进行操作。
     - 逐帧读取视频，如果当前帧位于某个ROI的时间范围内，则根据该ROI的坐标（矩形或多边形）从当前帧画面中裁剪出对应的图像区域。
-    - 这些裁剪出的图像（以及其元数据）被传递给下一步。支持“内存模式”和“磁盘模式”。
+    - **模式选择**：支持“内存模式”（`in_memory_ocr=True`）和“磁盘模式”（`save_to_disk=True`）。内存模式直接将裁剪的图像数据传递给下一步，减少磁盘I/O；磁盘模式则将图像保存到临时目录。
+    - **GPU加速**：如果系统检测到CUDA-enabled GPU且OpenCV支持CUDA，将尝试利用GPU进行图像裁剪，进一步提升性能。
+    - 这些裁剪出的图像（以及其元数据）被传递给下一步。
 
 2.  **【步骤二】智能OCR识别 (`ocr_optimizer.py`)**
     - 这是整个流程的性能和准确性关键。它接收到所有待处理的ROI图像帧。
     - **分组**：首先将所有帧按其所属的ROI进行分组。
     - **智能处理**：对每个组内的帧序列进行优化处理：
         - 对序列中的第一帧进行OCR，获取基准文本。
-        - 使用高效的 **图像结构相似性(SSIM)** 算法，快速向后搜索，找到与第一帧内容不再相似的边界。
-        - 在这个相似的帧序列中，通过 **多点采样和投票机制** 选出最稳定、最准确的OCR结果。
-        - 将这个最佳结果应用到整个相似序列的所有帧上，从而避免了大量的重复OCR计算。
+        - **两阶段搜索**：
+            - **粗略搜索**：使用高效的 **图像结构相似性(SSIM)** 算法，以较大步长（`search_step`）快速向后搜索，找到与第一帧内容不再视觉相似的边界。
+            - **精确搜索**：在粗略搜索确定的范围内，进行二分查找式的“精确”搜索，准确地找到内容保持相同的最后一帧。
+        - **多点采样与投票 (`_get_best_ocr_result_from_sequence`)**：在确定了内容相似的帧序列（例如从第100帧到第150帧）后，它不会只信任第一帧的OCR结果。而是对这个序列的 **首、中、尾** 三帧进行OCR。然后对识别出的每一行文本进行投票，选择票数最多且平均置信度最高的文本作为最终结果。
+        - 将这个经过投票优选出的“最佳结果”应用到整个相似序列的所有帧上，从而避免了大量的重复OCR计算。
     - 输出带有OCR文本和坐标信息的数据。
 
 3.  **【步骤三】坐标还原 (`coordinate_restorer.py`)**
@@ -120,17 +134,17 @@ scripts/                      # 脚本目录
 
 4.  **【步骤四】ASS字幕生成 (`subtitle_generator.py`)**
     - 接收所有带有全局坐标的OCR结果。
-    - **分组与合并**：将文本内容和位置都相似的连续帧合并成一个字幕组（`SubtitleGroup`）。
+    - **分组与合并**：将文本内容和位置都相似的连续帧合并成一个字幕组（`SubtitleGroup`），这代表了一句完整的字幕。
     - **样式决策**：根据字幕组的平均位置（底部、顶部、场景）和文本内容（语言检测），为其分配合适的ASS样式和定位标签。
     - **格式化输出**：将所有字幕组转换成ASS `Dialogue` 行，并结合ASS文件头（可来自模板），最终生成 `.ass` 字幕文件。
 
 ## 安装与运行
 
 1.  **克隆或下载项目**
-    ```bash
+    
     git clone git@github.com:yuukimasato/video_subtitle_ocr.git
     cd video_subtitle_ocr
-    ```
+    
     
     **项目推送说明**：
     - 项目首次推送于2025年8月5日
@@ -138,45 +152,54 @@ scripts/                      # 脚本目录
     - 已配置.gitignore文件排除.venv目录
 
 2.  **安装依赖**
-    可执行项目目录的 bash install-optimized.sh 
+    可执行项目目录的 `bash install-optimized.sh` 脚本进行一键安装。
 
-    也可创建一个虚拟环境。核心依赖如下，你可以将它们保存到 `requirements.txt` 文件中然后通过 `pip install -r requirements.txt` 安装。
+    或者，你可以手动创建一个虚拟环境并安装以下核心依赖：
 
-    # requirements.txt
-    ```
+    
+```
     PySide6
-    opencv-python
+    opencv-python 	# 或者  opencv-python-headless-cuda
     numpy
-    paddlepaddle  # 或者 paddlepaddle-gpu (推荐，需配置CUDA)
+    paddlepaddle	  # 或者 paddlepaddle-gpu (推荐，需配置CUDA)
     paddleocr
     scikit-image
     python-levenshtein
-    ```
-    **注意**: 为了获得最佳性能，推荐安装 `paddlepaddle-gpu` 版本，并确保你的NVIDIA显卡驱动和CUDA环境已正确配置。
+    
+```
+    **注意**:
+    - 为了获得最佳性能，强烈推荐安装 `paddlepaddle-gpu` 版本，并确保你的NVIDIA显卡驱动和CUDA环境已正确配置。
+	- `opencv-python` 在检测到CUDA环境时，也会尝试利用GPU进行ROI提取。
+	- 基础图像处理：opencv-python 如需 GPU 支持：必须安装 CUDA 编译的 OpenCV 版本（非 PyPI 官方包）
+	- 推荐安装方式：从源码编译（需匹配 CUDA 版本）或使用第三方预编译包（如 opencv-python-headless-cuda）
+    - PaddleOCR的运行设备（CPU/GPU）可以通过项目根目录下的 `.gpu_mode` 文件配置。该文件内容应为 `export MODE="gpu"` 或 `export MODE="cpu"`。如果未配置或配置为`cpu`，则默认使用CPU。
+
 
 3.  **运行程序**
     在项目根目录下，执行：
+    
     
     python main.py
     
 
 ## 使用指南
 
-1.  **加载视频**：点击“加载视频”按钮或直接将视频文件拖拽到主窗口。
+1.  **加载视频**：点击“加载视频”按钮，或直接将视频文件 **拖拽** 到主窗口的视频显示区域。
 2.  **定义ROI**：
-    - 在右侧“绘制模式”中选择“矩形”或“多边形”。
+    - 在右侧“绘制模式”中选择“Rectangle (Drag)”或“Polygon (Click)”。
     - 在视频画面上拖拽（矩形）或依次点击（多边形，右键结束绘制）来框选字幕区域。
-    - 在“ROI 定义”面板中，通过微调按钮或直接输入来设定该ROI的“开始时间”和“结束时间”。
-    - 点击“添加新ROI”按钮，该ROI会出现在下方的“ROI 列表”中。
+    - 在“ROI Definition”面板中，通过微调按钮（支持短按单帧、长按连续导航）或直接输入（支持时间格式 hh:mm:ss.ms 或帧号）来设定该ROI的“Start Time”和“End Time”。
+    - 点击“Add New ROI”按钮，该ROI会出现在下方的“ROI List”中。
     - 重复此过程可添加多个ROI。
+    - **ROI列表操作**：在“ROI List”中，右键点击列表项可进行“Copy”、“Paste After This Item”或“Delete”操作。列表下方也有“Paste to End”选项。
 3.  **（可选）加载配置**：
-    - 如果有之前保存的ROI配置 (`.json`)，可点击“加载ROI配置”直接导入。
-    - 如果有ASS样式模板 (`.ass`)，可点击“浏览...”按钮或拖拽文件到窗口来指定。
+    - 如果有之前保存的ROI配置 (`.json`)，可点击“Load ROI Config”直接导入，或直接将 `.json` 文件 **拖拽** 到主窗口。
+    - 如果有ASS样式模板 (`.ass`)，可点击“Browse...”按钮选择，或直接将 `.ass` 文件 **拖拽** 到主窗口。
 4.  **运行OCR**：
-    - 在“字幕生成”面板中，根据需要勾选“调试模式”、“可视化输出”等选项。
-    - 点击“字幕OCR识别”按钮。
+    - 在“Subtitle Generation”面板中，根据需要勾选“Debug Mode”、“Visualize Output”和“In-Memory Mode (Experimental)”等选项。
+    - 点击“Subtitle OCR Recognition”按钮。
     - 在弹出的对话框中确认或修改输出的 `.ass` 文件名和路径。
-    - 等待进度条完成即可。
+    - 等待进度条完成即可。任务完成后，会提示是否打开文件所在目录。
 
 ## 核心模块代码解析
 
@@ -184,18 +207,23 @@ scripts/                      # 脚本目录
 
 这是项目的中枢神经。`SubtitleOCRGUI` 类负责：
 - **UI初始化**：加载并组织 `components` 目录下的所有UI组件，构建出完整的主界面。
-- **状态管理**：维护如 `video_path`, `roi_data` 等核心状态变量，并根据这些状态动态更新UI（例如，未加载视频时禁用某些按钮）。
-- **信号与槽连接**：通过Qt的信号-槽机制，将UI组件的用户操作（如按钮点击）连接到对应的业务逻辑处理函数。例如，`file_ops_widget.load_video_requested` 信号连接到 `self.load_video` 槽函数。
-- **事件处理**：处理拖拽事件 (`dragEnterEvent`, `dropEvent`) 和窗口关闭事件 (`closeEvent`)。
-- **任务启动**：当用户请求运行OCR时，它负责收集所有UI上的配置参数，创建并启动 `PipelineWorker` 后台线程。
+- **状态管理**：维护如 `video_path`, `roi_data`, `clipboard_roi` 等核心状态变量，并根据这些状态动态更新UI（例如，未加载视频时禁用某些按钮）。
+- **信号与槽连接**：通过Qt的信号-槽机制，将UI组件的用户操作（如按钮点击、滑块拖动）连接到对应的业务逻辑处理函数。例如，`file_ops_widget.load_video_requested` 信号连接到 `self.load_video` 槽函数。
+- **事件处理**：
+  - 处理 **拖拽事件** (`dragEnterEvent`, `dropEvent`)，支持视频文件、ROI配置文件 (`.json`) 和ASS模板文件 (`.ass`) 的便捷加载。
+  - 处理窗口关闭事件 (`closeEvent`)，在后台任务运行时提供退出确认。
+- **增强的帧导航**：通过 `_long_press_timer` 和 `_continuous_nav_timer` 实现了ROI时间编辑框旁边的帧导航按钮的短按单步、长按连续导航功能。
+- **ROI复制/粘贴**：管理 `clipboard_roi` 状态，并响应 `roi_list_widget` 发出的复制粘贴请求。
+- **任务启动**：当用户请求运行OCR时，它负责收集所有UI上的配置参数，创建并启动 `PipelineWorker` 后台线程，并处理其发出的进度、完成和错误信号。
+- **国际化支持**：在 `main.py` 中集成了 `QTranslator` 和 `QLocale`，为UI界面的多语言支持奠定了基础。
 
 #### 2. `core/pipeline_worker.py` - 异步处理流水线
 
 为了防止在进行耗时的OCR任务时UI卡死，所有核心逻辑都被封装在这个 `QThread` 子类中。
 - **职责**：它的 `run` 方法是整个处理流程的入口，严格按照 **提取 -> 识别 -> 还原 -> 生成** 的顺序调用其他核心模块。
 - **进度与通信**：通过定义 `progress_updated`, `finished`, `error` 等信号，向主线程（UI）报告当前进度、最终结果或发生的错误，主线程接收到信号后更新进度条和提示信息。
-- **资源管理**：负责创建和清理临时工作目录。在非调试模式下，任务完成后会自动删除所有中间文件。
-- **可取消**：包含一个 `is_cancelled` 标志位，允许用户通过UI取消正在进行中的任务。
+- **资源管理**：负责创建和清理临时工作目录 (`work_dir`)。在非调试模式下，任务完成后会自动删除所有中间文件。
+- **可取消**：包含一个 `is_cancelled` 标志位，允许用户通过UI取消正在进行中的任务，并在各阶段检查此标志以实现优雅退出。
 
 #### 3. `core/ocr_optimizer.py` - 智能OCR优化器
 
@@ -205,7 +233,8 @@ scripts/                      # 脚本目录
   1.  **两阶段搜索**：当处理一个新文本的帧时，它首先使用计算成本极低的 `ssim` 算法进行一个大步长的“粗略”搜索，快速跳到可能发生变化的区域。然后在这个范围内进行二分查找式的“精确”搜索，准确地找到内容保持相同的最后一帧。
   2.  **多点采样与投票 (`_get_best_ocr_result_from_sequence`)**：在确定了内容相似的帧序列（例如从第100帧到第150帧）后，它不会只信任第一帧的OCR结果。而是对这个序列的 **首、中、尾** 三帧进行OCR。然后对识别出的每一行文本进行投票，选择票数最多且平均置信度最高的文本作为最终结果。
   3.  **结果填充**：将这个经过投票优选出的“最佳结果”应用到从100帧到150帧的所有帧上。
-- **缓存**：内部使用缓存来存储已计算的图像灰度图，进一步加速 `ssim` 计算。
+- **缓存**：内部使用 `_image_cache` 和 `_feature_cache` 来存储已读取的图像和计算的灰度图，进一步加速 `ssim` 计算，尤其是在“内存模式”下。
+- **模式支持**：能够处理来自磁盘路径的图像，也能直接处理内存中的 `numpy` 数组图像。
 
 #### 4. `core/subtitle_generator.py` - 高级ASS字幕生成器
 
@@ -219,6 +248,3 @@ scripts/                      # 脚本目录
 - **模板支持 (`_get_ass_header`)**：如果用户提供了模板 `.ass` 文件，它会读取该文件的 `[V4+ Styles]` 部分，并将其用作生成的字幕文件的样式定义，实现了高度的自定义性。
 
 ## 未来可拓展方向
-- **多语言支持**：对UI界面本身进行国际化（i18n）支持。
-
-

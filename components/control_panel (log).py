@@ -1,8 +1,7 @@
 # components/control_panel.py
 from PySide6.QtWidgets import (QWidget, QGroupBox, QVBoxLayout, QHBoxLayout, 
                              QLineEdit, QPushButton, QRadioButton, QCheckBox, QFileDialog)
-from PySide6.QtCore import Signal
-
+from PySide6.QtCore import Signal, QCoreApplication
 class ControlPanelWidget(QWidget):
     draw_mode_changed = Signal(str)
     browse_template_requested = Signal()
@@ -14,32 +13,32 @@ class ControlPanelWidget(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        template_group = QGroupBox("样式模板 (可选)")
+        template_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "Style Template (Optional)"))
         template_layout = QHBoxLayout(template_group)
         self.template_path_edit = QLineEdit()
-        self.template_path_edit.setPlaceholderText("点击浏览选择 .ass 模板文件")
-        self.browse_template_btn = QPushButton("浏览...")
+        self.template_path_edit.setPlaceholderText(QCoreApplication.translate("ControlPanelWidget", "Click browse to select .ass template file"))
+        self.browse_template_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "Browse..."))
         template_layout.addWidget(self.template_path_edit)
         template_layout.addWidget(self.browse_template_btn)
         main_layout.addWidget(template_group)
 
-        draw_mode_group = QGroupBox("绘制模式")
+        draw_mode_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "Drawing Mode"))
         draw_mode_layout = QHBoxLayout(draw_mode_group)
-        self.rect_mode_radio = QRadioButton("矩形 (拖拽)")
-        self.poly_mode_radio = QRadioButton("多边形 (点击)")
+        self.rect_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "Rectangle (Drag)"))
+        self.poly_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "Polygon (Click)"))
         self.rect_mode_radio.setChecked(True)
         draw_mode_layout.addWidget(self.rect_mode_radio)
         draw_mode_layout.addWidget(self.poly_mode_radio)
         main_layout.addWidget(draw_mode_group)
 
-        extract_group = QGroupBox("字幕生成")
+        extract_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "Subtitle Generation"))
         extract_layout = QVBoxLayout(extract_group)
-        self.run_pipeline_btn = QPushButton("字幕OCR识别")
+        self.run_pipeline_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "Subtitle OCR Recognition"))
         
         options_layout = QHBoxLayout()
-        self.debug_mode_checkbox = QCheckBox("调试模式")
-        self.visualize_checkbox = QCheckBox("可视化输出")
-        self.in_memory_mode_checkbox = QCheckBox("内存模式 (实验性)")
+        self.debug_mode_checkbox = QCheckBox(QCoreApplication.translate("ControlPanelWidget", "Debug Mode"))
+        self.visualize_checkbox = QCheckBox(QCoreApplication.translate("ControlPanelWidget", "Visualize Output"))
+        self.in_memory_mode_checkbox = QCheckBox(QCoreApplication.translate("ControlPanelWidget", "In-Memory Mode (Experimental)"))
         self.visualize_checkbox.setChecked(True)
         self.debug_mode_checkbox.setChecked(True)
         options_layout.addWidget(self.debug_mode_checkbox)

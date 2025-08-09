@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Tuple, Union
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, 
                              QMessageBox, QListWidgetItem, QLineEdit, QProgressDialog)
 from PySide6.QtGui import QImage, QPixmap, QTextCursor, QDesktopServices, QPolygon
-from PySide6.QtCore import Qt, QRect, QPoint, QUrl, QTimer, QThread, Slot
+from PySide6.QtCore import Qt, QRect, QPoint, QUrl, QTimer, QThread, Slot, QCoreApplication 
 
 from utils.logger import setup_logger
 from utils.time_utils import format_time, parse_time
@@ -55,7 +55,7 @@ class SubtitleOCRGUI(QMainWindow):
         self.update_ui_state()
 
     def setup_ui(self):
-        self.setWindowTitle("视频字幕OCR工具")
+        self.setWindowTitle(QCoreApplication.translate("SubtitleOCRGUI", "Video Subtitle OCR Tool"))
         self.setGeometry(100, 100, 1300, 900)
         
         central_widget = QWidget()
@@ -149,17 +149,22 @@ class SubtitleOCRGUI(QMainWindow):
                 self.load_roi_config(file_path)
             elif ext == '.ass':
                 self.control_panel_widget.template_path_edit.setText(file_path)
-                self.logger.info(f"已拖拽加载ASS模板文件: {file_path}")
+                self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "ASS template file loaded via drag and drop: {}").format(file_path))
 
     def load_video(self, file_path=None):
         if not file_path:
-            file_path, _ = QFileDialog.getOpenFileName(self, "选择视频文件", "", "视频文件 (*.mp4 *.avi *.mov *.mkv)")
+            file_path, _ = QFileDialog.getOpenFileName(self, 
+                                                     QCoreApplication.translate("SubtitleOCRGUI", "Select Video File"), 
+                                                     "", 
+                                                     QCoreApplication.translate("SubtitleOCRGUI", "Video Files (*.mp4 *.avi *.mov *.mkv)"))
             if not file_path: return
         if self.cap: self.cap.release()
         self.video_path = file_path
         self.cap = cv2.VideoCapture(self.video_path)
         if not self.cap.isOpened():
-            QMessageBox.critical(self, "错误", "无法打开视频文件")
+            QMessageBox.critical(self, 
+                                 QCoreApplication.translate("SubtitleOCRGUI", "Error"), 
+                                 QCoreApplication.translate("SubtitleOCRGUI", "Unable to open video file"))
             self.cap = None; self.video_path = None
             return
         
@@ -180,9 +185,9 @@ class SubtitleOCRGUI(QMainWindow):
         self.current_frame_pos = 0
         self.seek_video(0)
         self.update_ui_state()
-        self.setWindowTitle(f"视频字幕OCR工具 - {os.path.basename(self.video_path)}")
-        self.logger.info(f"已加载视频: {self.video_path}")
-        self.logger.info(f"分辨率: {self.video_width}x{self.video_height}, 帧率: {self.fps:.2f}, 总帧数: {self.total_frames}")
+        self.setWindowTitle(QCoreApplication.translate("SubtitleOCRGUI", "Video Subtitle OCR Tool - {}").format(os.path.basename(self.video_path)))
+        self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Video loaded: {}").format(self.video_path))
+        self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Resolution: {}x{}, FPS: {:.2f}, Total frames: {}").format(self.video_width, self.video_height, self.fps, self.total_frames))
 
     def update_frame(self):
         if not self.cap or not self.cap.isOpened(): return
@@ -267,7 +272,7 @@ class SubtitleOCRGUI(QMainWindow):
         except (ValueError, IndexError):
             current_time_sec = self.current_frame_pos / self.fps if self.fps > 0 else 0
             time_edit.setText(format_time(current_time_sec))
-            self.logger.warning(f"无效的时间/帧号输入: '{time_edit.text()}'")
+            self.logger.warning(QCoreApplication.translate("SubtitleOCRGUI", "Invalid time/frame number input: '{}'").format(time_edit.text()))
 
     def parse_time_or_frame(self, text: str) -> int:
         text = text.strip()
@@ -287,7 +292,7 @@ class SubtitleOCRGUI(QMainWindow):
             self.roi_list_widget.roi_list_widget.setCurrentRow(len(self.roi_data) - 1)
             self.video_display_widget.video_label.clear_current_drawing()
             self.update_ui_state()
-            self.logger.info(f"添加新ROI，帧范围: {roi_entry['start_frame']}-{roi_entry['end_frame']}")
+            self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Added new ROI, frame range: {}-{}").format(roi_entry['start_frame'], roi_entry['end_frame']))
 
     def update_selected_roi(self):
         if not self.cap or not self.video_display_widget.video_label.is_roi_ready(): return
@@ -301,7 +306,7 @@ class SubtitleOCRGUI(QMainWindow):
             self.roi_list_widget.roi_list_widget.setCurrentRow(selected_index)
             self.video_display_widget.video_label.clear_current_drawing()
             self.update_ui_state()
-            self.logger.info(f"更新ROI {selected_index}，新帧范围: {roi_entry['start_frame']}-{roi_entry['end_frame']}")
+            self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Updated ROI {}, new frame range: {}-{}").format(selected_index, roi_entry['start_frame'], roi_entry['end_frame']))
 
     def delete_selected_roi(self):
         current_item = self.roi_list_widget.roi_list_widget.currentItem()
@@ -315,14 +320,16 @@ class SubtitleOCRGUI(QMainWindow):
             del self.roi_data[index]
             self.update_roi_list()
             self.update_ui_state()
-            self.logger.info(f"已删除ROI {index}")
+            self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Deleted ROI {}").format(index))
 
     def _create_roi_entry_from_ui(self) -> Optional[Dict]:
         try:
             start_frame = self.parse_time_or_frame(self.roi_def_widget.start_time_edit.text())
             end_frame = self.parse_time_or_frame(self.roi_def_widget.end_time_edit.text())
             if start_frame > end_frame:
-                QMessageBox.warning(self, "警告", "开始时间不能晚于结束时间。")
+                QMessageBox.warning(self, 
+                                    QCoreApplication.translate("SubtitleOCRGUI", "Warning"), 
+                                    QCoreApplication.translate("SubtitleOCRGUI", "Start time cannot be later than end time."))
                 return None
             
             video_label = self.video_display_widget.video_label
@@ -356,8 +363,10 @@ class SubtitleOCRGUI(QMainWindow):
                 roi_entry['points'] = orig_points
             return roi_entry
         except Exception as e:
-            self.logger.error(f"创建ROI条目时出错: {e}")
-            QMessageBox.critical(self, "错误", f"创建ROI时发生错误: {e}")
+            self.logger.error(QCoreApplication.translate("SubtitleOCRGUI", "Error creating ROI entry: {}").format(e))
+            QMessageBox.critical(self, 
+                                 QCoreApplication.translate("SubtitleOCRGUI", "Error"), 
+                                 QCoreApplication.translate("SubtitleOCRGUI", "An error occurred while creating ROI: {}").format(e))
             return None
 
     def on_roi_selection_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
@@ -420,40 +429,52 @@ class SubtitleOCRGUI(QMainWindow):
     def save_roi_config(self):
         if not self.video_path: return
         default_path = os.path.splitext(self.video_path)[0] + '_roi.json'
-        file_path, _ = QFileDialog.getSaveFileName(self, "保存ROI配置", default_path, "JSON文件 (*.json)")
+        file_path, _ = QFileDialog.getSaveFileName(self, 
+                                                 QCoreApplication.translate("SubtitleOCRGUI", "Save ROI Configuration"), 
+                                                 default_path, 
+                                                 QCoreApplication.translate("SubtitleOCRGUI", "JSON Files (*.json)"))
         if file_path:
             try:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(self.roi_data, f, indent=4, ensure_ascii=False)
-                self.logger.info(f"ROI配置已保存到: {file_path}")
+                self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "ROI configuration saved to: {}").format(file_path))
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存ROI配置失败: {e}")
-                self.logger.error(f"保存ROI配置失败: {e}")
+                QMessageBox.critical(self, 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Error"), 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Failed to save ROI configuration: {}").format(e))
+                self.logger.error(QCoreApplication.translate("SubtitleOCRGUI", "Failed to save ROI configuration: {}").format(e))
 
     def load_roi_config(self, file_path=None):
         if not self.video_path:
-            QMessageBox.warning(self, "警告", "请先加载视频文件。")
+            QMessageBox.warning(self, 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Warning"), 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Please load a video file first."))
             return
         if not file_path:
             default_dir = os.path.dirname(self.video_path)
-            file_path, _ = QFileDialog.getOpenFileName(self, "加载ROI配置", default_dir, "JSON文件 (*.json)")
+            file_path, _ = QFileDialog.getOpenFileName(self, 
+                                                     QCoreApplication.translate("SubtitleOCRGUI", "Load ROI Configuration"), 
+                                                     default_dir, 
+                                                     QCoreApplication.translate("SubtitleOCRGUI", "JSON Files (*.json)"))
         if file_path:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     self.roi_data = json.load(f)
                 self.update_roi_list()
                 self.update_all_rois_visibility()
-                self.logger.info(f"ROI配置已从 {file_path} 加载")
+                self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "ROI configuration loaded from {}").format(file_path))
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"加载ROI配置失败: {e}")
-                self.logger.error(f"加载ROI配置失败: {e}")
+                QMessageBox.critical(self, 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Error"), 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Failed to load ROI configuration: {}").format(e))
+                self.logger.error(QCoreApplication.translate("SubtitleOCRGUI", "Failed to load ROI configuration: {}").format(e))
 
     @Slot(int)
     def copy_roi(self, index: int):
         if 0 <= index < len(self.roi_data):
             self.clipboard_roi = copy.deepcopy(self.roi_data[index])
             self.roi_list_widget.update_clipboard_state(True)
-            self.logger.info(f"已复制ROI {index} 到剪贴板。")
+            self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Copied ROI {} to clipboard.").format(index))
 
     @Slot(int)
     def paste_roi_after(self, index: int):
@@ -462,7 +483,7 @@ class SubtitleOCRGUI(QMainWindow):
         self.roi_data.insert(index + 1, new_roi)
         self.update_roi_list()
         self.roi_list_widget.roi_list_widget.setCurrentRow(index + 1)
-        self.logger.info(f"已在ROI {index} 之后粘贴。")
+        self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Pasted after ROI {}.").format(index))
 
     @Slot()
     def paste_roi_at_end(self):
@@ -471,16 +492,21 @@ class SubtitleOCRGUI(QMainWindow):
         self.roi_data.append(new_roi)
         self.update_roi_list()
         self.roi_list_widget.roi_list_widget.setCurrentRow(len(self.roi_data) - 1)
-        self.logger.info("已在列表末尾粘贴ROI。")
+        self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "Pasted ROI at the end of the list."))
 
     def select_template_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择ASS模板文件", "", "ASS字幕文件 (*.ass)")
+        file_path, _ = QFileDialog.getOpenFileName(self, 
+                                                 QCoreApplication.translate("SubtitleOCRGUI", "Select ASS Template File"), 
+                                                 "", 
+                                                 QCoreApplication.translate("SubtitleOCRGUI", "ASS Subtitle Files (*.ass)"))
         if file_path:
             self.control_panel_widget.template_path_edit.setText(file_path)
 
     def run_ocr_pipeline(self):
         if not self.video_path or not self.roi_data:
-            QMessageBox.warning(self, "警告", "请先加载视频并定义至少一个ROI。")
+            QMessageBox.warning(self, 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Warning"), 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Please load a video and define at least one ROI first."))
             return
 
         options = self.control_panel_widget.get_pipeline_options()
@@ -490,13 +516,18 @@ class SubtitleOCRGUI(QMainWindow):
         output_ass_path = os.path.join(video_dir, f"{video_filename}.ass")
 
         output_ass_path, _ = QFileDialog.getSaveFileName(
-            self, "保存字幕文件", output_ass_path, "ASS Subtitles (*.ass)"
+            self, 
+            QCoreApplication.translate("SubtitleOCRGUI", "Save Subtitle File"), 
+            output_ass_path, 
+            QCoreApplication.translate("SubtitleOCRGUI", "ASS Subtitles (*.ass)")
         )
         if not output_ass_path:
-            self.logger.info("用户取消了保存操作，OCR任务中止。")
+            self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "User canceled save operation, OCR task aborted."))
             return
 
-        self.progress_dialog = QProgressDialog("正在处理视频...", "取消", 0, 100, self)
+        self.progress_dialog = QProgressDialog(QCoreApplication.translate("SubtitleOCRGUI", "Processing video..."), 
+                                               QCoreApplication.translate("SubtitleOCRGUI", "Cancel"), 
+                                               0, 100, self)
         self.progress_dialog.setWindowModality(Qt.WindowModal)
         self.progress_dialog.setAutoClose(True)
         self.progress_dialog.show()
@@ -530,8 +561,12 @@ class SubtitleOCRGUI(QMainWindow):
     def _on_pipeline_finished(self, output_path: str):
         if self.progress_dialog:
             self.progress_dialog.setValue(100)
-        QMessageBox.information(self, "完成", f"字幕文件已生成: {output_path}")
-        reply = QMessageBox.question(self, '打开目录', '是否打开文件所在的文件夹？',
+        QMessageBox.information(self, 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Complete"), 
+                                QCoreApplication.translate("SubtitleOCRGUI", "Subtitle file generated: {}").format(output_path))
+        reply = QMessageBox.question(self, 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Open Directory"), 
+                                     QCoreApplication.translate("SubtitleOCRGUI", "Do you want to open the folder containing the file?"),
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(output_path)))
@@ -540,12 +575,16 @@ class SubtitleOCRGUI(QMainWindow):
     def _on_pipeline_error(self, error_message: str):
         if self.progress_dialog:
             self.progress_dialog.close()
-        QMessageBox.critical(self, "错误", f"处理过程中发生错误:\n{error_message}")
+        QMessageBox.critical(self, 
+                             QCoreApplication.translate("SubtitleOCRGUI", "Error"), 
+                             QCoreApplication.translate("SubtitleOCRGUI", "An error occurred during processing:\n{}").format(error_message))
         self.pipeline_worker = None
 
     def closeEvent(self, event):
         if self.pipeline_worker and self.pipeline_worker.isRunning():
-            reply = QMessageBox.question(self, '确认退出', '后台任务仍在运行，确定要退出吗？',
+            reply = QMessageBox.question(self, 
+                                         QCoreApplication.translate("SubtitleOCRGUI", "Confirm Exit"), 
+                                         QCoreApplication.translate("SubtitleOCRGUI", "Background task is still running, are you sure you want to exit?"),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self.pipeline_worker.cancel()
@@ -554,3 +593,4 @@ class SubtitleOCRGUI(QMainWindow):
                 event.ignore()
         else:
             event.accept()
+

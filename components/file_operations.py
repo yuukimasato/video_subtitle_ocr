@@ -1,6 +1,6 @@
 # components/file_operations.py
 from PySide6.QtWidgets import QGroupBox, QFormLayout, QPushButton
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QCoreApplication
 
 class FileOperationsWidget(QGroupBox):
     load_video_requested = Signal()
@@ -8,13 +8,13 @@ class FileOperationsWidget(QGroupBox):
     load_roi_requested = Signal()
 
     def __init__(self, parent=None):
-        super().__init__("文件操作 (支持拖拽)", parent)
+        super().__init__(QCoreApplication.translate("FileOperationsWidget", "File Operations (Drag & Drop Supported)"), parent)
         
         layout = QFormLayout(self)
         
-        self.load_video_btn = QPushButton("加载视频")
-        self.save_roi_btn = QPushButton("保存ROI配置")
-        self.load_roi_btn = QPushButton("加载ROI配置")
+        self.load_video_btn = QPushButton(QCoreApplication.translate("FileOperationsWidget", "Load Video"))
+        self.save_roi_btn = QPushButton(QCoreApplication.translate("FileOperationsWidget", "Save ROI Config"))
+        self.load_roi_btn = QPushButton(QCoreApplication.translate("FileOperationsWidget", "Load ROI Config"))
         
         layout.addRow(self.load_video_btn)
         layout.addRow(self.save_roi_btn)

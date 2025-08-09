@@ -11,7 +11,11 @@ from typing import List, Dict, Tuple, Optional, Generator
 from dataclasses import dataclass, field
 from collections import defaultdict
 
+from PySide6.QtCore import QCoreApplication
+
 logger = logging.getLogger(__name__)
+
+_tr = QCoreApplication.translate
 
 @dataclass
 class TextLine:
@@ -73,11 +77,11 @@ class OCRToASSOptimizer:
         self.width = width
         self.height = height
         self.template_path = Path(template_path) if template_path else None
-        logger.info(f"字幕生成器初始化: {self.width}x{self.height} @ {self.fps:.2f} FPS")
+        logger.info(_tr("OCRToASSOptimizer", "Subtitle generator initialized: {}x{} @ {:.2f} FPS").format(self.width, self.height, self.fps))
         if self.template_path and self.template_path.exists():
-            logger.info(f"使用样式模板: {self.template_path}")
+            logger.info(_tr("OCRToASSOptimizer", "Using style template: {}").format(self.template_path))
         else:
-            logger.info("未使用样式模板，将生成默认样式。")
+            logger.info(_tr("OCRToASSOptimizer", "No style template used, generating default styles."))
 
     def _load_and_organize_ocr_data(self, restored_data_generator: Generator) -> Dict[str, List[FrameData]]:
         roi_to_frame_data: Dict[str, Dict[int, FrameData]] = defaultdict(dict)
@@ -91,7 +95,7 @@ class OCRToASSOptimizer:
                 boxes = data.get('rec_boxes', []); polygons = data.get('rec_polys', [])
                 
                 if not (len(texts) == len(scores) == len(boxes) == len(polygons)):
-                    logger.warning(f"帧 {frame_num} (ROI: {roi_identifier}) 数据列表长度不一致，已跳过。")
+                    logger.warning(_tr("OCRToASSOptimizer", "Frame {} (ROI: {}) data list length mismatch, skipped.").format(frame_num, roi_identifier))
                     continue
 
                 for text, score, box, poly in zip(texts, scores, boxes, polygons):
@@ -102,7 +106,7 @@ class OCRToASSOptimizer:
                             TextLine(text=text, score=score, box=box_points, polygon=polygon_points)
                         )
             except Exception as e:
-                logger.warning(f"处理帧 {frame_num} (ROI: {roi_identifier}) 的内存数据时出错: {e}")
+                logger.warning(_tr("OCRToASSOptimizer", "Error processing in-memory data for frame {} (ROI: {}): {}").format(frame_num, roi_identifier, e))
 
         final_organized_data: Dict[str, List[FrameData]] = {}
         for roi_id, frame_map in roi_to_frame_data.items():
@@ -112,7 +116,7 @@ class OCRToASSOptimizer:
                 valid_frames.sort(key=lambda f: f.frame_num)
                 final_organized_data[roi_id] = valid_frames
         
-        logger.info(f"成功加载并按 {len(final_organized_data)} 个ROI组织了OCR数据。")
+        logger.info(_tr("OCRToASSOptimizer", "Successfully loaded and organized OCR data by {} ROIs.").format(len(final_organized_data)))
         return final_organized_data
 
     def _group_consecutive_frames(self, frames: List[FrameData]) -> List[SubtitleGroup]:
@@ -129,7 +133,7 @@ class OCRToASSOptimizer:
                 current_group = SubtitleGroup(start_frame=curr_frame.frame_num, end_frame=curr_frame.frame_num, lines=curr_frame.lines)
         if current_group.duration_frames >= self.MIN_DURATION_FRAMES:
             groups.append(current_group)
-        logger.debug(f"合并后得到 {len(groups)} 个字幕组")
+        logger.debug(_tr("OCRToASSOptimizer", "Merged into {} subtitle groups.").format(len(groups)))
         return groups
 
     def _are_frames_similar(self, group: SubtitleGroup, frame2: FrameData) -> bool:
@@ -204,11 +208,11 @@ class OCRToASSOptimizer:
                     header = content.split('[Events]')[0]
                     return header.strip() + '\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
                 else:
-                    logger.warning("模板文件中未找到 '[Events]' 标记。将在文件末尾追加事件。")
+                    logger.warning(_tr("OCRToASSOptimizer", "No '[Events]' tag found in template file. Events will be appended at the end of the file."))
                     return content.strip() + '\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
             except Exception as e:
-                logger.error(f"读取模板文件 {self.template_path} 失败: {e}。将使用默认样式。")
-
+                logger.error(_tr("OCRToASSOptimizer", "Failed to read template file {}: {}. Using default styles.").format(self.template_path, e))
+                
         return f"""[Script Info]
 Title: {self.video_path.stem}
 ScriptType: v4.00+
@@ -228,21 +232,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     def convert_from_memory(self, restored_data_generator: Generator):
-        logger.info("--- 开始从内存数据转换到 ASS 字幕 ---")
+        logger.info(_tr("OCRToASSOptimizer", "--- Starting conversion from in-memory data to ASS subtitles ---"))
         try:
             organized_data = self._load_and_organize_ocr_data(restored_data_generator)
             
             if not organized_data:
-                logger.warning("没有找到有效的OCR数据，将生成空的ASS文件。")
+                logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found, an empty ASS file will be generated."))
                 with open(self.output_path, 'w', encoding='utf-8') as f:
                     f.write(self._get_ass_header())
                 return
 
             all_dialogue_entries = []
             for roi_id, frame_list in organized_data.items():
-                logger.info(f"正在处理 ROI: {roi_id}，包含 {len(frame_list)} 个有效帧。")
+                logger.info(_tr("OCRToASSOptimizer", "Processing ROI: {}, containing {} valid frames.").format(roi_id, len(frame_list)))
                 groups = self._group_consecutive_frames(frame_list)
-                logger.info(f"ROI: {roi_id} 生成了 {len(groups)} 个字幕组。")
+                logger.info(_tr("OCRToASSOptimizer", "ROI: {} generated {} subtitle groups.").format(roi_id, len(groups)))
 
                 for group in groups:
                     start_time = self._format_time(group.start_frame)
@@ -254,7 +258,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         all_dialogue_entries.append(entry)
 
             if not all_dialogue_entries:
-                logger.warning("所有ROI均未形成有效的字幕组，将生成空的ASS文件。")
+                logger.warning(_tr("OCRToASSOptimizer", "No valid subtitle groups formed for any ROI, an empty ASS file will be generated."))
                 with open(self.output_path, 'w', encoding='utf-8') as f:
                     f.write(self._get_ass_header())
                 return
@@ -267,10 +271,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             with open(self.output_path, 'w', encoding='utf-8') as f:
                 f.write(final_content)
 
-            logger.info(f"--- 转换成功 ---")
-            logger.info(f"ASS字幕文件已保存到: {self.output_path}")
+            logger.info(_tr("OCRToASSOptimizer", "--- Conversion successful ---"))
+            logger.info(_tr("OCRToASSOptimizer", "ASS subtitle file saved to: {}").format(self.output_path))
 
         except Exception as e:
-            logger.error(f"--- 转换失败 ---")
-            logger.error(f"错误: {e}", exc_info=True)
+            logger.error(_tr("OCRToASSOptimizer", "--- Conversion failed ---"))
+            logger.error(_tr("OCRToASSOptimizer", "Error: {}").format(e), exc_info=True)
             raise

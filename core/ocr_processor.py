@@ -5,6 +5,7 @@ from typing import Iterator, Union, Tuple, Dict, Any, List
 from paddleocr import PaddleOCR
 import numpy as np
 import logging
+from PySide6.QtCore import QCoreApplication
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ _ocr_instance = None
 def _get_paddle_ocr_instance():
     global _ocr_instance
     if _ocr_instance is None:
-        logger.info("初始化 PaddleOCR 模型...")
+        logger.info(QCoreApplication.translate("ocr_processor", "Initializing PaddleOCR model..."))
         
         gpu_mode = "cpu"
         gpu_mode_file = os.path.join(os.path.dirname(__file__), "../.gpu_mode")
@@ -25,7 +26,12 @@ def _get_paddle_ocr_instance():
                         break
         
         device = gpu_mode 
-        logger.info(f"PaddleOCR将使用 {device.upper()}模式运行 ")
+        logger.info(
+            QCoreApplication.translate(
+                "ocr_processor",
+                "PaddleOCR will run in {} mode."
+            ).format(device.upper())
+        )
 
         _ocr_instance = PaddleOCR(
             use_doc_orientation_classify=False,
@@ -34,7 +40,7 @@ def _get_paddle_ocr_instance():
             lang="ch",
             device=device
         )
-        logger.info("PaddleOCR model initialized.")
+        logger.info(QCoreApplication.translate("ocr_processor", "PaddleOCR model initialized."))
     return _ocr_instance
 
 def run_batch_ocr(frames_iter: Iterator[Tuple[Dict, Union[str, np.ndarray], int, str]], work_dir: str, visualize: bool = False) -> Iterator[Tuple[Dict, Dict[str, Any], int, str]]:
@@ -49,10 +55,20 @@ def run_batch_ocr(frames_iter: Iterator[Tuple[Dict, Union[str, np.ndarray], int,
         is_path_input = isinstance(img_input, str)
         
         if is_path_input:
-            logger.debug(f"Processing image from path: {img_input}")
+            logger.debug(
+                QCoreApplication.translate(
+                    "ocr_processor",
+                    "Processing image from path: {}"
+                ).format(img_input)
+            )
             base_name = f"{os.path.splitext(os.path.basename(img_input))[0]}_{roi_identifier}"
         else:
-            logger.debug(f"Processing image from memory (frame {frame_num}, ROI {roi_identifier})")
+            logger.debug(
+                QCoreApplication.translate(
+                    "ocr_processor",
+                    "Processing image from memory (frame {}, ROI {})"
+                ).format(frame_num, roi_identifier)
+            )
             base_name = f"frame_{frame_num:06d}_{roi_identifier}"
 
         raw_ocr_results: List[Any] = ocr.predict(img_input)
@@ -83,7 +99,12 @@ def run_batch_ocr(frames_iter: Iterator[Tuple[Dict, Union[str, np.ndarray], int,
                     ocr_data_dict['rec_texts'].append(texts[i])
                     ocr_data_dict['rec_scores'].append(float(scores[i]))
                     ocr_data_dict['rec_boxes'].append(boxes[i].tolist() if isinstance(boxes[i], np.ndarray) else boxes[i])
-                logger.debug(f"Processed document-level OCR result for frame {frame_num}, ROI {roi_identifier}.")
+                logger.debug(
+                    QCoreApplication.translate(
+                        "ocr_processor",
+                        "Processed document-level OCR result for frame {}, ROI {}."
+                    ).format(frame_num, roi_identifier)
+                )
 
             else:
                 for line_result in raw_ocr_results:
@@ -101,17 +122,37 @@ def run_batch_ocr(frames_iter: Iterator[Tuple[Dict, Union[str, np.ndarray], int,
                         x_max, y_max = np.max(np_poly[:, 0]), np.max(np_poly[:, 1])
                         ocr_data_dict['rec_boxes'].append([int(x_min), int(y_min), int(x_max), int(y_max)])
                     else:
-                        logger.warning(f"Unexpected line result format for frame {frame_num}, ROI {roi_identifier}: {line_result}")
+                        logger.warning(
+                            QCoreApplication.translate(
+                                "ocr_processor",
+                                "Unexpected line result format for frame {}, ROI {}: {}"
+                            ).format(frame_num, roi_identifier, line_result)
+                        )
 
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(ocr_data_dict, f, ensure_ascii=False, indent=2)
             
-            logger.debug(f"Saved OCR results to: {json_path}")
+            logger.debug(
+                QCoreApplication.translate(
+                    "ocr_processor",
+                    "Saved OCR results to: {}"
+                ).format(json_path)
+            )
             
             if visualize:
-                logger.info(f"OCR Results for frame {frame_num}, ROI {roi_identifier}:")
+                logger.info(
+                    QCoreApplication.translate(
+                        "ocr_processor",
+                        "OCR Results for frame {}, ROI {}:"
+                    ).format(frame_num, roi_identifier)
+                )
                 for i, (text, score) in enumerate(zip(ocr_data_dict['rec_texts'], ocr_data_dict['rec_scores'])):
-                    logger.info(f"  {i+1}. Text: {text}, Score: {score:.2f}")
+                    logger.info(
+                        QCoreApplication.translate(
+                            "ocr_processor",
+                            "  {}. Text: {}, Score: {:.2f}"
+                        ).format(i+1, text, score)
+                    )
                 
                 img_output_dir = os.path.join(work_dir, "ocr_visualization")
                 os.makedirs(img_output_dir, exist_ok=True)
@@ -131,12 +172,27 @@ def run_batch_ocr(frames_iter: Iterator[Tuple[Dict, Union[str, np.ndarray], int,
                 for res in result:
                     res.save_to_img(img_output_dir)
                 
-                logger.info(f"Saved visualization to directory: {img_output_dir}")
+                logger.info(
+                    QCoreApplication.translate(
+                        "ocr_processor",
+                        "Saved visualization to directory: {}"
+                    ).format(img_output_dir)
+                )
         else:
-            logger.debug(f"No OCR results found for frame {frame_num}, ROI {roi_identifier}.")
+            logger.debug(
+                QCoreApplication.translate(
+                    "ocr_processor",
+                    "No OCR results found for frame {}, ROI {}."
+                ).format(frame_num, roi_identifier)
+            )
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(ocr_data_dict, f, ensure_ascii=False, indent=2)
-            logger.debug(f"Saved empty OCR results to: {json_path}")
+            logger.debug(
+                QCoreApplication.translate(
+                    "ocr_processor",
+                    "Saved empty OCR results to: {}"
+                ).format(json_path)
+            )
 
         yield (
             roi_entry_orig,
@@ -160,13 +216,14 @@ if __name__ == "__main__":
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    parser = argparse.ArgumentParser(description='批量OCR处理图片')
+    parser = argparse.ArgumentParser(description=QCoreApplication.translate("ocr_processor", "Batch OCR Image Processing"))
     parser.add_argument('--input', '-i', required=True,
-                        help='输入图片目录路径')
+                        help=QCoreApplication.translate("ocr_processor", "Input image directory path"))
     parser.add_argument('--output', '-o', required=True,
-                        help='输出结果目录路径')
+                        help=QCoreApplication.translate("ocr_processor", "Output results directory path"))
     parser.add_argument('--visualize', '-v', action='store_true',
-                        help='启用可视化输出')
+                        help=QCoreApplication.translate("ocr_processor", "Enable visualization output"))
     
     args = parser.parse_args()
     process_images(args.input, args.output, visualize=args.visualize)
+

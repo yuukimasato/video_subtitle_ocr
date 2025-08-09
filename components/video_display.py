@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Tuple, Union
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor, QPolygon
-from PySide6.QtCore import QPoint, Qt, QRect, QSize, Signal
+from PySide6.QtCore import QPoint, Qt, QRect, QSize, Signal, QCoreApplication
 
 class VideoFrameLabel(QLabel):
     roi_drawn = Signal()
@@ -69,7 +69,7 @@ class VideoFrameLabel(QLabel):
                     if self.underMouse(): painter.drawLine(self._current_drawing_poly_points[-1], self.mapFromGlobal(self.cursor().pos()))
                 else: painter.drawPolygon(QPolygon(self._current_drawing_poly_points))
         except Exception as e:
-            print(f"绘图错误: {str(e)}")
+            print(QCoreApplication.translate("VideoFrameLabel", "Drawing error: {}").format(str(e)))
         finally:
             painter.end()
     def is_roi_ready(self) -> bool:
@@ -99,7 +99,7 @@ class VideoDisplayWidget(QWidget):
         self.timeline_slider = QSlider(Qt.Horizontal)
         
         time_display_layout = QVBoxLayout()
-        self.frame_label = QLabel("0/0")
+        self.frame_label = QLabel("0/0") 
         self.time_label = QLabel("00:00:00.000 / 00:00:00.000")
         time_display_layout.addWidget(self.frame_label)
         time_display_layout.addWidget(self.time_label)

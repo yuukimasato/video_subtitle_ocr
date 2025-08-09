@@ -1,6 +1,6 @@
 # components/roi_definition.py
 from PySide6.QtWidgets import QWidget, QGroupBox, QFormLayout, QPushButton, QLineEdit, QHBoxLayout
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QCoreApplication
 
 class RoiDefinitionWidget(QGroupBox):
     navigate_pressed = Signal(QLineEdit, int) 
@@ -12,43 +12,43 @@ class RoiDefinitionWidget(QGroupBox):
     delete_roi_requested = Signal()
 
     def __init__(self, parent=None):
-        super().__init__("ROI 定义", parent)
+        super().__init__(QCoreApplication.translate("RoiDefinitionWidget", "ROI Definition"), parent)
         
         roi_layout = QFormLayout(self)
         
         start_time_layout = QHBoxLayout()
         self.start_frame_backward = QPushButton("←")
-        self.start_frame_backward.setToolTip("向前1帧 (短按) / 连续 (长按)")
+        self.start_frame_backward.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Go back 1 frame (short press) / Continuous (long press)"))
         self.start_frame_forward = QPushButton("→")
-        self.start_frame_forward.setToolTip("向后1帧 (短按) / 连续 (长按)")
+        self.start_frame_forward.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Go forward 1 frame (short press) / Continuous (long press)"))
         self.start_time_edit = QLineEdit("00:00:00.000")
-        self.start_time_edit.setToolTip("输入时间 (hh:mm:ss.ms) 或帧号")
+        self.start_time_edit.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Enter time (hh:mm:ss.ms) or frame number"))
         start_time_layout.addWidget(self.start_frame_backward)
         start_time_layout.addWidget(self.start_time_edit)
         start_time_layout.addWidget(self.start_frame_forward)
-        roi_layout.addRow("开始时间:", start_time_layout)
+        roi_layout.addRow(QCoreApplication.translate("RoiDefinitionWidget", "Start Time:"), start_time_layout)
         
-        self.set_start_btn = QPushButton("设为开始时间")
+        self.set_start_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "Set as Start Time"))
         roi_layout.addRow(self.set_start_btn)
         
         end_time_layout = QHBoxLayout()
         self.end_frame_backward = QPushButton("←")
-        self.end_frame_backward.setToolTip("向前1帧 (短按) / 连续 (长按)")
+        self.end_frame_backward.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Go back 1 frame (short press) / Continuous (long press)"))
         self.end_frame_forward = QPushButton("→")
-        self.end_frame_forward.setToolTip("向后1帧 (短按) / 连续 (长按)")
+        self.end_frame_forward.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Go forward 1 frame (short press) / Continuous (long press)"))
         self.end_time_edit = QLineEdit("00:00:00.000")
-        self.end_time_edit.setToolTip("输入时间 (hh:mm:ss.ms) 或帧号")
+        self.end_time_edit.setToolTip(QCoreApplication.translate("RoiDefinitionWidget", "Enter time (hh:mm:ss.ms) or frame number"))
         end_time_layout.addWidget(self.end_frame_backward)
         end_time_layout.addWidget(self.end_time_edit)
         end_time_layout.addWidget(self.end_frame_forward)
-        roi_layout.addRow("结束时间:", end_time_layout)
+        roi_layout.addRow(QCoreApplication.translate("RoiDefinitionWidget", "End Time:"), end_time_layout)
         
-        self.set_end_btn = QPushButton("设为结束时间")
+        self.set_end_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "Set as End Time"))
         roi_layout.addRow(self.set_end_btn)
         
-        self.add_roi_btn = QPushButton("添加新ROI")
-        self.update_roi_btn = QPushButton("更新选中ROI")
-        self.delete_roi_btn = QPushButton("删除选中ROI")
+        self.add_roi_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "Add New ROI"))
+        self.update_roi_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "Update Selected ROI"))
+        self.delete_roi_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "Delete Selected ROI"))
         roi_layout.addRow(self.add_roi_btn)
         roi_layout.addRow(self.update_roi_btn)
         roi_layout.addRow(self.delete_roi_btn)

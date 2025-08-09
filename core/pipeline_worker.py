@@ -3,7 +3,8 @@ import os
 import logging
 import datetime
 import shutil
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QCoreApplication
+
 from typing import List, Dict, Optional
 from collections import defaultdict
 
@@ -43,11 +44,25 @@ class PipelineWorker(QThread):
             timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             self.work_dir = os.path.join(os.path.dirname(self.output_ass_path), f"{video_name}_{timestamp}_ocr_temp")
             os.makedirs(self.work_dir, exist_ok=True)
-            logger.info(f"中间文件将保存在: {self.work_dir}")
-            log_mode = "内存数据流" if self.in_memory_ocr else "磁盘文件流"
-            logger.info(f"OCR流水线将以 {log_mode} 模式运行。")
+            logger.info(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Intermediate files will be saved to: {}"
+                ).format(self.work_dir)
+            )
+            
+            log_mode_in_memory = QCoreApplication.translate("pipeline_worker", "in-memory data stream")
+            log_mode_disk_file = QCoreApplication.translate("pipeline_worker", "disk file stream")
+            log_mode = log_mode_in_memory if self.in_memory_ocr else log_mode_disk_file
+            
+            logger.info(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "OCR pipeline will run in {} mode."
+                ).format(log_mode)
+            )
 
-            self.progress_updated.emit(0, "步骤 1/4: 正在计算待处理ROI帧数量...")
+            self.progress_updated.emit(0, QCoreApplication.translate("pipeline_worker", "Step 1/4: Calculating number of ROI frames to process..."))
             if self.is_cancelled: return
 
             try:
@@ -58,9 +73,15 @@ class PipelineWorker(QThread):
                 if self.is_cancelled: return
 
                 if not total_roi_frames:
-                    raise RuntimeError("ROI提取步骤未能产生任何数据。请检查ROI时间和区域设置。")
+                    raise RuntimeError(QCoreApplication.translate("pipeline_worker", "ROI extraction step did not produce any data. Please check ROI time and region settings."))
 
-                self.progress_updated.emit(1, f"步骤 1/4: 计算完成，共 {total_roi_frames} 帧。开始提取...")
+                self.progress_updated.emit(
+                    1,
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Step 1/4: Calculation complete, total {} frames. Starting extraction..."
+                    ).format(total_roi_frames)
+                )
 
                 frames_to_process = []
                 roi_start_progress = 1
@@ -75,15 +96,38 @@ class PipelineWorker(QThread):
                     if self.is_cancelled: return
                     frames_to_process.append(frame_data)
                     progress = roi_start_progress + int(((i + 1) / total_roi_frames) * roi_progress_range)
-                    self.progress_updated.emit(progress, f"步骤 1/4: 提取ROI帧中... ({i + 1}/{total_roi_frames})")
+                    self.progress_updated.emit(
+                        progress,
+                        QCoreApplication.translate(
+                            "pipeline_worker",
+                            "Step 1/4: Extracting ROI frames... ({}/{})"
+                        ).format(i + 1, total_roi_frames)
+                    )
 
-                self.progress_updated.emit(10, f"步骤 1/4: ROI帧提取完成。共 {len(frames_to_process)} 个ROI帧。")
+                self.progress_updated.emit(
+                    10,
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Step 1/4: ROI frame extraction complete. Total {} ROI frames."
+                    ).format(len(frames_to_process))
+                )
 
             except Exception as e:
-                logger.error(f"ROI提取过程中出错: {e}")
+                logger.error(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Error during ROI extraction: {}"
+                    ).format(e)
+                )
                 raise
 
-            self.progress_updated.emit(10, f"步骤 2/4: 开始进行智能OCR识别... (0/{total_roi_frames})")
+            self.progress_updated.emit(
+                10,
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Step 2/4: Starting intelligent OCR recognition... (0/{})"
+                ).format(total_roi_frames)
+            )
             if self.is_cancelled: return
 
             roi_groups = defaultdict(list)
@@ -105,13 +149,24 @@ class PipelineWorker(QThread):
             for roi_id, group_frames in sorted(roi_groups.items()):
                 if self.is_cancelled: break
                 
-                logger.info(f"开始处理 {roi_id}，包含 {len(group_frames)} 帧...")
+                logger.info(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Starting to process {}, containing {} frames..."
+                    ).format(roi_id, len(group_frames))
+                )
                 group_frames.sort(key=lambda x: x[2])
                 
                 def progress_callback(group_processed_count: int):
                     current_total_processed = processed_count + group_processed_count
                     progress = ocr_start_progress + int((current_total_processed / total_roi_frames) * ocr_progress_range)
-                    self.progress_updated.emit(progress, f"步骤 2/4: OCR识别中... ({current_total_processed}/{total_roi_frames})")
+                    self.progress_updated.emit(
+                        progress,
+                        QCoreApplication.translate(
+                            "pipeline_worker",
+                            "Step 2/4: OCR recognition in progress... ({}/{})"
+                        ).format(current_total_processed, total_roi_frames)
+                    )
 
                 optimized_group_results = optimizer.process_roi_group(
                     group_frames, 
@@ -127,10 +182,16 @@ class PipelineWorker(QThread):
             if self.is_cancelled: return
 
             if not ocr_results:
-                raise RuntimeError("OCR识别步骤未能产生任何结果。")
-            self.progress_updated.emit(80, "步骤 2/4: OCR识别完成。")
+                raise RuntimeError(QCoreApplication.translate("pipeline_worker", "OCR recognition step did not produce any results."))
+            self.progress_updated.emit(80, QCoreApplication.translate("pipeline_worker", "Step 2/4: OCR recognition complete."))
 
-            self.progress_updated.emit(80, f"步骤 3/4: 开始还原坐标... (0/{len(ocr_results)})")
+            self.progress_updated.emit(
+                80,
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Step 3/4: Starting coordinate restoration... (0/{})"
+                ).format(len(ocr_results))
+            )
             if self.is_cancelled: return
 
             restored_results = []
@@ -143,13 +204,19 @@ class PipelineWorker(QThread):
                 if self.is_cancelled: return
                 restored_results.append(restored_result)
                 progress = restore_start_progress + int(((i + 1) / len(ocr_results)) * restore_progress_range)
-                self.progress_updated.emit(progress, f"步骤 3/4: 还原坐标... ({i + 1}/{len(ocr_results)})")
+                self.progress_updated.emit(
+                    progress,
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Step 3/4: Restoring coordinates... ({}/{})"
+                    ).format(i + 1, len(ocr_results))
+                )
 
             if not restored_results:
-                raise RuntimeError("坐标还原步骤未能产生任何结果。")
-            self.progress_updated.emit(90, "步骤 3/4: 坐标还原完成。")
+                raise RuntimeError(QCoreApplication.translate("pipeline_worker", "Coordinate restoration step did not produce any results."))
+            self.progress_updated.emit(90, QCoreApplication.translate("pipeline_worker", "Step 3/4: Coordinate restoration complete."))
 
-            self.progress_updated.emit(90, "步骤 4/4: 开始生成ASS字幕文件...")
+            self.progress_updated.emit(90, QCoreApplication.translate("pipeline_worker", "Step 4/4: Starting ASS subtitle file generation..."))
             if self.is_cancelled: return
 
             converter = subtitle_generator.OCRToASSOptimizer(
@@ -157,26 +224,48 @@ class PipelineWorker(QThread):
                 width=self.video_width, height=self.video_height, template_path=self.template_path
             )
             converter.convert_from_memory(iter(restored_results))
-            self.progress_updated.emit(100, "步骤 4/4: ASS字幕生成完成。")
+            self.progress_updated.emit(100, QCoreApplication.translate("pipeline_worker", "Step 4/4: ASS subtitle generation complete."))
 
             self.finished.emit(self.output_ass_path)
 
         except Exception as e:
-            logger.error(f"流水线处理失败: {e}", exc_info=True)
-            self.error.emit(f"处理过程中发生错误: {e}")
+            logger.error(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Pipeline processing failed: {}"
+                ).format(e),
+                exc_info=True
+            )
+            self.error.emit(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "An error occurred during processing: {}"
+                ).format(e)
+            )
         finally:
             if self.work_dir and not self.debug_mode:
                 try:
                     shutil.rmtree(self.work_dir)
-                    logger.info(f"已删除临时工作目录: {self.work_dir}")
+                    logger.info(
+                        QCoreApplication.translate(
+                            "pipeline_worker",
+                            "Temporary working directory deleted: {}"
+                        ).format(self.work_dir)
+                    )
                 except Exception as e:
-                    logger.warning(f"无法删除临时工作目录 {self.work_dir}: {e}")
+                    logger.warning(
+                        QCoreApplication.translate(
+                            "pipeline_worker",
+                            "Could not delete temporary working directory {}: {}"
+                        ).format(self.work_dir, e)
+                    )
 
     def cancel(self):
         self.is_cancelled = True
-        logger.info("任务取消请求已发送。")
+        logger.info(QCoreApplication.translate("pipeline_worker", "Task cancellation request sent."))
         
     def terminate(self):
         if self.isRunning():
-            logger.warning("强制终止线程...")
+            logger.warning(QCoreApplication.translate("pipeline_worker", "Forcibly terminating thread..."))
             super().terminate()
+

@@ -8,7 +8,7 @@ cudatoolkit
 cudnn
 nvidia-cublas-cu12>=12.4.2.65
 nvidia-cuda-nvrtc-cu12>=12.4.99
-
+opencv-python-headless-cuda
 
 # 可选加速库：
 nccl

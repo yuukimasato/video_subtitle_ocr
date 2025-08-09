@@ -10,7 +10,11 @@ from typing import List, Dict, Tuple, Optional, Generator
 from dataclasses import dataclass, field
 from collections import defaultdict
 
+from PySide6.QtCore import QCoreApplication
+
 logger = logging.getLogger(__name__)
+
+_tr = QCoreApplication.translate
 
 @dataclass
 class TextLine:
@@ -87,19 +91,21 @@ class OCRToASSOptimizer:
         self.height = height
         self.template_path = Path(template_path) if template_path else None
         self.pos_tolerance = self.height * self.MERGE_POS_TOLERANCE_RATIO
-        logger.info(f"字幕生成器初始化: {self.width}x{self.height} @ {self.fps:.2f} FPS")
+        logger.info(_tr("OCRToASSOptimizer", "Subtitle generator initialized: {}x{} @ {:.2f} FPS").format(self.width, self.height, self.fps))
         if self.template_path and self.template_path.exists():
-            logger.info(f"使用样式模板: {self.template_path}")
+            logger.info(_tr("OCRToASSOptimizer", "Using style template: {}").format(self.template_path))
         else:
-            logger.info("未使用样式模板，将生成一套丰富的默认样式。")
+            logger.info(_tr("OCRToASSOptimizer", "No style template used, generating a rich set of default styles."))
 
     def convert_from_memory(self, restored_data_generator: Generator):
+        logger.info(_tr("OCRToASSOptimizer", "--- Starting conversion from in-memory data to ASS subtitles ---"))
         organized_data = self._load_and_organize_ocr_data(restored_data_generator)
         all_dialogues = []
 
         for roi_id, frames in organized_data.items():
-            logger.info(f"正在处理 ROI: {roi_id}，包含 {len(frames)} 个有效帧。")
+            logger.info(_tr("OCRToASSOptimizer", "Processing ROI: {}, containing {} valid frames.").format(roi_id, len(frames)))
             groups = self._group_consecutive_frames(frames)
+            logger.info(_tr("OCRToASSOptimizer", "ROI: {} generated {} subtitle groups.").format(roi_id, len(groups)))
             
             for group in groups:
                 start_time = self._format_time(group.start_frame)
@@ -114,7 +120,15 @@ class OCRToASSOptimizer:
                     )
                     all_dialogues.append(dialogue)
 
+        if not all_dialogues:
+            logger.warning(_tr("OCRToASSOptimizer", "No valid subtitle groups formed for any ROI, an empty ASS file will be generated."))
+            with open(self.output_path, 'w', encoding='utf-8-sig') as f:
+                f.write(self._get_ass_header())
+            return
+
         self._write_ass_file(all_dialogues)
+        logger.info(_tr("OCRToASSOptimizer", "--- Conversion successful ---"))
+
 
     def _load_and_organize_ocr_data(self, restored_data_generator: Generator) -> Dict[str, List[FrameData]]:
         roi_to_frame_data: Dict[str, Dict[int, FrameData]] = defaultdict(dict)
@@ -133,7 +147,7 @@ class OCRToASSOptimizer:
                             TextLine(text=text, score=score, box=box_points, polygon=polygon_points)
                         )
             except Exception as e:
-                logger.warning(f"处理帧 {frame_num} (ROI: {roi_identifier}) 数据时出错: {e}")
+                logger.warning(_tr("OCRToASSOptimizer", "Error processing data for frame {} (ROI: {}): {}").format(frame_num, roi_identifier, e))
 
         final_organized_data: Dict[str, List[FrameData]] = {}
         for roi_id, frame_map in roi_to_frame_data.items():
@@ -142,7 +156,7 @@ class OCRToASSOptimizer:
                 valid_frames.sort(key=lambda f: f.frame_num)
                 final_organized_data[roi_id] = valid_frames
         
-        logger.info(f"成功加载并按 {len(final_organized_data)} 个ROI组织了OCR数据。")
+        logger.info(_tr("OCRToASSOptimizer", "Successfully loaded and organized OCR data by {} ROIs.").format(len(final_organized_data)))
         return final_organized_data
 
     def _group_consecutive_frames(self, frames: List[FrameData]) -> List[SubtitleGroup]:
@@ -165,7 +179,7 @@ class OCRToASSOptimizer:
         if current_group.duration_frames >= self.MIN_DURATION_FRAMES:
             groups.append(current_group)
         
-        logger.debug(f"合并后得到 {len(groups)} 个字幕组")
+        logger.debug(_tr("OCRToASSOptimizer", "Merged into {} subtitle groups.").format(len(groups)))
         return groups
 
     def _are_frames_similar(self, group: SubtitleGroup, next_frame: FrameData) -> bool:
@@ -312,32 +326,40 @@ class OCRToASSOptimizer:
                 content = re.sub(r'(?i)^PlayResY:.*', f'PlayResY: {self.height}', content, flags=re.MULTILINE)
                 if '[Events]' in content:
                     return content.split('[Events]')[0].strip() + '\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+                logger.warning(_tr("OCRToASSOptimizer", "No '[Events]' tag found in template file. Events will be appended at the end of the file."))
                 return content.strip() + '\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
             except Exception as e:
-                logger.error(f"读取模板文件失败: {e}。将使用默认样式。")
+                logger.error(_tr("OCRToASSOptimizer", "Failed to read template file: {}. Using default styles.").format(e))
 
-        return f"""[Script Info]
-Title: {self.video_path.stem} - Generated by Subtitle-OCR
+        return _tr("OCRToASSOptimizer", """[Script Info]
+Title: {video_stem} - Generated by Subtitle-OCR
 ScriptType: v4.00+
 WrapStyle: 0
-PlayResX: {self.width}
-PlayResY: {self.height}
+PlayResX: {width}
+PlayResY: {height}
 ScaledBorderAndShadow: yes
 YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,思源黑体 CN,{(self.height*0.06):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
-Style: CH,思源黑体 CN,{(self.height*0.06):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
-Style: JP,源ノ角ゴシック JP,{(self.height*0.06):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
-Style: KO,Malgun Gothic,{(self.height*0.06):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
-Style: RU,Arial,{(self.height*0.06):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
-Style: Top,思源黑体 CN,{(self.height*0.05):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1
-Style: Scene,思源黑体 CN,{(self.height*0.04):.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,5,10,10,10,1
+Style: Default,思源黑体 CN,{default_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
+Style: CH,思源黑体 CN,{default_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
+Style: JP,源ノ角ゴシック JP,{default_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
+Style: KO,Malgun Gothic,{default_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
+Style: RU,Arial,{default_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1
+Style: Top,思源黑体 CN,{top_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1
+Style: Scene,思源黑体 CN,{scene_font_size:.0f},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,5,10,10,10,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
+""").format(
+            video_stem=self.video_path.stem,
+            width=self.width,
+            height=self.height,
+            default_font_size=(self.height*0.06),
+            top_font_size=(self.height*0.05),
+            scene_font_size=(self.height*0.04)
+        )
 
     def _write_ass_file(self, dialogues: List[str]):
         header = self._get_ass_header()
@@ -347,7 +369,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f.write(header)
                 for line in dialogues:
                     f.write(line + '\n')
-            logger.info(f"ASS字幕文件已成功写入: {self.output_path}")
+            logger.info(_tr("OCRToASSOptimizer", "ASS subtitle file successfully written to: {}").format(self.output_path))
         except Exception as e:
-            logger.error(f"写入ASS文件时发生错误: {e}", exc_info=True)
-
+            logger.error(_tr("OCRToASSOptimizer", "Error writing ASS file: {}").format(e), exc_info=True)
