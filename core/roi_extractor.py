@@ -259,6 +259,6 @@ def extract_roi_frames(
                             "ROI extraction resulted in empty image, frame {}, ROI {}"
                         ).format(frame_num, roi_identifier)
                     )
-    
+
     finally:
         cap.release()
