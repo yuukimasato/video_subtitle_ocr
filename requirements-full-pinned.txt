@@ -1,0 +1,3 @@
+# Full pinned environment snapshot (may include unused extras).
+# If you only want to run the app, prefer requirements.txt.
+-r requirements-a.txt

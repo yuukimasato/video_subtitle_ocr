@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=2.0
+Type=Application
+Name=Video Subtitle OCR
+Name[zh_CN]=视频字幕 OCR
+Comment=Extract subtitles from videos using OCR
+Comment[zh_CN]=使用 OCR 技术从视频中提取字幕
+TryExec=/usr/bin/video-subtitle-ocr
+Exec=/usr/bin/video-subtitle-ocr
+Path=/opt/apps/video_subtitle_ocr
+Icon=accessories-text-editor
+StartupNotify=true
+Terminal=false
+Categories=AudioVideo;Video;Utility;
+Keywords=subtitle;ocr;video;字幕;识别;

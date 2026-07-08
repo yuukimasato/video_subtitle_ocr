@@ -1,0 +1,14 @@
+# video-subtitle-ocr CPU requirements
+# Pinned to known-compatible versions for reliable installation.
+# PaddlePaddle 3.3.x has known regressions with oneDNN/new-executor/PIR;
+# we pin to 3.2.x which is the last stable release line.
+PySide6>=6.5,<7.0
+numpy>=1.24,<3.0
+opencv-python>=4.8,<5.0
+paddlepaddle>=3.1,<3.3
+paddleocr>=2.10,<4.0
+scikit-image>=0.22
+Levenshtein>=0.25
+openai>=1.0
+tenacity>=8.0
+json-repair>=0.7
