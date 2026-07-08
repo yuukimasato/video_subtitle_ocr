@@ -23,7 +23,6 @@
 
 ![preview1](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview1.png)
 ![preview2](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview2.png)
-![preview3](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
 软件提供了交互式的图形用户界面（GUI），用户可以直观地在视频上框选字幕区域（ROI），设置其生效的时间范围，并通过一键式操作启动后台OCR识别和字幕生成流程。项目内置了智能优化算法，能够大幅提升处理效率并保证识别的准确性。
 
 ## 核心功能
