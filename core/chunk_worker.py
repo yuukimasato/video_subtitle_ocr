@@ -71,6 +71,27 @@ def clip_roi_data_to_window(roi_data: List[Dict], window: ChunkWindow, fps: floa
     return clipped
 
 
+def run_window_stages(ctx: PipelineContext, window: ChunkWindow, *, progress_cb, cancel_check) -> List[tuple]:
+    """Run steps 1-3 over ``window`` and return restored frame records.
+
+    Used both by :func:`chunk_worker_main` (inside the spawned process) and
+    by the coordinator's sequential fallback for failed windows, so a
+    fallback window is processed by exactly the same code as a worker.
+    Returns ``[]`` when no ROI intersects the window.
+    """
+    clipped_rois = clip_roi_data_to_window(ctx.roi_data, window, ctx.fps)
+    if not clipped_rois:
+        return []
+    wctx = dc_replace(ctx, roi_data=clipped_rois)
+    ocr_results, stats = extract_and_ocr_stage(
+        wctx, progress_cb=progress_cb, cancel_check=cancel_check)
+    refined = refine_stage(
+        wctx, ocr_results, ocr_stats=stats,
+        progress_cb=progress_cb, cancel_check=cancel_check)
+    return restore_stage(
+        wctx, refined, progress_cb=progress_cb, cancel_check=cancel_check)
+
+
 def chunk_worker_main(payload: Dict[str, Any]) -> None:
     """Entry point of one worker process. Results go out via ``payload["queue"]``."""
     ctx: PipelineContext = payload["ctx"]
@@ -106,29 +127,18 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
     heartbeat.start()
 
     try:
-        clipped_rois = clip_roi_data_to_window(ctx.roi_data, window, ctx.fps)
-        if not clipped_rois:
+        restored = run_window_stages(ctx, window, progress_cb=progress_cb, cancel_check=cancel_check)
+        if not restored:
             # No ROI intersects this window: nothing to do (not an error).
             queue.put({"type": "done", "window": window_id, "stats": {"records": 0}})
             return
-        wctx = dc_replace(ctx, roi_data=clipped_rois)
-
-        ocr_results, stats = extract_and_ocr_stage(
-            wctx, progress_cb=progress_cb, cancel_check=cancel_check)
-        refined = refine_stage(
-            wctx, ocr_results, ocr_stats=stats,
-            progress_cb=progress_cb, cancel_check=cancel_check)
-        restored = restore_stage(
-            wctx, refined, progress_cb=progress_cb, cancel_check=cancel_check)
-
         for i in range(0, len(restored), RECORDS_BATCH_SIZE):
             if cancel_check():
                 raise PipelineCancelled()
             queue.put({"type": "records", "window": window_id,
                        "records": restored[i:i + RECORDS_BATCH_SIZE]})
         queue.put({"type": "done", "window": window_id,
-                   "stats": {"records": len(restored),
-                             "ocr_calls": int(stats.get("total_ocr_calls", 0))}})
+                   "stats": {"records": len(restored)}})
     except PipelineCancelled:
         queue.put({"type": "cancelled", "window": window_id})
     except Exception as e:

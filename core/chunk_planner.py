@@ -71,8 +71,14 @@ def plan_chunks(
     min_total_s: float = 600.0,
     engine_mem_budget_mb: int = 600,
     preroll_s: float = 1.0,
+    max_workers: int = 0,
 ) -> Optional[ChunkPlan]:
-    """Return a ChunkPlan, or None when the video should run single-process."""
+    """Return a ChunkPlan, or None when the video should run single-process.
+
+    ``max_workers`` (0 = uncapped) is a user cap on the auto worker count;
+    the plan still respects cores/RAM/window limits, so it is an upper bound,
+    never a force.
+    """
     if gpu_mode and str(gpu_mode).lower() != "cpu":
         return None
     if not fps or fps <= 0:
@@ -87,6 +93,8 @@ def plan_chunks(
     window_count = max(1, int(math.ceil(duration_s / float(window_target_s))))
     ram_workers = int(available_ram_mb // engine_mem_budget_mb)
     workers = max(1, min(int(cpu_count or 1), ram_workers, window_count))
+    if max_workers and max_workers > 0:
+        workers = min(workers, int(max_workers))
     if workers < 2:
         return None
 

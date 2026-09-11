@@ -10,6 +10,7 @@ from PySide6.QtCore import QThread, Signal, QCoreApplication
 from typing import Callable, List, Dict, Optional, Any
 
 from core import subtitle_generator
+from core import chunk_planner, chunk_parallel_runner
 from core import pipeline_stages
 from core.pipeline_stages import PipelineContext, PipelineCancelled
 from core.subtitle_llm_polish import SubtitlePolisherConfig
@@ -37,6 +38,7 @@ class PipelineWorker(QThread):
                  source_filter_config: Optional[Dict[str, Any]] = None,
                  engine_options: Optional[Dict[str, Any]] = None,
                  watermark_filter_config: Optional[Dict[str, Any]] = None,
+                 chunk_workers: int = 0,
                  parent=None):
         super().__init__(parent)
         self.video_path = video_path
@@ -65,6 +67,10 @@ class PipelineWorker(QThread):
         # Engine initialization options (lang, model_tier, ...) forwarded to
         # OcrOptimizer → ocr_engine_manager.set_engine(engine_id, options).
         self.engine_options = dict(engine_options or {})
+        # Chunk-parallel OCR (long-video speedup): 0 = auto (decide by
+        # duration/cores/RAM/GPU), 1 = force single-process path, N>1 =
+        # cap the auto worker count at N.
+        self.chunk_workers = int(chunk_workers or 0)
         self.is_cancelled = False
         self.work_dir: Optional[str] = None
 
@@ -116,24 +122,53 @@ class PipelineWorker(QThread):
             ctx = self._stage_ctx()
 
             def _progress(pct: int, message: str) -> None:
+                if not message:
+                    # Chunk-parallel workers report bare percentages; give
+                    # the progress dialog a translated umbrella label.
+                    message = QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Step 1-3/4: Processing chunks in parallel...")
                 self.progress_updated.emit(pct, message)
 
             cancel_check: Callable[[], bool] = lambda: self.is_cancelled
 
-            # Steps 1+2 (progress 0-65): extraction + intelligent OCR.
-            ocr_results, ocr_stats = pipeline_stages.extract_and_ocr_stage(
-                ctx, progress_cb=_progress, cancel_check=cancel_check)
+            # Long-video speedup: split into per-worker windows when the
+            # planner says it pays off. visualize/debug per-frame dumps stay
+            # single-process, as does an explicit chunk_workers=1.
+            plan = None
+            if self.chunk_workers != 1 and not self.visualize:
+                plan = chunk_planner.plan_chunks(
+                    self.total_frames, self.fps,
+                    cpu_count=os.cpu_count() or 1,
+                    available_ram_mb=chunk_parallel_runner.probe_available_ram_mb(),
+                    gpu_mode=chunk_parallel_runner.get_device_mode_light(),
+                    max_workers=max(0, self.chunk_workers),
+                )
 
-            # Step 2.5 (progress 65-80): per-ROI boundary refinement.
-            ocr_results = pipeline_stages.refine_stage(
-                ctx, ocr_results, ocr_stats=ocr_stats,
-                progress_cb=_progress, cancel_check=cancel_check)
+            if plan is not None:
+                logger.info(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Chunk-parallel OCR: {} workers, {} windows."
+                    ).format(plan.workers, len(plan.windows))
+                )
+                restored_results = chunk_parallel_runner.run_chunk_parallel(
+                    ctx, plan, progress_cb=_progress, cancel_check=cancel_check)
+            else:
+                # Steps 1+2 (progress 0-65): extraction + intelligent OCR.
+                ocr_results, ocr_stats = pipeline_stages.extract_and_ocr_stage(
+                    ctx, progress_cb=_progress, cancel_check=cancel_check)
 
-            if self.is_cancelled: return
+                # Step 2.5 (progress 65-80): per-ROI boundary refinement.
+                ocr_results = pipeline_stages.refine_stage(
+                    ctx, ocr_results, ocr_stats=ocr_stats,
+                    progress_cb=_progress, cancel_check=cancel_check)
 
-            # Step 3 (progress 80-90): coordinate restoration.
-            restored_results = pipeline_stages.restore_stage(
-                ctx, ocr_results, progress_cb=_progress, cancel_check=cancel_check)
+                if self.is_cancelled: return
+
+                # Step 3 (progress 80-90): coordinate restoration.
+                restored_results = pipeline_stages.restore_stage(
+                    ctx, ocr_results, progress_cb=_progress, cancel_check=cancel_check)
 
             if self.is_cancelled: return
 

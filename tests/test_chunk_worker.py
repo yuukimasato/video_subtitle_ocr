@@ -168,7 +168,7 @@ def test_worker_emits_records_then_done(monkeypatch):
     assert batch["records"] == records
     assert batch["window"] == 0
     done = msgs[-1]
-    assert done["stats"]["records"] == 120 and done["stats"]["ocr_calls"] == 3
+    assert done["stats"]["records"] == 120
     # Stages saw the window-clipped context (full window here).
     assert calls["extract"].roi_data[0]["start_frame"] == 0
 
