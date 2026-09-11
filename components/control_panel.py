@@ -346,6 +346,24 @@ class ControlPanelWidget(QWidget):
             )
         )
         options_layout.addWidget(self.auto_roi_on_load_checkbox, 3, 0)
+        self.chunk_workers_label = QLabel(
+            QCoreApplication.translate("ControlPanelWidget", "进程分片（长视频提速）")
+        )
+        self.chunk_workers_combo = QComboBox()
+        self.chunk_workers_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "自动"), userData=0)
+        for n in (1, 2, 4, 6, 8, 12, 16):
+            self.chunk_workers_combo.addItem(str(n), userData=n)
+        self.chunk_workers_combo.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "把长视频按时间切成多个窗口，用多个进程并行识别（与「按时间分片并行」"
+                "的线程桶不同）。「自动」按 CPU 核数与可用内存决定；仅 CPU 模式生效，"
+                "短视频自动走单进程。每个并行进程约占 600MB 内存。",
+            )
+        )
+        options_layout.addWidget(self.chunk_workers_label, 4, 0)
+        options_layout.addWidget(self.chunk_workers_combo, 4, 1)
         options_layout.setColumnStretch(4, 1)
 
         # Persist the auto-ROI-on-load toggle immediately.
@@ -741,6 +759,7 @@ class ControlPanelWidget(QWidget):
             "time_slice_enabled": self.time_slice_checkbox.isChecked(),
             "time_slice_seconds": slice_seconds,
             "merge_rois": self.merge_roi_checkbox.isChecked(),
+            "chunk_workers": int(self.chunk_workers_combo.currentData() or 0),
             "deepseek_polish": self.deepseek_polish_checkbox.isChecked(),
             "deepseek_fragment_merge": self.deepseek_fragment_merge_checkbox.isChecked(),
             "deepseek_api_key": self.deepseek_api_key_edit.text(),

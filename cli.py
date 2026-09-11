@@ -46,6 +46,13 @@ def _positive_int(value: str) -> int:
     return iv
 
 
+def _non_negative_int(value: str) -> int:
+    iv = int(value)
+    if iv < 0:
+        raise argparse.ArgumentTypeError(f"must be a non-negative integer: {value!r}")
+    return iv
+
+
 def parse_roi_spec(spec: str) -> dict:
     """Parse "x,y,w,h" or "x,y,w,h@start-end" into a rect ROI entry.
 
@@ -93,6 +100,66 @@ def probe_video(video_path: str) -> dict:
     }
     cap.release()
     return info
+
+
+def _plan_workers(args: argparse.Namespace, info: dict):
+    """Decide the chunk-parallel plan for this run (None = single process)."""
+    if args.workers == 1:
+        return None
+    from core import chunk_planner, chunk_parallel_runner
+
+    return chunk_planner.plan_chunks(
+        info["total_frames"],
+        info["fps"],
+        cpu_count=(os.cpu_count() or 1),
+        available_ram_mb=chunk_parallel_runner.probe_available_ram_mb(),
+        gpu_mode=chunk_parallel_runner.get_device_mode_light(),
+        max_workers=max(0, args.workers),
+    )
+
+
+def _run_chunk_stages(args: argparse.Namespace, video_path: str,
+                      roi_entries: list, info: dict, work_dir: str, plan):
+    """Stages 1-3 through chunk-parallel workers; returns (records, elapsed).
+
+    Matches the CLI's single-process semantics: no boundary refinement.
+    """
+    from core import chunk_parallel_runner
+    from core.pipeline_stages import PipelineContext
+
+    model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
+        else args.model_tier
+    ctx = PipelineContext(
+        video_path=video_path,
+        roi_data=roi_entries,
+        total_frames=info["total_frames"],
+        fps=info["fps"],
+        work_dir=work_dir,
+        debug_mode=False,
+        in_memory_ocr=True,
+        visualize=False,
+        save_intermediate_json=False,
+        ocr_engine_id=("" if args.engine == "auto" else args.engine),
+        engine_options={"lang": args.lang, "model_tier": model_tier},
+        enable_boundary_refine=False,
+    )
+    if not args.quiet:
+        print(
+            f"[1-3/4] Chunk-parallel OCR: {plan.workers} workers, "
+            f"{len(plan.windows)} windows...",
+            file=sys.stderr,
+        )
+    t0 = time.perf_counter()
+
+    def _progress(pct: int, _msg: str) -> None:
+        if not args.quiet:
+            print(f"\r      parallel progress: {pct:3d}%", end="", file=sys.stderr, flush=True)
+
+    restored = chunk_parallel_runner.run_chunk_parallel(
+        ctx, plan, progress_cb=_progress, cancel_check=lambda: False)
+    if not args.quiet:
+        print(file=sys.stderr)
+    return restored, time.perf_counter() - t0
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -204,80 +271,95 @@ def run_pipeline(args: argparse.Namespace) -> int:
         _info(f"Temp work dir: {work_dir} (kept)", args.quiet)
 
     try:
-        # ── Stage 1: ROI frame extraction (in-memory) ──
-        t0 = time.perf_counter()
-        _info("[1/4] Extracting ROI frames...", args.quiet)
-        roi_frames = list(
-            roi_extractor.extract_roi_frames(
-                video_path,
-                roi_entries,
-                info["total_frames"],
-                info["fps"],
-                work_dir,
-                save_to_disk=False,
+        # ── Long-video speedup: chunk-parallel path when it pays off ──
+        chunk_results = None
+        if args.workers != 1:
+            chunk_plan = _plan_workers(args, info)
+            if chunk_plan is not None:
+                chunk_results = _run_chunk_stages(
+                    args, video_path, roi_entries, info, work_dir, chunk_plan)
+        if chunk_results is not None:
+            restored_results, chunk_elapsed = chunk_results
+            _info(f"      {len(restored_results)} frames restored ({chunk_elapsed:.2f}s)", args.quiet)
+            if not restored_results:
+                _info("No frames fell inside any ROI time range; nothing to do.", args.quiet)
+                return 1
+
+        if chunk_results is None:
+            # ── Stage 1: ROI frame extraction (in-memory) ──
+            t0 = time.perf_counter()
+            _info("[1/4] Extracting ROI frames...", args.quiet)
+            roi_frames = list(
+                roi_extractor.extract_roi_frames(
+                    video_path,
+                    roi_entries,
+                    info["total_frames"],
+                    info["fps"],
+                    work_dir,
+                    save_to_disk=False,
+                )
             )
-        )
-        t1 = time.perf_counter()
-        _info(f"      {len(roi_frames)} ROI frames extracted ({t1 - t0:.2f}s)", args.quiet)
-        if not roi_frames:
-            _info("No frames fell inside any ROI time range; nothing to do.", args.quiet)
-            return 1
+            t1 = time.perf_counter()
+            _info(f"      {len(roi_frames)} ROI frames extracted ({t1 - t0:.2f}s)", args.quiet)
+            if not roi_frames:
+                _info("No frames fell inside any ROI time range; nothing to do.", args.quiet)
+                return 1
 
-        # ── Stage 2: optimized OCR ──
-        _info(f"[2/4] OCR ({args.engine} engine, lang={args.lang})...", args.quiet)
-        model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
-            else args.model_tier
-        engine_options = {"lang": args.lang, "model_tier": model_tier}
-        import inspect
+            # ── Stage 2: optimized OCR ──
+            _info(f"[2/4] OCR ({args.engine} engine, lang={args.lang})...", args.quiet)
+            model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
+                else args.model_tier
+            engine_options = {"lang": args.lang, "model_tier": model_tier}
+            import inspect
 
-        supported = inspect.signature(OcrOptimizer.__init__).parameters
-        optimizer_kwargs = {
-            k: v for k, v in {
-                "work_dir": work_dir,
-                "visualize": False,
-                "in_memory_mode": True,
-                "save_ocr_json": False,
-                "ocr_engine_id": ("" if args.engine == "auto" else args.engine),
-                "engine_options": engine_options,
-            }.items() if k in supported
-        }
-        optimizer = OcrOptimizer(**optimizer_kwargs)
+            supported = inspect.signature(OcrOptimizer.__init__).parameters
+            optimizer_kwargs = {
+                k: v for k, v in {
+                    "work_dir": work_dir,
+                    "visualize": False,
+                    "in_memory_mode": True,
+                    "save_ocr_json": False,
+                    "ocr_engine_id": ("" if args.engine == "auto" else args.engine),
+                    "engine_options": engine_options,
+                }.items() if k in supported
+            }
+            optimizer = OcrOptimizer(**optimizer_kwargs)
 
-        group_count = 0
+            group_count = 0
 
-        def _progress_cb(_count: int) -> None:
-            nonlocal group_count
-            group_count += 1
+            def _progress_cb(_count: int) -> None:
+                nonlocal group_count
+                group_count += 1
+                if not args.quiet:
+                    print(f"\r      OCR groups processed: {group_count}", end="", file=sys.stderr, flush=True)
+
+            ocr_results = optimizer.process_roi_group(
+                roi_frames,
+                is_cancelled_func=lambda: False,
+                progress_callback=None if args.quiet else _progress_cb,
+            )
+            optimizer.cleanup()
+            t2 = time.perf_counter()
+            ocr_calls = int(getattr(optimizer, "ocr_calls", 0))
             if not args.quiet:
-                print(f"\r      OCR groups processed: {group_count}", end="", file=sys.stderr, flush=True)
-
-        ocr_results = optimizer.process_roi_group(
-            roi_frames,
-            is_cancelled_func=lambda: False,
-            progress_callback=None if args.quiet else _progress_cb,
-        )
-        optimizer.cleanup()
-        t2 = time.perf_counter()
-        ocr_calls = int(getattr(optimizer, "ocr_calls", 0))
-        if not args.quiet:
-            print(file=sys.stderr)
-        _info(
-            f"      {ocr_calls} OCR calls covered {len(ocr_results)} frames "
-            f"({t2 - t1:.2f}s)",
-            args.quiet,
-        )
-
-        # ── Stage 3: coordinate restoration ──
-        _info("[3/4] Restoring ROI coordinates to full-frame space...", args.quiet)
-        restored_results = list(
-            coordinate_restorer.restore_coordinates(
-                iter(ocr_results),
-                work_dir,
-                save_json=False,
+                print(file=sys.stderr)
+            _info(
+                f"      {ocr_calls} OCR calls covered {len(ocr_results)} frames "
+                f"({t2 - t1:.2f}s)",
+                args.quiet,
             )
-        )
-        t3 = time.perf_counter()
-        _info(f"      {len(restored_results)} frames restored ({t3 - t2:.2f}s)", args.quiet)
+
+            # ── Stage 3: coordinate restoration ──
+            _info("[3/4] Restoring ROI coordinates to full-frame space...", args.quiet)
+            restored_results = list(
+                coordinate_restorer.restore_coordinates(
+                    iter(ocr_results),
+                    work_dir,
+                    save_json=False,
+                )
+            )
+            t3 = time.perf_counter()
+            _info(f"      {len(restored_results)} frames restored ({t3 - t2:.2f}s)", args.quiet)
 
         # ── Stage 4: ASS subtitle generation ──
         _info("[4/4] Generating ASS subtitles...", args.quiet)
@@ -388,6 +470,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--model-tier", default="auto", choices=["auto", "tiny", "small", "medium"],
         help="PP-OCRv6 model tier (default: auto)",
+    )
+    parser.add_argument(
+        "--workers", type=_non_negative_int, default=0, metavar="N",
+        help="chunk-parallel OCR workers for long videos (default: 0 = auto "
+             "by cores/RAM; 1 = single process; N = cap the auto count at N)",
     )
     parser.add_argument("--template", help="external .ass file as style template")
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")

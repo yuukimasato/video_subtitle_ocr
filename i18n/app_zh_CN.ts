@@ -305,154 +305,169 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="365"/>
+        <location filename="../components/control_panel.py" line="350"/>
+        <source>进程分片（长视频提速）</source>
+        <translation>进程分片（长视频提速）</translation>
+    </message>
+    <message>
+        <location filename="../components/control_panel.py" line="354"/>
+        <source>自动</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../components/control_panel.py" line="358"/>
+        <source>把长视频按时间切成多个窗口，用多个进程并行识别（与「按时间分片并行」的线程桶不同）。「自动」按 CPU 核数与可用内存决定；仅 CPU 模式生效，短视频自动走单进程。每个并行进程约占 600MB 内存。</source>
+        <translation>把长视频按时间切成多个窗口，用多个进程并行识别（与「按时间分片并行」的线程桶不同）。「自动」按 CPU 核数与可用内存决定；仅 CPU 模式生效，短视频自动走单进程。每个并行进程约占 600MB 内存。</translation>
+    </message>
+    <message>
+        <location filename="../components/control_panel.py" line="383"/>
         <source>半自动：按字幕颜色跳过疑似无字帧（默认关，需预览并确认后才生效）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="372"/>
+        <location filename="../components/control_panel.py" line="390"/>
         <source>在阶段一抽样 ROI 区间内若干帧并在当前画面上自动标定 HSV。仅当预览结果满意并在对话框中点击「采用」后，才会在本轮 OCR 启用；可随时关闭恢复默认逻辑。若预览不满意或选择「不采用」，请保持勾选关闭或未确认——程序将按原版流程输出全部 ROI 帧。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="380"/>
+        <location filename="../components/control_panel.py" line="398"/>
         <source>预览检测效果…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="394"/>
+        <location filename="../components/control_panel.py" line="412"/>
         <source>DeepSeek 字幕润色</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="396"/>
+        <location filename="../components/control_panel.py" line="414"/>
         <source>兼容 OpenAI 的接口。默认提供方为 DeepSeek，会自动填充 Base URL；当你输入 API Key 后，应用会调用 /v1/models 拉取模型列表（也可手动编辑模型 ID）。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="403"/>
+        <location filename="../components/control_panel.py" line="421"/>
         <source>DeepSeek 合并碎片字幕（选择最完整文本并合并时间范围）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="409"/>
+        <location filename="../components/control_panel.py" line="427"/>
         <source>API Key</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="412"/>
+        <location filename="../components/control_panel.py" line="430"/>
         <source>API Key 不会以明文写入配置文件：优先保存在系统钥匙串（需安装 keyring）；不可用时使用本地加密存储（密钥文件仅当前用户可读）。清除可点击右侧按钮。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="420"/>
+        <location filename="../components/control_panel.py" line="438"/>
         <source>API Base URL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="423"/>
+        <location filename="../components/control_panel.py" line="441"/>
         <source>大模型提供方</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="425"/>
+        <location filename="../components/control_panel.py" line="443"/>
         <source>DeepSeek</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="426"/>
+        <location filename="../components/control_panel.py" line="444"/>
         <source>OpenAI</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="427"/>
+        <location filename="../components/control_panel.py" line="445"/>
         <source>自定义（手动 Base URL）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="435"/>
+        <location filename="../components/control_panel.py" line="453"/>
         <source>模型 ID（可从 API 自动拉取）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="439"/>
+        <location filename="../components/control_panel.py" line="457"/>
         <source>刷新模型列表</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="440"/>
-        <location filename="../components/control_panel.py" line="660"/>
+        <location filename="../components/control_panel.py" line="458"/>
+        <location filename="../components/control_panel.py" line="678"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="442"/>
+        <location filename="../components/control_panel.py" line="460"/>
         <source>清除已存密钥</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="444"/>
+        <location filename="../components/control_panel.py" line="462"/>
         <source>从本机配置中删除已保存的 API Key（输入框会清空）。Base URL 与模型仍会保留。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="451"/>
+        <location filename="../components/control_panel.py" line="469"/>
         <source>DeepSeek 合并策略复核（按更合适的阈值重新合并）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="529"/>
+        <location filename="../components/control_panel.py" line="547"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="533"/>
+        <location filename="../components/control_panel.py" line="551"/>
         <source>🔄 文字来源过滤已启用，加载视频后将自动分析...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="538"/>
+        <location filename="../components/control_panel.py" line="556"/>
         <source>颜色门控：已关闭（默认）。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="540"/>
+        <location filename="../components/control_panel.py" line="558"/>
         <source>颜色门控：已勾选，尚未确认。请点击「预览检测效果」并在满意时选择「采用」。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="544"/>
+        <location filename="../components/control_panel.py" line="562"/>
         <source>颜色门控：已确认，将用于下一轮「字幕 OCR 识别」阶段一截取。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="767"/>
+        <location filename="../components/control_panel.py" line="786"/>
         <source>（无可用引擎）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="770"/>
+        <location filename="../components/control_panel.py" line="789"/>
         <source>⚠ 未检测到可用 OCR 引擎</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="783"/>
+        <location filename="../components/control_panel.py" line="802"/>
         <source>✅ 已就绪</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="870"/>
+        <location filename="../components/control_panel.py" line="889"/>
         <source>🔄 正在分析视频类型...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="968"/>
-        <location filename="../components/control_panel.py" line="985"/>
+        <location filename="../components/control_panel.py" line="987"/>
+        <location filename="../components/control_panel.py" line="1004"/>
         <source>手动模式（已自定义）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="1061"/>
+        <location filename="../components/control_panel.py" line="1080"/>
         <source>已恢复上次保存的手动设置</source>
         <translation type="unfinished"></translation>
     </message>
@@ -609,142 +624,142 @@
 <context>
     <name>OCRToASSOptimizer</name>
     <message>
-        <location filename="../core/subtitle_generator/data_grouping.py" line="37"/>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="47"/>
         <source>Frame {} (ROI: {}) data list length mismatch, skipped.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/data_grouping.py" line="48"/>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="58"/>
         <source>Error processing in-memory data for frame {} (ROI: {}): {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/data_grouping.py" line="58"/>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="77"/>
         <source>Successfully loaded and organized OCR data by {} ROIs.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/data_grouping.py" line="90"/>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="195"/>
         <source>Merged into {} subtitle groups.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="178"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="192"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="106"/>
+        <location filename="../core/subtitle_generator/generator.py" line="109"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="108"/>
+        <location filename="../core/subtitle_generator/generator.py" line="111"/>
         <source>Using style template: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="110"/>
+        <location filename="../core/subtitle_generator/generator.py" line="113"/>
         <source>No style template used, generating a rich set of default styles.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="120"/>
+        <location filename="../core/subtitle_generator/generator.py" line="123"/>
         <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="132"/>
+        <location filename="../core/subtitle_generator/generator.py" line="135"/>
         <source>No valid OCR data found, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="139"/>
+        <location filename="../core/subtitle_generator/generator.py" line="142"/>
         <source>Processing ROI: {}, containing {} valid frames.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="142"/>
+        <location filename="../core/subtitle_generator/generator.py" line="147"/>
         <source>ROI: {} generated {} subtitle groups.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="181"/>
+        <location filename="../core/subtitle_generator/generator.py" line="186"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="228"/>
+        <location filename="../core/subtitle_generator/generator.py" line="233"/>
         <source>Step 4/4: DeepSeek reviewing merge strategy (round {}/{})...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="244"/>
+        <location filename="../core/subtitle_generator/generator.py" line="249"/>
         <source>DeepSeek strategy review skipped or failed; keeping merge parameters unchanged.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="250"/>
+        <location filename="../core/subtitle_generator/generator.py" line="255"/>
         <source>DeepSeek strategy note: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="263"/>
+        <location filename="../core/subtitle_generator/generator.py" line="268"/>
         <source>DeepSeek merge parameters converged.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="274"/>
+        <location filename="../core/subtitle_generator/generator.py" line="279"/>
         <source>Re-merged subtitles with tuned parameters (gap {:.2f}s ratio {:.3f} overlap {}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="296"/>
+        <location filename="../core/subtitle_generator/generator.py" line="301"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="310"/>
+        <location filename="../core/subtitle_generator/generator.py" line="315"/>
         <source>Polish output length mismatch, using original subtitles.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="315"/>
+        <location filename="../core/subtitle_generator/generator.py" line="320"/>
         <source>DeepSeek subtitle polishing applied.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="324"/>
+        <location filename="../core/subtitle_generator/generator.py" line="329"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="341"/>
+        <location filename="../core/subtitle_generator/generator.py" line="346"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="342"/>
+        <location filename="../core/subtitle_generator/generator.py" line="347"/>
         <source>ASS subtitle file saved to: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="345"/>
+        <location filename="../core/subtitle_generator/generator.py" line="350"/>
         <source>--- Conversion failed ---</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="346"/>
+        <location filename="../core/subtitle_generator/generator.py" line="351"/>
         <source>Error: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/llm_merge.py" line="88"/>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="112"/>
         <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/llm_merge.py" line="114"/>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="171"/>
         <source>DeepSeek merged fragmented events: {} -&gt; {}.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1024,57 +1039,57 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="58"/>
+        <location filename="../components/roi_list.py" line="59"/>
         <source>[淡入淡出微调]</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="60"/>
+        <location filename="../components/roi_list.py" line="61"/>
         <source>[自动过滤]</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="82"/>
+        <location filename="../components/roi_list.py" line="83"/>
         <source>复制</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="87"/>
+        <location filename="../components/roi_list.py" line="88"/>
         <source>粘贴到此项之后</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="91"/>
+        <location filename="../components/roi_list.py" line="92"/>
         <source>删除</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="96"/>
+        <location filename="../components/roi_list.py" line="97"/>
         <source>切换文字过滤策略（当前：{}）</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="99"/>
+        <location filename="../components/roi_list.py" line="100"/>
         <source>自动过滤</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="101"/>
+        <location filename="../components/roi_list.py" line="102"/>
         <source>全部保留</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="111"/>
+        <location filename="../components/roi_list.py" line="112"/>
         <source>粘贴到末尾</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="123"/>
+        <location filename="../components/roi_list.py" line="124"/>
         <source>确认删除</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="124"/>
+        <location filename="../components/roi_list.py" line="125"/>
         <source>确定要删除 ROI {} 吗？</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1542,37 +1557,37 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="181"/>
+        <location filename="../main_window/pipeline_control.py" line="194"/>
         <source>[LLM] 完成 —— 已写入 ASS 文件。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="186"/>
+        <location filename="../main_window/pipeline_control.py" line="199"/>
         <source>完成</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="187"/>
+        <location filename="../main_window/pipeline_control.py" line="200"/>
         <source>字幕文件已生成：{}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="189"/>
+        <location filename="../main_window/pipeline_control.py" line="202"/>
         <source>打开目录</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="190"/>
+        <location filename="../main_window/pipeline_control.py" line="203"/>
         <source>是否打开包含该文件的文件夹？</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="201"/>
+        <location filename="../main_window/pipeline_control.py" line="213"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="206"/>
+        <location filename="../main_window/pipeline_control.py" line="218"/>
         <source>处理过程中发生错误：
 {}</source>
         <translation type="unfinished"></translation>
@@ -1643,7 +1658,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="205"/>
+        <location filename="../main_window/pipeline_control.py" line="217"/>
         <location filename="../main_window/roi_config_io.py" line="32"/>
         <location filename="../main_window/roi_config_io.py" line="117"/>
         <location filename="../main_window/roi_editing.py" line="203"/>
@@ -1947,62 +1962,61 @@
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="83"/>
+        <location filename="../core/pipeline_worker.py" line="105"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中间文件将保存到：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="89"/>
+        <location filename="../core/pipeline_worker.py" line="111"/>
         <source>in-memory data stream</source>
         <translation>内存数据流</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="90"/>
+        <location filename="../core/pipeline_worker.py" line="112"/>
         <source>disk file stream</source>
         <translation>磁盘文件流</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="94"/>
+        <location filename="../core/pipeline_worker.py" line="116"/>
         <source>OCR pipeline will run in {} mode.</source>
         <translation>OCR流水线将以 {} 模式运行。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="100"/>
+        <location filename="../core/pipeline_stages.py" line="90"/>
         <source>Step 1/4: Calculating number of ROI frames to process...</source>
         <translation>步骤1/4：正在计算要处理的抓取区域(ROI)帧数...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="117"/>
+        <location filename="../core/pipeline_stages.py" line="109"/>
         <source>ROI extraction step did not produce any data. Please check ROI time and region settings.</source>
         <translation>抓取区域(ROI)提取步骤未产生任何数据。请检查抓取区域(ROI)时间与区域设置。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="121"/>
+        <location filename="../core/pipeline_stages.py" line="113"/>
         <source>Step 1/4: Calculation complete, total {} frames. Starting extraction...</source>
         <translation>步骤1/4：计算完成，共 {} 帧。正在开始提取...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="169"/>
+        <location filename="../core/pipeline_stages.py" line="157"/>
         <source>Streaming mode enabled (time_slice={}s). OCR will run during extraction to reduce peak memory.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="313"/>
+        <location filename="../core/pipeline_stages.py" line="302"/>
         <source>Step 1/4: Extracting ROI frames... ({}/{})</source>
         <translation>步骤1/4：正在提取抓取区域(ROI)帧... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="343"/>
+        <location filename="../core/pipeline_stages.py" line="332"/>
         <source>Step 1/4: ROI frame extraction complete. Total {} ROI frames.</source>
         <translation>步骤1/4：抓取区域(ROI)帧提取完成。共 {} 个抓取区域(ROI)帧。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="369"/>
         <source>Error during ROI extraction: {}</source>
-        <translation>抓取区域(ROI)提取过程中出错：{}</translation>
+        <translation type="vanished">抓取区域(ROI)提取过程中出错：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="159"/>
+        <location filename="../core/pipeline_stages.py" line="148"/>
         <source>Step 2/4: Starting intelligent OCR recognition... (0/{})</source>
         <translation>步骤2/4：正在开始智能OCR识别... (0/{})</translation>
     </message>
@@ -2011,140 +2025,150 @@
         <translation type="vanished">正在开始处理 {}，包含 {} 帧...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="237"/>
-        <location filename="../core/pipeline_worker.py" line="295"/>
-        <location filename="../core/pipeline_worker.py" line="414"/>
-        <location filename="../core/pipeline_worker.py" line="508"/>
+        <location filename="../core/pipeline_stages.py" line="225"/>
+        <location filename="../core/pipeline_stages.py" line="283"/>
+        <location filename="../core/pipeline_stages.py" line="394"/>
+        <location filename="../core/pipeline_stages.py" line="489"/>
         <source>Step 2/4: OCR recognition in progress... ({}/{})</source>
         <translation>步骤2/4：OCR识别进行中... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="246"/>
+        <location filename="../core/pipeline_stages.py" line="234"/>
         <source>Streaming OCR will flush in parallel (cpu_workers={}, max_stream_workers={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="351"/>
+        <location filename="../core/pipeline_stages.py" line="340"/>
         <source>ROI extraction done: {} ROI-frames in {:.2f}s ({:.1f} roi-frames/s).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="359"/>
+        <location filename="../core/pipeline_stages.py" line="348"/>
         <source>ROI extraction yielded no frames. If color presence filtering is enabled, try preview again with a higher ratio threshold or disable it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="462"/>
+        <location filename="../core/pipeline_stages.py" line="443"/>
         <source>Running OCR in parallel (device={}, groups={}, max_workers={}, save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="493"/>
+        <location filename="../core/pipeline_stages.py" line="474"/>
         <source>Running OCR sequentially (device={}, groups={}, save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="544"/>
+        <location filename="../core/pipeline_stages.py" line="527"/>
         <source>OCR recognition step did not produce any results.</source>
         <translation>OCR识别步骤未产生任何结果。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="559"/>
+        <location filename="../core/pipeline_stages.py" line="575"/>
         <source>Step 2/4: OCR recognition complete.</source>
         <translation>步骤2/4：OCR识别完成。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="563"/>
+        <location filename="../core/pipeline_stages.py" line="578"/>
         <source>OCR done: {} roi-frames filled, {} OCR calls (est. skipped {}), {:.2f}s.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="596"/>
+        <location filename="../core/pipeline_stages.py" line="615"/>
         <source>Step 2/4: Refining subtitle boundaries frame-by-frame... ({}/{})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="604"/>
+        <location filename="../core/pipeline_stages.py" line="623"/>
         <source>Step 2/4: Refining subtitle boundaries frame-by-frame...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="619"/>
+        <location filename="../core/pipeline_stages.py" line="647"/>
         <source>Step 3/4: Starting coordinate restoration... (0/{})</source>
         <translation>步骤3/4：正在开始坐标恢复... (0/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="645"/>
+        <location filename="../core/pipeline_stages.py" line="672"/>
         <source>Step 3/4: Restoring coordinates... ({}/{})</source>
         <translation>步骤3/4：正在恢复坐标... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="652"/>
+        <location filename="../core/pipeline_stages.py" line="679"/>
         <source>Coordinate restoration step did not produce any results.</source>
         <translation>坐标恢复步骤未产生任何结果。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="653"/>
+        <location filename="../core/pipeline_stages.py" line="681"/>
         <source>Step 3/4: Coordinate restoration complete.</source>
         <translation>步骤3/4：坐标恢复完成。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="656"/>
+        <location filename="../core/pipeline_stages.py" line="684"/>
         <source>Coordinate restoration done: {} frames in {:.2f}s (save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="662"/>
+        <location filename="../core/pipeline_worker.py" line="128"/>
+        <source>Step 1-3/4: Processing chunks in parallel...</source>
+        <translation>Step 1-3/4: Processing chunks in parallel...</translation>
+    </message>
+    <message>
+        <location filename="../core/pipeline_worker.py" line="150"/>
+        <source>Chunk-parallel OCR: {} workers, {} windows.</source>
+        <translation>Chunk-parallel OCR: {} workers, {} windows.</translation>
+    </message>
+    <message>
+        <location filename="../core/pipeline_worker.py" line="175"/>
         <source>Step 4/4: Starting ASS subtitle file generation...</source>
         <translation>步骤4/4：正在开始生成ASS字幕文件...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="712"/>
+        <location filename="../core/pipeline_worker.py" line="225"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation>步骤4/4：ASS字幕生成完成。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="715"/>
+        <location filename="../core/pipeline_worker.py" line="228"/>
         <source>ASS generation done in {:.2f}s.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="722"/>
+        <location filename="../core/pipeline_worker.py" line="235"/>
         <source>Pipeline total time: {:.2f}s.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="732"/>
+        <location filename="../core/pipeline_worker.py" line="247"/>
         <source>Pipeline processing failed: {}</source>
         <translation>流水线处理失败：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="739"/>
+        <location filename="../core/pipeline_worker.py" line="254"/>
         <source>An error occurred during processing: {}</source>
         <translation>处理过程中发生错误：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="757"/>
+        <location filename="../core/pipeline_worker.py" line="264"/>
         <source>Temporary working directory deleted: {}</source>
         <translation>临时工作目录已删除：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="764"/>
+        <location filename="../core/pipeline_worker.py" line="271"/>
         <source>Could not delete temporary working directory {}: {}</source>
         <translation>无法删除临时工作目录 {}：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="772"/>
+        <location filename="../core/pipeline_worker.py" line="279"/>
         <source>Task cancellation request sent.</source>
         <translation>任务取消请求已发送。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="776"/>
+        <location filename="../core/pipeline_worker.py" line="283"/>
         <source>Forcibly terminating thread...</source>
         <translation>正在强制终止线程...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="879"/>
+        <location filename="../core/pipeline_stages.py" line="794"/>
         <source>Boundary refinement used {} extra single-frame OCR calls.</source>
         <translation type="unfinished"></translation>
     </message>

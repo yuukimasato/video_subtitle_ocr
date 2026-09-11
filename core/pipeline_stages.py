@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QCoreApplication
 
-from core import boundary_refine, ocr_processor, roi_extractor
+from core import boundary_refine, coordinate_restorer, ocr_processor, roi_extractor
 from core.ocr_optimizer import OcrOptimizer
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,10 @@ class PipelineContext:
     color_presence_gate_spec: Optional[Dict[str, Any]] = None
     ocr_engine_id: str = ""
     engine_options: Optional[Dict[str, Any]] = None
+    # CLI runs stages 1-3 without boundary refinement (its single-process
+    # path never had it); the chunk path must match, so the flag lives on
+    # the context. The GUI pipeline keeps the default (True).
+    enable_boundary_refine: bool = True
 
 
 def extract_and_ocr_stage(

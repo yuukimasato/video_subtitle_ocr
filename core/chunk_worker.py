@@ -85,11 +85,12 @@ def run_window_stages(ctx: PipelineContext, window: ChunkWindow, *, progress_cb,
     wctx = dc_replace(ctx, roi_data=clipped_rois)
     ocr_results, stats = extract_and_ocr_stage(
         wctx, progress_cb=progress_cb, cancel_check=cancel_check)
-    refined = refine_stage(
-        wctx, ocr_results, ocr_stats=stats,
-        progress_cb=progress_cb, cancel_check=cancel_check)
+    if ctx.enable_boundary_refine:
+        ocr_results = refine_stage(
+            wctx, ocr_results, ocr_stats=stats,
+            progress_cb=progress_cb, cancel_check=cancel_check)
     return restore_stage(
-        wctx, refined, progress_cb=progress_cb, cancel_check=cancel_check)
+        wctx, ocr_results, progress_cb=progress_cb, cancel_check=cancel_check)
 
 
 def chunk_worker_main(payload: Dict[str, Any]) -> None:
