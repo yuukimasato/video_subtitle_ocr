@@ -81,7 +81,7 @@ def test_ram_budget_caps_workers():
 
 def test_window_count_caps_workers():
     # 10 min @30fps, 240s target window -> ceil(600/240)=3 windows.
-    plan = _plan(600 * 30)
+    plan = _plan(600 * 30, window_target_s=240.0)
     assert plan is not None
     assert plan.workers == 3
     assert len(plan.windows) == 3
@@ -99,7 +99,7 @@ def test_core_count_caps_workers():
 
 def test_core_windows_partition_timeline_exactly():
     # 601s @10fps = 6010 frames / 3 windows -> remainder on some window.
-    plan = _plan(6010, fps=10)
+    plan = _plan(6010, fps=10, window_target_s=240.0)
     assert plan is not None and len(plan.windows) == 3
     pos = 0
     for w in plan.windows:

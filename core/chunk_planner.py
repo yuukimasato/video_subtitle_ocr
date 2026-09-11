@@ -78,6 +78,13 @@ def plan_chunks(
     ``max_workers`` (0 = uncapped) is a user cap on the auto worker count;
     the plan still respects cores/RAM/window limits, so it is an upper bound,
     never a force.
+
+    Window sizing note (measured on the 720p benchmark workload): small
+    crops + tiny models scale poorly with intra-process threads beyond
+    ~4 (240s window: 57s@1thr / 36s@2thr / 28s@4thr), while every spawned
+    worker costs a full paddle import + model init (~15-25s). Few, fat
+    windows beat many thin ones once startup dominates — 90s/16-worker
+    measured ~1.6x slower than 240s/6-worker.
     """
     if gpu_mode and str(gpu_mode).lower() != "cpu":
         return None

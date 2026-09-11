@@ -123,6 +123,14 @@ def run_chunk_parallel(
     msg_queue = spawn.Queue()
     cancel_event = spawn.Event()
 
+    # Paddle/MKLDNN sizes its thread pool to the whole machine by default;
+    # N such instances thrash each other. Give each worker a fair slice of
+    # the cores unless the caller pinned cpu_threads explicitly.
+    worker_opts = dict(ctx.engine_options or {})
+    if not worker_opts.get("cpu_threads"):
+        worker_opts["cpu_threads"] = max(1, (os.cpu_count() or 4) // plan.workers)
+    worker_ctx = dc_replace(ctx, engine_options=worker_opts)
+
     states: Dict[int, _WindowState] = {w.index: _WindowState(w) for w in plan.windows}
     total_weight = float(sum(w.core_frames for w in plan.windows))
 
@@ -138,7 +146,7 @@ def run_chunk_parallel(
         st.done = False
         st.last_msg_ts = time.monotonic()
         payload = {
-            "ctx": ctx,
+            "ctx": worker_ctx,
             "window": st.window,
             "queue": msg_queue,
             "cancel_event": cancel_event,

@@ -109,9 +109,18 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
     def cancel_check() -> bool:
         return cancel_event.is_set()
 
+    _last_sent_pct = [-1]
+
     def progress_cb(pct: int, msg: str) -> None:
+        # Relay each integer percent step once, not every stage callback:
+        # a 24-min window emits tens of thousands of per-frame progress
+        # events and the queue round-trips would dominate the runtime.
+        pct = int(pct)
+        if pct == _last_sent_pct[0]:
+            return
+        _last_sent_pct[0] = pct
         try:
-            queue.put({"type": "progress", "window": window_id, "pct": int(pct), "msg": str(msg)})
+            queue.put({"type": "progress", "window": window_id, "pct": pct, "msg": str(msg)})
         except Exception:
             pass
 
