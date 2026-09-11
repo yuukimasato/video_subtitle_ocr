@@ -206,7 +206,8 @@ def test_worker_with_no_intersecting_rois_done_immediately(monkeypatch):
     payload = _payload(queue=q, roi_data=[{"start_frame": 5000, "end_frame": 6000}])
     chunk_worker_main(payload)
     msgs = _drain(q)
-    assert msgs[-1] == {"type": "done", "window": 0, "stats": {"records": 0}}
+    assert msgs[-1] == {"type": "done", "window": 0, "attempt": 0,
+                        "stats": {"records": 0}}
     assert "extract" not in calls  # stages never ran
 
 

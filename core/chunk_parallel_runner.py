@@ -119,9 +119,8 @@ def run_chunk_parallel(
     """
     if mp_context is None:
         mp_context = mp.get_context("spawn")
-    spawn = mp_context
-    msg_queue = spawn.Queue()
-    cancel_event = spawn.Event()
+    msg_queue = mp_context.Queue()
+    cancel_event = mp_context.Event()
 
     # Paddle/MKLDNN sizes its thread pool to the whole machine by default;
     # N such instances thrash each other. Give each worker a fair slice of
@@ -150,8 +149,11 @@ def run_chunk_parallel(
             "window": st.window,
             "queue": msg_queue,
             "cancel_event": cancel_event,
+            # Echoed back on every message so stale output from a killed
+            # attempt can be told apart from the live one.
+            "attempt": st.retries,
         }
-        proc = spawn.Process(
+        proc = mp_context.Process(
             target=worker_target, args=(payload,),
             name=f"ocr-chunk-{st.window.index}",
         )
@@ -189,7 +191,7 @@ def run_chunk_parallel(
         st.done = True
         _emit_progress()
 
-    def _fail(st: _WindowState) -> None:
+    def _handle_failure(st: _WindowState) -> None:
         if st.done:
             return
         if st.proc is not None and st.proc.is_alive():
@@ -203,6 +205,19 @@ def run_chunk_parallel(
         else:
             _run_sequential(st)
 
+    def _check_liveness(now: float) -> None:
+        """Fail pending windows whose process died or went silent."""
+        for idx in list(pending):
+            st = states[idx]
+            if st.done:
+                continue
+            alive = st.proc is not None and st.proc.is_alive()
+            silent = (now - st.last_msg_ts) > heartbeat_timeout_s
+            if (not alive) or silent:
+                if silent and alive:
+                    logger.error("chunk worker %d heartbeat timeout", idx)
+                _handle_failure(st)
+
     try:
         for st in states.values():
             _launch(st)
@@ -210,29 +225,23 @@ def run_chunk_parallel(
         pending = set(states)
         while pending:
             if cancel_check():
+                # Cooperative cancel first: workers poll this Event inside
+                # their frame loops and exit within seconds; SIGTERM in the
+                # finally block is only the backstop.
+                cancel_event.set()
                 raise PipelineCancelled()
             try:
                 msg = msg_queue.get(timeout=poll_timeout_s)
             except queue_mod.Empty:
-                now = time.monotonic()
-                for idx in list(pending):
-                    st = states[idx]
-                    if st.done:
-                        continue
-                    alive = st.proc is not None and st.proc.is_alive()
-                    silent = (now - st.last_msg_ts) > heartbeat_timeout_s
-                    if (not alive) or silent:
-                        if silent and alive:
-                            logger.error("chunk worker %d heartbeat timeout", idx)
-                        _fail(st)
-                        if st.done:
-                            pending.discard(idx)
+                _check_liveness(time.monotonic())
                 continue
 
             idx = msg.get("window")
             st = states.get(idx)
             if st is None or st.done:
                 continue  # late message from a replaced/finished worker
+            if msg.get("attempt") != st.retries:
+                continue  # stale output from a killed previous attempt
             st.last_msg_ts = time.monotonic()
             mtype = msg.get("type")
             if mtype == "progress":
@@ -252,9 +261,13 @@ def run_chunk_parallel(
                 pending.discard(idx)
             elif mtype == "error":
                 logger.error("chunk worker %d error: %s", idx, msg.get("error"))
-                _fail(st)
-                if st.done:
-                    pending.discard(idx)
+                _handle_failure(st)
+            # A failure may have relaunched or finished the window; drop it
+            # from pending here so liveness is re-checked even when the
+            # queue keeps producing messages from chatty siblings.
+            if st.done and idx in pending:
+                pending.discard(idx)
+            _check_liveness(time.monotonic())
         return merge_frame_records(
             {idx: st.records for idx, st in states.items()}, plan)
     finally:

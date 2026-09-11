@@ -118,6 +118,12 @@ def _plan_workers(args: argparse.Namespace, info: dict):
     )
 
 
+def _engine_options_from_args(args: argparse.Namespace) -> dict:
+    model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
+        else args.model_tier
+    return {"lang": args.lang, "model_tier": model_tier}
+
+
 def _run_chunk_stages(args: argparse.Namespace, video_path: str,
                       roi_entries: list, info: dict, work_dir: str, plan):
     """Stages 1-3 through chunk-parallel workers; returns (records, elapsed).
@@ -127,8 +133,6 @@ def _run_chunk_stages(args: argparse.Namespace, video_path: str,
     from core import chunk_parallel_runner
     from core.pipeline_stages import PipelineContext
 
-    model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
-        else args.model_tier
     ctx = PipelineContext(
         video_path=video_path,
         roi_data=roi_entries,
@@ -140,7 +144,7 @@ def _run_chunk_stages(args: argparse.Namespace, video_path: str,
         visualize=False,
         save_intermediate_json=False,
         ocr_engine_id=("" if args.engine == "auto" else args.engine),
-        engine_options={"lang": args.lang, "model_tier": model_tier},
+        engine_options=_engine_options_from_args(args),
         enable_boundary_refine=False,
     )
     if not args.quiet:

@@ -34,23 +34,27 @@ ATTEMPTS = None  # mp.Value, set in fixture
 def _fake_worker(payload):  # pragma: no cover - runs in child
     q = payload["queue"]
     w = payload["window"].index
+    attempt = int(payload.get("attempt", 0))
     mode = MODES.get(w, "ok")
     if ATTEMPTS is not None and mode == "error":
         # Count invocations of the failing window only.
         with ATTEMPTS.get_lock():
             ATTEMPTS.value += 1
     if mode == "error":
-        q.put({"type": "error", "window": w, "error": "FakeError: boom"})
+        q.put({"type": "error", "window": w, "attempt": attempt,
+               "error": "FakeError: boom"})
         return
     if mode == "slow":
-        q.put({"type": "progress", "window": w, "pct": 10})
+        q.put({"type": "progress", "window": w, "attempt": attempt, "pct": 10})
         time.sleep(30)
         return
-    q.put({"type": "progress", "window": w, "pct": 45 if w else 90})
-    q.put({"type": "records", "window": w,
+    q.put({"type": "progress", "window": w, "attempt": attempt,
+           "pct": 45 if w else 90})
+    q.put({"type": "records", "window": w, "attempt": attempt,
            "records": [({"t": [f"{w}-{f}"]}, f, "roi_0", f / 10.0)
                        for f in range(w * 10, (w + 1) * 10)]})
-    q.put({"type": "done", "window": w, "stats": {"records": 10}})
+    q.put({"type": "done", "window": w, "attempt": attempt,
+           "stats": {"records": 10}})
 
 
 def _plan(total_frames=1000, fps=10, **kw):

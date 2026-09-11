@@ -100,6 +100,7 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
     queue = payload["queue"]
     cancel_event = payload["cancel_event"]
     window_id = window.index
+    attempt = int(payload.get("attempt", 0))
 
     # Stage functions translate user-facing strings; follow cli.py's headless
     # pattern so translate() always has an application instance.
@@ -110,17 +111,21 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
         return cancel_event.is_set()
 
     _last_sent_pct = [-1]
+    _pct_lock = threading.Lock()
 
     def progress_cb(pct: int, msg: str) -> None:
         # Relay each integer percent step once, not every stage callback:
         # a 24-min window emits tens of thousands of per-frame progress
         # events and the queue round-trips would dominate the runtime.
+        # (Stage callbacks can arrive from ThreadPoolExecutor threads.)
         pct = int(pct)
-        if pct == _last_sent_pct[0]:
-            return
-        _last_sent_pct[0] = pct
+        with _pct_lock:
+            if pct == _last_sent_pct[0]:
+                return
+            _last_sent_pct[0] = pct
         try:
-            queue.put({"type": "progress", "window": window_id, "pct": pct, "msg": str(msg)})
+            queue.put({"type": "progress", "window": window_id,
+                       "attempt": attempt, "pct": pct, "msg": str(msg)})
         except Exception:
             pass
 
@@ -129,7 +134,8 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
     def _beat():
         while not stop_heartbeat.wait(HEARTBEAT_INTERVAL_S):
             try:
-                queue.put({"type": "heartbeat", "window": window_id})
+                queue.put({"type": "heartbeat", "window": window_id,
+                           "attempt": attempt})
             except Exception:
                 pass
 
@@ -140,19 +146,21 @@ def chunk_worker_main(payload: Dict[str, Any]) -> None:
         restored = run_window_stages(ctx, window, progress_cb=progress_cb, cancel_check=cancel_check)
         if not restored:
             # No ROI intersects this window: nothing to do (not an error).
-            queue.put({"type": "done", "window": window_id, "stats": {"records": 0}})
+            queue.put({"type": "done", "window": window_id, "attempt": attempt,
+                       "stats": {"records": 0}})
             return
         for i in range(0, len(restored), RECORDS_BATCH_SIZE):
             if cancel_check():
                 raise PipelineCancelled()
-            queue.put({"type": "records", "window": window_id,
+            queue.put({"type": "records", "window": window_id, "attempt": attempt,
                        "records": restored[i:i + RECORDS_BATCH_SIZE]})
-        queue.put({"type": "done", "window": window_id,
+        queue.put({"type": "done", "window": window_id, "attempt": attempt,
                    "stats": {"records": len(restored)}})
     except PipelineCancelled:
-        queue.put({"type": "cancelled", "window": window_id})
+        queue.put({"type": "cancelled", "window": window_id, "attempt": attempt})
     except Exception as e:
         logger.error("chunk worker %d failed: %s", window_id, e, exc_info=True)
-        queue.put({"type": "error", "window": window_id, "error": f"{type(e).__name__}: {e}"})
+        queue.put({"type": "error", "window": window_id, "attempt": attempt,
+                   "error": f"{type(e).__name__}: {e}"})
     finally:
         stop_heartbeat.set()

@@ -44,6 +44,12 @@ def test_gpu_mode_returns_none():
     assert _plan(43200, gpu="gpu") is None
 
 
+def test_gpu_mode_overridden_by_explicit_max_workers():
+    # An explicit --workers N asks for splitting even on GPU (auto never does).
+    plan = _plan(43200, gpu="gpu", max_workers=4)
+    assert plan is not None and plan.workers == 4
+
+
 def test_short_video_bypasses():
     # 9:59 @30fps just under the 10-minute bypass threshold.
     assert _plan(599 * 30) is None

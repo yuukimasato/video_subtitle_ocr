@@ -86,7 +86,10 @@ def plan_chunks(
     windows beat many thin ones once startup dominates — 90s/16-worker
     measured ~1.6x slower than 240s/6-worker.
     """
-    if gpu_mode and str(gpu_mode).lower() != "cpu":
+    if not max_workers and gpu_mode and str(gpu_mode).lower() != "cpu":
+        # Auto mode never splits on GPU (batching is the GPU lever, extra
+        # processes would only duplicate VRAM/engine state); an explicit
+        # max_workers override is still honored.
         return None
     if not fps or fps <= 0:
         return None
@@ -100,7 +103,7 @@ def plan_chunks(
     window_count = max(1, int(math.ceil(duration_s / float(window_target_s))))
     ram_workers = int(available_ram_mb // engine_mem_budget_mb)
     workers = max(1, min(int(cpu_count or 1), ram_workers, window_count))
-    if max_workers and max_workers > 0:
+    if max_workers > 0:
         workers = min(workers, int(max_workers))
     if workers < 2:
         return None
@@ -116,13 +119,17 @@ def plan_chunks(
         span = base + (1 if i < rem else 0)
         core_start, core_end = start, start + span
         start = core_end
+        work_start = max(0, core_start - overlap_frames)
+        work_end = min(total_frames, core_end + overlap_frames)
         windows.append(ChunkWindow(
             index=i,
             core_start_frame=core_start,
             core_end_frame=core_end,
-            grab_start_frame=max(0, max(0, core_start - overlap_frames) - preroll_frames),
-            work_start_frame=max(0, core_start - overlap_frames),
-            work_end_frame=min(total_frames, core_end + overlap_frames),
+            # Decode starts preroll seconds BEFORE the work window (not the
+            # core) to absorb CAP_PROP_POS_FRAMES seek imprecision.
+            grab_start_frame=max(0, work_start - preroll_frames),
+            work_start_frame=work_start,
+            work_end_frame=work_end,
         ))
     return ChunkPlan(windows=tuple(windows), workers=workers, total_frames=total_frames)
 
