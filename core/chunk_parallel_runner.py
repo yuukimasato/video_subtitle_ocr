@@ -154,6 +154,11 @@ def run_chunk_parallel(
                     st.window.core_end_frame)
 
     def _terminate_all() -> None:
+        # Give finished workers a grace period to exit on their own —
+        # SIGTERM mid-paddle-teardown prints a scary (harmless) C++ trace.
+        for st in states.values():
+            if st.proc is not None and st.proc.is_alive():
+                st.proc.join(timeout=10)
         for st in states.values():
             if st.proc is not None and st.proc.is_alive():
                 st.proc.terminate()

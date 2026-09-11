@@ -271,6 +271,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         _info(f"Temp work dir: {work_dir} (kept)", args.quiet)
 
     try:
+        t0 = time.perf_counter()
         # ── Long-video speedup: chunk-parallel path when it pays off ──
         chunk_results = None
         if args.workers != 1:
@@ -280,6 +281,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     args, video_path, roi_entries, info, work_dir, chunk_plan)
         if chunk_results is not None:
             restored_results, chunk_elapsed = chunk_results
+            t3 = time.perf_counter()
             _info(f"      {len(restored_results)} frames restored ({chunk_elapsed:.2f}s)", args.quiet)
             if not restored_results:
                 _info("No frames fell inside any ROI time range; nothing to do.", args.quiet)

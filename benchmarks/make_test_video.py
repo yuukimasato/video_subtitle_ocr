@@ -25,6 +25,28 @@ SUBTITLES = [
     {"start": 13.5, "end": 15.5, "text": "淡入淡出的字幕", "fade": True},
 ]
 
+# Seam-hostile schedule for chunk-parallel equivalence testing (150 s,
+# 50 s windows -> core seams at 50 s and 100 s with 15 s overlap):
+# entries deliberately straddle seams, fade in exactly inside an overlap
+# zone, flash quickly near a seam, and repeat identical text around a seam
+# to guard against false merge. No two entries overlap in time.
+SEAM_HOSTILE_SUBTITLES = [
+    {"start": 0.5, "end": 3.5, "text": "开头常规字幕"},
+    {"start": 4.0, "end": 7.0, "text": "第一个窗口的内容"},
+    {"start": 40.0, "end": 52.0, "text": "横跨接缝的长句子在这里"},
+    {"start": 46.0, "end": 46.8, "text": "快对白一"},
+    {"start": 48.0, "end": 48.8, "text": "快对白二"},
+    {"start": 52.5, "end": 56.0, "text": "接缝处淡入的台词", "fade": True},
+    {"start": 60.0, "end": 63.0, "text": "重叠区右侧的常规字幕"},
+    {"start": 70.0, "end": 73.0, "text": "第二个窗口的内容"},
+    {"start": 99.0, "end": 101.5, "text": "跨过百秒接缝的短句"},
+    {"start": 103.0, "end": 105.0, "text": "重复出现的相同文本"},
+    {"start": 106.0, "end": 108.0, "text": "重复出现的相同文本"},
+    {"start": 115.0, "end": 118.0, "text": "第三个窗口的内容"},
+    {"start": 140.0, "end": 143.0, "text": "结尾常规字幕"},
+    {"start": 146.5, "end": 149.0, "text": "片尾淡入淡出", "fade": True},
+]
+
 FONT = "/home/hope/.local/share/fonts/opentype/SourceHanSansSC-Regular.otf"
 FONT_BOLD = "/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/benchmarks/SourceHanSansSC-Regular.otf"
 
@@ -35,6 +57,7 @@ def esc(text: str) -> str:
 
 
 def main() -> None:
+    global SUBTITLES
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", default="test_video_subtitle.mp4")
     ap.add_argument("--gt", default="gt.json")
@@ -42,7 +65,17 @@ def main() -> None:
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--fps", type=int, default=30)
+    ap.add_argument(
+        "--seam-hostile", action="store_true",
+        help="emit the 150s seam-hostile schedule (subtitles straddling the "
+             "50s/100s core seams, fades inside overlap zones, rapid dialog, "
+             "identical-text repeats) for chunk-parallel equivalence tests",
+    )
     args = ap.parse_args()
+
+    if args.seam_hostile:
+        args.duration = 150
+        SUBTITLES = SEAM_HOSTILE_SUBTITLES
 
     filters = [
         # Animated noise so consecutive frames are not bit-identical.
