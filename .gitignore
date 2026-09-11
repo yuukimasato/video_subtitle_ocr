@@ -6,6 +6,11 @@ __pycache__/
 dist/
 build/
 
+# Virtualenv & test/lint caches
+.venv/
+.pytest_cache/
+.ruff_cache/
+
 # Environment & secrets
 .env
 .env.*

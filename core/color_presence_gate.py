@@ -93,7 +93,9 @@ def calibrate_hsv_from_crop(
         samples = flat
 
     h_ch, s_ch, v_ch = samples[:, 0].astype(np.float32), samples[:, 1].astype(np.float32), samples[:, 2].astype(np.float32)
-    white_mask = (s_ch < 55.0) & (v_ch > 165.0)
+    # 白色样本判定边界须与下方 white_lower/white_upper（inRange: s<=55, v>=170）
+    # 保持一致，否则校准采样与实际判定口径不一致。
+    white_mask = (s_ch <= 55.0) & (v_ch >= 170.0)
     colored_mask = (~white_mask) & (s_ch > 60.0) & (v_ch > 45.0)
 
     white_lower = np.array([0, 0, 170], dtype=np.uint8)
@@ -257,76 +259,76 @@ def run_preview(
     if not cap.isOpened():
         raise RuntimeError("Could not open video for preview")
 
-    cal_idx = pick_calibration_roi_index(calibration_frame_num, roi_data, fps)
-    if cal_idx < 0:
+    # 打开 cap 后统一用 try/finally 释放，保证异常路径不泄漏 VideoCapture。
+    try:
+        cal_idx = pick_calibration_roi_index(calibration_frame_num, roi_data, fps)
+        if cal_idx < 0:
+            raise RuntimeError("No ROI covers the calibration frame")
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(calibration_frame_num))
+        ok, cal_frame = cap.read()
+        if not ok or cal_frame is None:
+            raise RuntimeError("Could not read calibration frame")
+
+        crop, m = get_roi_crop_and_mask(cal_frame, roi_data[cal_idx])
+        if crop is None:
+            raise RuntimeError("Calibration ROI crop failed")
+        bounds = calibrate_hsv_from_crop(crop, m)
+
+        probes = sample_probe_frames(roi_data, total_frames, fps, max_probes=max_probes)
+        rows: List[ColorGatePreviewRow] = []
+        kept = 0
+        for fnum in probes:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(fnum))
+            ret, fr = cap.read()
+            if not ret or fr is None:
+                continue
+            active = roi_indices_active_at(int(fnum), roi_data, fps)
+            if not active:
+                continue
+            passed, mx = frame_passes_for_active_rois(fr, roi_data, active, bounds, min_ratio)
+            if passed:
+                kept += 1
+            # Thumbnail: first active ROI crop
+            c0, _ = get_roi_crop_and_mask(fr, roi_data[sorted(active)[0]])
+            thumb = c0 if c0 is not None else fr
+            if thumb.size:
+                hs = max(thumb.shape[0], thumb.shape[1])
+                if hs > thumb_max_side:
+                    sc = thumb_max_side / float(hs)
+                    thumb = cv2.resize(thumb, (int(thumb.shape[1] * sc), int(thumb.shape[0] * sc)), interpolation=cv2.INTER_AREA)
+            rows.append(ColorGatePreviewRow(frame_index=int(fnum), passed=passed, max_ratio=float(mx), thumb_bgr=thumb))
+
+        sampled = len(rows)
+        if sampled <= 0:
+            raise RuntimeError("Preview produced no samples")
+
+        from core.roi_extractor import get_roi_frame_number
+
+        planned = 0
+        for roi_entry in roi_data:
+            s = get_roi_frame_number(roi_entry, fps, "start_time", "start_frame")
+            e = get_roi_frame_number(roi_entry, fps, "end_time", "end_frame")
+            s = max(0, min(int(s), total_frames - 1))
+            e = max(0, min(int(e), total_frames - 1))
+            if e < s:
+                s, e = e, s
+            planned += (e - s + 1)
+
+        keep_ratio = float(kept) / float(max(1, sampled))
+
+        return {
+            "bounds": bounds,
+            "rows": rows,
+            "kept_count": int(kept),
+            "sampled_count": int(sampled),
+            "planned_roi_frames": int(planned),
+            "preview_keep_ratio": float(keep_ratio),
+            "calibration_frame": int(calibration_frame_num),
+            "min_ratio": float(min_ratio),
+        }
+    finally:
         cap.release()
-        raise RuntimeError("No ROI covers the calibration frame")
-
-    cap.set(cv2.CAP_PROP_POS_FRAMES, int(calibration_frame_num))
-    ok, cal_frame = cap.read()
-    if not ok or cal_frame is None:
-        cap.release()
-        raise RuntimeError("Could not read calibration frame")
-
-    crop, m = get_roi_crop_and_mask(cal_frame, roi_data[cal_idx])
-    if crop is None:
-        cap.release()
-        raise RuntimeError("Calibration ROI crop failed")
-    bounds = calibrate_hsv_from_crop(crop, m)
-
-    probes = sample_probe_frames(roi_data, total_frames, fps, max_probes=max_probes)
-    rows: List[ColorGatePreviewRow] = []
-    kept = 0
-    for fnum in probes:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(fnum))
-        ret, fr = cap.read()
-        if not ret or fr is None:
-            continue
-        active = roi_indices_active_at(int(fnum), roi_data, fps)
-        if not active:
-            continue
-        passed, mx = frame_passes_for_active_rois(fr, roi_data, active, bounds, min_ratio)
-        if passed:
-            kept += 1
-        # Thumbnail: first active ROI crop
-        c0, _ = get_roi_crop_and_mask(fr, roi_data[sorted(active)[0]])
-        thumb = c0 if c0 is not None else fr
-        if thumb.size:
-            hs = max(thumb.shape[0], thumb.shape[1])
-            if hs > thumb_max_side:
-                sc = thumb_max_side / float(hs)
-                thumb = cv2.resize(thumb, (int(thumb.shape[1] * sc), int(thumb.shape[0] * sc)), interpolation=cv2.INTER_AREA)
-        rows.append(ColorGatePreviewRow(frame_index=int(fnum), passed=passed, max_ratio=float(mx), thumb_bgr=thumb))
-
-    cap.release()
-    sampled = len(rows)
-    if sampled <= 0:
-        raise RuntimeError("Preview produced no samples")
-
-    from core.roi_extractor import get_roi_frame_number
-
-    planned = 0
-    for roi_entry in roi_data:
-        s = get_roi_frame_number(roi_entry, fps, "start_time", "start_frame")
-        e = get_roi_frame_number(roi_entry, fps, "end_time", "end_frame")
-        s = max(0, min(int(s), total_frames - 1))
-        e = max(0, min(int(e), total_frames - 1))
-        if e < s:
-            s, e = e, s
-        planned += (e - s + 1)
-
-    keep_ratio = float(kept) / float(max(1, sampled))
-
-    return {
-        "bounds": bounds,
-        "rows": rows,
-        "kept_count": int(kept),
-        "sampled_count": int(sampled),
-        "planned_roi_frames": int(planned),
-        "preview_keep_ratio": float(keep_ratio),
-        "calibration_frame": int(calibration_frame_num),
-        "min_ratio": float(min_ratio),
-    }
 
 
 def recount_preview_rows(rows: List[ColorGatePreviewRow], min_ratio: float) -> int:

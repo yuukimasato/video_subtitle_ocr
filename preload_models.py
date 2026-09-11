@@ -25,9 +25,24 @@ def preload_paddleocr(languages=("ch", "en"), device="cpu"):
 
     Creates a small synthetic image, runs OCR on it, and discards the result.
     This forces PaddleOCR to download and cache all required models.
+
+    Language routing mirrors core/ocr_engine_paddle.py (shared helper):
+    PP-OCRv6 for ch/en/japan, PP-OCRv5 fallback for other languages.
     """
-    import numpy as np
-    import cv2
+    try:
+        import numpy as np
+        import cv2
+    except ImportError as e:
+        # Missing dependency: skip preloading rather than crashing the installer.
+        logger.warning(f"  ⚠ PaddleOCR preload skipped (missing dependency: {e})")
+        return
+
+    try:
+        from core.ocr_engine_paddle import resolve_model_selection
+    except ImportError:
+        # Allow running the preloader from any working directory.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from core.ocr_engine_paddle import resolve_model_selection
 
     # Create a tiny test image (white background, some black text-like pixels)
     img = np.ones((100, 300, 3), dtype=np.uint8) * 255
@@ -38,13 +53,18 @@ def preload_paddleocr(languages=("ch", "en"), device="cpu"):
         logger.info(f"Preloading PaddleOCR models for language: {lang}")
         try:
             from paddleocr import PaddleOCR
-            ocr = PaddleOCR(
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                lang=lang,
-                device=device,
-            )
+
+            model_kwargs = resolve_model_selection(lang, None)
+            ctor_kwargs = {
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": False,
+                "lang": lang,
+                "device": device,
+            }
+            ctor_kwargs.update(model_kwargs)
+            logger.info(f"  Model selection: {model_kwargs}")
+            ocr = PaddleOCR(**ctor_kwargs)
             # Run a dummy prediction to trigger model download
             _ = ocr.predict(img)
             logger.info(f"  ✓ Language '{lang}' models ready")
@@ -54,17 +74,16 @@ def preload_paddleocr(languages=("ch", "en"), device="cpu"):
 
 
 def preload_rapidocr():
-    """Preload RapidOCR ONNX models if rapidocr_onnxruntime is installed."""
+    """Preload RapidOCR models if the `rapidocr` package (v3.x) is installed."""
     try:
-        import rapidocr_onnxruntime  # noqa: F401
+        import rapidocr  # noqa: F401
     except ImportError:
         return  # Not installed, skip
 
-    logger.info("Preloading RapidOCR (ONNX) models...")
+    logger.info("Preloading RapidOCR models...")
     try:
         import numpy as np
-        import cv2
-        from rapidocr_onnxruntime import RapidOCR
+        from rapidocr import RapidOCR
 
         img = np.ones((100, 300, 3), dtype=np.uint8) * 255
         ocr = RapidOCR()

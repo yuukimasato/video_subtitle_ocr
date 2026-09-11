@@ -38,6 +38,8 @@ class SubtitleAligner:
         Returns:
             (对齐后的源文本, 对齐后的目标文本)
         """
+        # 实例复用时重置行号计数器，避免跨调用持续累加。
+        self.line_numbers = [0, 0]
         diff_iterator = difflib.ndiff(source_text, target_text)
         return self._pair_lines(diff_iterator)
 
@@ -174,6 +176,4 @@ class SubtitleAligner:
             text = text[2:]
         else:
             text = lines.pop(0)[2:]
-            if not text:
-                text = ""
         return self.line_numbers[side], text

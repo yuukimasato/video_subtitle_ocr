@@ -111,7 +111,10 @@ def _get_roi_offset(roi_entry: Dict) -> Optional[Tuple[int, int]]:
     
     if roi_type == 'rect':
         if isinstance(points, list) and len(points) == 4:
-            return int(points[0]), int(points[1])
+            # roi_extractor clamps the crop origin to the frame (max(0, x/y));
+            # the offset added back during restoration must match that clamp,
+            # or out-of-frame ROIs restore shifted coordinates.
+            return max(0, int(points[0])), max(0, int(points[1]))
         else:
             logger.error(
                 QCoreApplication.translate(
@@ -131,6 +134,10 @@ def _get_roi_offset(roi_entry: Dict) -> Optional[Tuple[int, int]]:
                     ).format(points)
                 )
                 return None
+            # Match roi_extractor: points are clipped to the frame before
+            # the bounding rect is taken, so the origin is never negative.
+            poly_points[:, 0] = np.clip(poly_points[:, 0], 0, None)
+            poly_points[:, 1] = np.clip(poly_points[:, 1], 0, None)
             x, y, w, h = cv2.boundingRect(poly_points)
             return x, y
         except Exception as e:
@@ -150,24 +157,43 @@ def _get_roi_offset(roi_entry: Dict) -> Optional[Tuple[int, int]]:
     return None
 
 def _transform_json_coordinates(data: Dict[str, Any], offset_x: int, offset_y: int) -> Dict[str, Any]:
-    new_data = json.loads(json.dumps(data)) 
+    # 仅对发生坐标偏移的键构造新容器（其余键浅拷贝共享），
+    # 避免逐帧 json.loads(json.dumps(...)) 深拷贝的性能开销。
+    new_data = data
 
-    for key in ['dt_polys', 'rec_polys']:
-        if key in new_data and isinstance(new_data[key], list):
-            for poly in new_data[key]:
-                if isinstance(poly, list):
-                    for point in poly:
-                        if isinstance(point, list) and len(point) == 2:
-                            point[0] = float(point[0]) + offset_x
-                            point[1] = float(point[1]) + offset_y
+    def _shift_polys(polys: Any) -> Any:
+        if not isinstance(polys, list):
+            return polys
+        shifted = []
+        for poly in polys:
+            if isinstance(poly, list):
+                shifted.append([
+                    [float(p[0]) + offset_x, float(p[1]) + offset_y]
+                    if isinstance(p, list) and len(p) == 2
+                    else p
+                    for p in poly
+                ])
+            else:
+                shifted.append(poly)
+        return shifted
 
-    if 'rec_boxes' in new_data and isinstance(new_data['rec_boxes'], list):
-        for box in new_data['rec_boxes']:
-            if isinstance(box, list) and len(box) == 4:
-                box[0] = float(box[0]) + offset_x
-                box[1] = float(box[1]) + offset_y
-                box[2] = float(box[2]) + offset_x
-                box[3] = float(box[3]) + offset_y
-            
+    def _shift_boxes(boxes: Any) -> Any:
+        if not isinstance(boxes, list):
+            return boxes
+        return [
+            [float(b[0]) + offset_x, float(b[1]) + offset_y,
+             float(b[2]) + offset_x, float(b[3]) + offset_y]
+            if isinstance(b, list) and len(b) == 4
+            else b
+            for b in boxes
+        ]
+
+    for key in ('dt_polys', 'rec_polys'):
+        if key in data:
+            new_data = {**new_data, key: _shift_polys(data[key])}
+
+    if 'rec_boxes' in data:
+        new_data = {**new_data, 'rec_boxes': _shift_boxes(data['rec_boxes'])}
+
     return new_data
 

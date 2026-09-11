@@ -1,14 +1,29 @@
 # main.py
 import sys
-from PySide6.QtWidgets import QApplication
+import traceback
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt, QTranslator, QLocale, QCoreApplication
 import os 
 
 from main_window import SubtitleOCRGUI
 
+
+def _excepthook(exc_type, exc_value, exc_tb):
+    """Print uncaught exceptions to stderr, then surface them in a dialog when a GUI exists."""
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+    if QApplication.instance() is None:
+        return
+    try:
+        details = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        QMessageBox.critical(None, "Unhandled exception", details)
+    except Exception:
+        # Never let the error dialog itself take the process down.
+        pass
+
+
 if __name__ == '__main__':
-    if hasattr(QApplication, 'setHighDpiScaleFactorRoundingPolicy'):
-        QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    sys.excepthook = _excepthook
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     QCoreApplication.setOrganizationName("VideoSubtitleOCR")
     QCoreApplication.setApplicationName("VideoSubtitleOCR")
     app = QApplication(sys.argv)

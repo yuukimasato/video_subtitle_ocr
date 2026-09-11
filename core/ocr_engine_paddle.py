@@ -5,6 +5,11 @@ PaddleOCR engine adapter.
 Wraps the existing PaddleOCR integration into the BaseOCREngine interface.
 This adapter extracts and consolidates PaddleOCR-specific logic that was
 previously scattered in ocr_processor.py.
+
+Model selection (PP-OCRv6 first):
+  - ch / en / japan  → PP-OCRv6 unified models (tier: tiny/small/medium or auto).
+  - Other languages  → conservative fallback to PP-OCRv5 (multilingual rec
+    model via V5_FALLBACK_REC when known).
 """
 
 from __future__ import annotations
@@ -20,12 +25,55 @@ from core.ocr_engine_base import BaseOCREngine, OCREngineInfo
 
 logger = logging.getLogger(__name__)
 
-# Paddle/PaddleX compatibility: must set env vars BEFORE importing paddle/paddleocr
-os.environ.setdefault("FLAGS_use_mkldnn", "0")
-os.environ.setdefault("FLAGS_use_onednn", "0")
-os.environ.setdefault("FLAGS_enable_onednn", "0")
-os.environ.setdefault("FLAGS_use_new_executor", "0")
-os.environ.setdefault("FLAGS_enable_pir_api", "0")
+# Languages covered by the PP-OCRv6 unified models (ch/en/japan + latin scripts;
+# conservatively only ch/en/japan take the v6 fast path here).
+V6_LANGS = frozenset({"ch", "en", "japan"})
+
+# Recognized model tiers (PP-OCRv6_{tier}_det / PP-OCRv6_{tier}_rec).
+VALID_MODEL_TIERS = ("tiny", "small", "medium")
+
+# PP-OCRv5 multilingual recognition fallback models for languages NOT covered
+# by PP-OCRv6. NOTE: model names follow the paddleocr 3.7 package model list —
+# verify against the installed paddleocr during integration (T1.2).
+# Languages without an entry rely on paddleocr's own lang-based model mapping.
+V5_FALLBACK_REC: Dict[str, str] = {
+    "korean": "korean_PP-OCRv5_mobile_rec",
+    "russian": "cyrillic_PP-OCRv5_mobile_rec",
+    "arabic": "arabic_PP-OCRv5_mobile_rec",
+}
+
+
+def resolve_model_selection(lang: str, model_tier: Optional[str] = None) -> Dict[str, Any]:
+    """Map (lang, model_tier) to PaddleOCR constructor model-selection kwargs.
+
+    Returns a dict containing either:
+      - ``ocr_version`` ("PP-OCRv6" / "PP-OCRv5") to use the default models of
+        that version, or
+      - explicit ``text_detection_model_name`` / ``text_recognition_model_name``
+        when a concrete PP-OCRv6 tier is requested.
+
+    Shared by the engine adapter and preload_models.py so the language routing
+    logic lives in exactly one place.
+    """
+    lang = str(lang or "ch")
+    tier = str(model_tier).strip().lower() if model_tier else ""
+    if tier in ("", "auto", "none", "null"):
+        tier = ""
+
+    if lang in V6_LANGS:
+        if tier in VALID_MODEL_TIERS:
+            return {
+                "text_detection_model_name": f"PP-OCRv6_{tier}_det",
+                "text_recognition_model_name": f"PP-OCRv6_{tier}_rec",
+            }
+        return {"ocr_version": "PP-OCRv6"}
+
+    # Non ch/en/japan (korean/russian/arabic, latin languages, ...):
+    # conservatively fall back to PP-OCRv5.
+    rec_name = V5_FALLBACK_REC.get(lang)
+    if rec_name:
+        return {"ocr_version": "PP-OCRv5", "text_recognition_model_name": rec_name}
+    return {"ocr_version": "PP-OCRv5"}
 
 
 class PaddleOCREngine(BaseOCREngine):
@@ -52,14 +100,15 @@ class PaddleOCREngine(BaseOCREngine):
         return OCREngineInfo(
             engine_id="paddle",
             name="PaddleOCR",
-            version="3.1.0",
-            description="PaddleOCR — 百度 PaddleOCR，支持中/日/韩/英等多语言，准确率高，最稳定",
+            version="3.7.0",
+            description="PaddleOCR — 百度 PaddleOCR（PP-OCRv6，支持模型档位 tiny/small/medium），支持中/日/韩/英等多语言，准确率高，最稳定",
             supports_gpu=True,
             supports_languages=[
                 "ch", "en", "japan", "korean", "french", "german",
                 "italian", "spanish", "portuguese", "russian", "arabic",
             ],
             estimated_speed_rank=3,
+            supported_model_tiers=["tiny", "small", "medium"],
         )
 
     @classmethod
@@ -72,6 +121,9 @@ class PaddleOCREngine(BaseOCREngine):
 
     def __init__(self):
         # __init__ is called after __new__, but we use initialize() for heavy lifting.
+        # Singleton guard: re-instantiating must not reset an initialized engine.
+        if getattr(self, "_initialized", False):
+            return
         self._ocr: Any = None
         self._initialized: bool = False
 
@@ -117,13 +169,17 @@ class PaddleOCREngine(BaseOCREngine):
         # Try to detect if PaddlePaddle GPU is actually usable
         try:
             import paddle
-            if paddle.is_compiled_with_cuda():
+            # Check the paddle.device module BEFORE using it: old PaddlePaddle
+            # builds without it would otherwise raise here and skip the whole
+            # ROCm/XPU detection below.
+            has_device_mod = hasattr(paddle, "device") and hasattr(paddle.device, "cuda")
+            if has_device_mod and paddle.is_compiled_with_cuda():
                 gpu_count = paddle.device.cuda.device_count()
                 if gpu_count > 0:
                     logger.info(f"Runtime GPU check: {gpu_count} CUDA device(s) available via PaddlePaddle.")
                     return "gpu"
             # Also check for other device types
-            if hasattr(paddle, 'device'):
+            if has_device_mod:
                 try:
                     if paddle.device.is_compiled_with_rocm():
                         logger.info("Runtime GPU check: ROCm device available via PaddlePaddle.")
@@ -146,23 +202,111 @@ class PaddleOCREngine(BaseOCREngine):
         return "cpu"
 
     def initialize(self, **kwargs) -> None:
-        """Initialize PaddleOCR model (lazy, called once)."""
+        """Initialize PaddleOCR model (lazy, called once).
+
+        Supported kwargs (delivered via ocr_engine_manager.set_engine(options)):
+          lang (str): UI language code ("ch"/"en"/"japan"/"korean"/...). Default "ch".
+          model_tier (str|None): "tiny"/"small"/"medium", or None/"auto" for the
+              version default models.
+          enable_mkldnn (bool): CPU MKLDNN acceleration. Default True.
+          cpu_threads (int): CPU inference threads; 0/None means "not passed"
+              (let Paddle decide).
+          ocr_version (str): Explicit model generation override, e.g.
+              "PP-OCRv5"/"PP-OCRv6"; wins over the lang/tier routing.
+          device (str): "cpu"/"gpu"; defaults to _get_device_mode().
+        """
         if self._initialized:
             return
 
         from paddleocr import PaddleOCR
 
         device = kwargs.get("device") or self._get_device_mode()
-        lang = kwargs.get("lang", "ch")
+        lang = str(kwargs.get("lang") or "ch")
+        model_tier = kwargs.get("model_tier")
+        enable_mkldnn_raw = kwargs.get("enable_mkldnn", True)
+        enable_mkldnn = True if enable_mkldnn_raw is None else bool(enable_mkldnn_raw)
+        try:
+            cpu_threads = int(kwargs.get("cpu_threads") or 0)
+        except (TypeError, ValueError):
+            cpu_threads = 0
 
-        logger.info(f"Initializing PaddleOCR (lang={lang}, device={device})...")
-        self._ocr = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            lang=lang,
-            device=device,
+        explicit_version = str(kwargs.get("ocr_version") or "").strip()
+        if explicit_version:
+            # Explicit override (e.g. benchmark --ocr-version PP-OCRv5): wins over
+            # the language routing, still protected by the degradation chain.
+            selection = {"ocr_version": explicit_version}
+            fallback_version = explicit_version
+        else:
+            selection = resolve_model_selection(lang, model_tier)
+            # Version used by the simplified fallback path (matches language routing).
+            fallback_version = "PP-OCRv6" if lang in V6_LANGS else "PP-OCRv5"
+
+        logger.info(
+            f"Initializing PaddleOCR (lang={lang}, model_tier={model_tier or 'auto'}, "
+            f"selection={selection}, device={device}, "
+            f"enable_mkldnn={enable_mkldnn}, cpu_threads={cpu_threads})..."
         )
+
+        # Common switches for every construction path.
+        common: Dict[str, Any] = {
+            "use_doc_orientation_classify": False,
+            "use_doc_unwarping": False,
+            "use_textline_orientation": False,
+            "lang": lang,
+            "device": device,
+            "enable_mkldnn": enable_mkldnn,
+        }
+        if cpu_threads > 0:
+            common["cpu_threads"] = cpu_threads
+
+        def _try_construct(extra: Dict[str, Any]) -> Any:
+            """Construct PaddleOCR from common switches + extra model selection.
+
+            On TypeError (older paddleocr versions may not accept the
+            enable_mkldnn/cpu_threads kwargs), retry once without them.
+            """
+            attempt = dict(common)
+            attempt.update(extra)
+            try:
+                return PaddleOCR(**attempt)
+            except TypeError:
+                reduced = {
+                    k: v for k, v in attempt.items()
+                    if k not in ("enable_mkldnn", "cpu_threads")
+                }
+                if len(reduced) == len(attempt):
+                    raise
+                logger.warning(
+                    "PaddleOCR rejected enable_mkldnn/cpu_threads kwargs; "
+                    "retrying without them."
+                )
+                return PaddleOCR(**reduced)
+
+        # Degradation chain (each level logs a warning):
+        #   1. Exact model selection (PP-OCRv6 tier models / v5 multilingual rec).
+        #   2. Version-only defaults (ocr_version="PP-OCRv6"/"PP-OCRv5").
+        #   3. Minimal (lang + device + doc-preprocessing switches only).
+        try:
+            self._ocr = _try_construct(selection)
+        except Exception as e:
+            logger.warning(
+                f"PaddleOCR init with exact model selection {selection} failed: {e}. "
+                f"Falling back to version-only init (ocr_version={fallback_version})."
+            )
+            try:
+                self._ocr = _try_construct({"ocr_version": fallback_version})
+            except Exception as e2:
+                logger.warning(
+                    f"PaddleOCR version-only init failed: {e2}. "
+                    "Falling back to minimal init (lang + device only)."
+                )
+                try:
+                    self._ocr = _try_construct({})
+                except Exception as e3:
+                    raise RuntimeError(
+                        f"Failed to initialize PaddleOCR (lang={lang}, device={device}): {e3}"
+                    ) from e3
+
         self._initialized = True
         logger.info("PaddleOCR initialized successfully.")
 
@@ -172,6 +316,17 @@ class PaddleOCREngine(BaseOCREngine):
             raise RuntimeError("PaddleOCR engine not initialized. Call initialize() first.")
         with self._predict_lock:
             return self._ocr.predict(img_input)
+
+    def predict_batch(self, images: List[Any]) -> List[Any]:
+        """Batch prediction using PaddleOCR 3.x native list input (thread-safe).
+
+        Passes the whole list to self._ocr.predict() in one lock acquisition.
+        The returned list is aligned with the input images.
+        """
+        if self._ocr is None:
+            raise RuntimeError("PaddleOCR engine not initialized. Call initialize() first.")
+        with self._predict_lock:
+            return list(self._ocr.predict(images))
 
     def normalize_result(self, raw_result: List[Any]) -> Dict[str, Any]:
         """Convert PaddleOCR output to unified format.
@@ -191,31 +346,32 @@ class PaddleOCREngine(BaseOCREngine):
         if not raw_result:
             return ocr_data
 
-        # Document-level result format (newer PaddleOCR)
+        # Document-level result format (newer PaddleOCR). Accepts one or more
+        # per-image dicts (multiple dicts are concatenated in order).
         if (
             isinstance(raw_result, list)
-            and len(raw_result) == 1
-            and isinstance(raw_result[0], dict)
+            and raw_result
+            and all(isinstance(x, dict) for x in raw_result)
         ):
-            single_dict = raw_result[0]
-            texts = single_dict.get("rec_texts", [])
-            scores = single_dict.get("rec_scores", [])
-            polys = single_dict.get("rec_polys", [])
-            boxes = single_dict.get("rec_boxes", [])
+            for single_dict in raw_result:
+                texts = single_dict.get("rec_texts", [])
+                scores = single_dict.get("rec_scores", [])
+                polys = single_dict.get("rec_polys", [])
+                boxes = single_dict.get("rec_boxes", [])
 
-            min_len = min(len(texts), len(scores), len(polys), len(boxes))
-            for i in range(min_len):
-                ocr_data["dt_polys"].append(
-                    polys[i].tolist() if isinstance(polys[i], np.ndarray) else polys[i]
-                )
-                ocr_data["rec_polys"].append(
-                    polys[i].tolist() if isinstance(polys[i], np.ndarray) else polys[i]
-                )
-                ocr_data["rec_texts"].append(texts[i])
-                ocr_data["rec_scores"].append(float(scores[i]))
-                ocr_data["rec_boxes"].append(
-                    boxes[i].tolist() if isinstance(boxes[i], np.ndarray) else boxes[i]
-                )
+                min_len = min(len(texts), len(scores), len(polys), len(boxes))
+                for i in range(min_len):
+                    ocr_data["dt_polys"].append(
+                        polys[i].tolist() if isinstance(polys[i], np.ndarray) else polys[i]
+                    )
+                    ocr_data["rec_polys"].append(
+                        polys[i].tolist() if isinstance(polys[i], np.ndarray) else polys[i]
+                    )
+                    ocr_data["rec_texts"].append(texts[i])
+                    ocr_data["rec_scores"].append(float(scores[i]))
+                    ocr_data["rec_boxes"].append(
+                        boxes[i].tolist() if isinstance(boxes[i], np.ndarray) else boxes[i]
+                    )
             return ocr_data
 
         # Line-level result format (classic PaddleOCR)

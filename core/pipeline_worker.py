@@ -4,16 +4,16 @@ import logging
 import datetime
 import shutil
 import time
+import cv2
 from dataclasses import replace
 from PySide6.QtCore import QThread, Signal, QCoreApplication
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-from typing import List, Dict, Optional, Any
+from typing import Callable, List, Dict, Optional, Any
 from collections import defaultdict
-import re
 
-from core import roi_extractor, ocr_processor, coordinate_restorer, subtitle_generator
+from core import roi_extractor, ocr_processor, coordinate_restorer, subtitle_generator, boundary_refine
 from core.ocr_optimizer import OcrOptimizer
 from core.subtitle_llm_polish import SubtitlePolisherConfig
 
@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 class PipelineWorker(QThread):
     progress_updated = Signal(int, str)
     llm_detail = Signal(str)
-    finished = Signal(str)
+    # NOTE: deliberately NOT named `finished` — that would shadow
+    # QThread.finished and break the built-in thread-completion signal.
+    pipeline_finished = Signal(str)
     error = Signal(str)
 
     def __init__(self, video_path: str, roi_data: List[Dict], total_frames: int, fps: float,
@@ -36,6 +38,8 @@ class PipelineWorker(QThread):
                  color_presence_gate_spec: Optional[Dict[str, Any]] = None,
                  ocr_engine_id: str = "",
                  source_filter_config: Optional[Dict[str, Any]] = None,
+                 engine_options: Optional[Dict[str, Any]] = None,
+                 watermark_filter_config: Optional[Dict[str, Any]] = None,
                  parent=None):
         super().__init__(parent)
         self.video_path = video_path
@@ -58,10 +62,17 @@ class PipelineWorker(QThread):
         self.color_presence_gate_spec = color_presence_gate_spec
         self.ocr_engine_id = ocr_engine_id
         self.source_filter_config = source_filter_config
+        # 深度扫描产出的水印清单（{"enabled": bool, "entries": [...]}），
+        # 在 ASS 生成阶段独立于场景过滤执行。
+        self.watermark_filter_config = watermark_filter_config
+        # Engine initialization options (lang, model_tier, ...) forwarded to
+        # OcrOptimizer → ocr_engine_manager.set_engine(engine_id, options).
+        self.engine_options = dict(engine_options or {})
         self.is_cancelled = False
         self.work_dir: Optional[str] = None
 
     def run(self):
+        stream_executor: Optional[ThreadPoolExecutor] = None
         try:
             t0_total = time.perf_counter()
             video_name = os.path.splitext(os.path.basename(self.video_path))[0]
@@ -123,13 +134,14 @@ class PipelineWorker(QThread):
                     if isinstance(est, int) and est >= 1:
                         extraction_progress_total = est
 
-                frame_generator = roi_extractor.extract_roi_frames(
-                    self.video_path, self.roi_data, self.total_frames, self.fps, self.work_dir,
-                    save_to_disk=not self.in_memory_ocr,
-                    color_presence_gate=gate_spec,
-                )
                 if self.merge_rois:
                     frame_generator = roi_extractor.extract_merged_roi_frames(
+                        self.video_path, self.roi_data, self.total_frames, self.fps, self.work_dir,
+                        save_to_disk=not self.in_memory_ocr,
+                        color_presence_gate=gate_spec,
+                    )
+                else:
+                    frame_generator = roi_extractor.extract_roi_frames(
                         self.video_path, self.roi_data, self.total_frames, self.fps, self.work_dir,
                         save_to_disk=not self.in_memory_ocr,
                         color_presence_gate=gate_spec,
@@ -166,11 +178,14 @@ class PipelineWorker(QThread):
                     in_memory_mode=self.in_memory_ocr,
                     save_ocr_json=self.save_intermediate_json,
                     ocr_engine_id=self.ocr_engine_id,
+                    engine_options=self.engine_options,
                 )
 
                 ocr_results = []
                 ocr_start_progress = 10
-                ocr_progress_range = 70
+                # 10–65% for OCR; 65–80% is reserved for the (much slower)
+                # frame-by-frame boundary refinement that may follow.
+                ocr_progress_range = 55
                 processed_count = 0
                 total_ocr_calls = 0
                 total_frames_filled = 0
@@ -178,9 +193,7 @@ class PipelineWorker(QThread):
                 # Streaming parallel flush (CPU only). In GPU mode, keep sequential to avoid VRAM contention.
                 cpu_workers = (os.cpu_count() or 4)
                 stream_parallel = bool(stream_ocr and device_mode == "cpu" and not self.visualize)
-                stream_executor: Optional[ThreadPoolExecutor] = None
                 pending_futures = set()
-                future_frame_counts: Dict[object, int] = {}
                 max_stream_workers = max(1, min(4, cpu_workers))
                 max_outstanding = max_stream_workers * 2
 
@@ -191,6 +204,7 @@ class PipelineWorker(QThread):
                         in_memory_mode=self.in_memory_ocr,
                         save_ocr_json=self.save_intermediate_json,
                         ocr_engine_id=self.ocr_engine_id,
+                        engine_options=self.engine_options,
                     )
                     frames.sort(key=lambda x: x[2])
                     res = local_opt.process_roi_group(
@@ -203,17 +217,14 @@ class PipelineWorker(QThread):
                     local_opt.cleanup()
                     return res, calls, filled, len(frames)
 
-                def _collect_one_completed(block: bool):
+                def _collect_one_completed():
                     nonlocal processed_count, total_ocr_calls, total_frames_filled
                     if not pending_futures:
                         return
                     it = as_completed(list(pending_futures))
                     for fut in it:
                         pending_futures.discard(fut)
-                        try:
-                            res, calls, filled, frame_cnt = fut.result()
-                        except Exception as e:
-                            raise
+                        res, calls, filled, frame_cnt = fut.result()
                         ocr_results.extend(res)
                         processed_count += int(frame_cnt)
                         total_ocr_calls += int(calls)
@@ -254,16 +265,16 @@ class PipelineWorker(QThread):
                     return int(t // self.time_slice_seconds)
 
                 def _flush_one_roi_bucket(roi_id: str):
+                    nonlocal processed_count, total_ocr_calls, total_frames_filled
                     frames = buffer_by_roi.get(roi_id) or []
                     if not frames:
                         return
                     if stream_parallel and stream_executor is not None:
                         fut = stream_executor.submit(_process_bucket_task, list(frames))
                         pending_futures.add(fut)
-                        future_frame_counts[fut] = len(frames)
                         # Backpressure: don't let too many outstanding buckets build up.
                         if len(pending_futures) >= max_outstanding:
-                            _collect_one_completed(block=True)
+                            _collect_one_completed()
                     else:
                         # Sequential flush using shared optimizer (keeps caches).
                         frames.sort(key=lambda x: x[2])
@@ -415,6 +426,7 @@ class PipelineWorker(QThread):
                         in_memory_mode=self.in_memory_ocr,
                         save_ocr_json=self.save_intermediate_json,
                         ocr_engine_id=self.ocr_engine_id,
+                        engine_options=self.engine_options,
                     )
                     frames.sort(key=lambda x: x[2])
 
@@ -521,7 +533,7 @@ class PipelineWorker(QThread):
                     _flush_one_roi_bucket(roi_id)
                 # Collect remaining parallel results (if any), then shutdown executor.
                 while pending_futures:
-                    _collect_one_completed(block=True)
+                    _collect_one_completed()
                 if stream_executor is not None:
                     stream_executor.shutdown(wait=True)
                 optimizer.cleanup()
@@ -530,7 +542,24 @@ class PipelineWorker(QThread):
 
             if not ocr_results:
                 raise RuntimeError(QCoreApplication.translate("pipeline_worker", "OCR recognition step did not produce any results."))
-            self.progress_updated.emit(80, QCoreApplication.translate("pipeline_worker", "Step 2/4: OCR recognition complete."))
+            # Per-ROI boundary refinement: frame-by-frame OCR around text
+            # appearance/disappearance edges to improve timing accuracy.
+            # This corrects cases where the optimizer fills/propagates text
+            # across visually-similar frames during subtitle fade-in/out.
+            # Default ON: an ROI without the field is refined (frame-accurate
+            # head/tail re-check); only an explicit fade_in_refine_enabled=False
+            # opts out. Merged-ROI mode has no per-ROI indices and skips it.
+            if not self.merge_rois:
+                any_refine = any(
+                    isinstance(r, dict) and bool(r.get("fade_in_refine_enabled", True))
+                    for r in (self.roi_data or [])
+                )
+            else:
+                any_refine = False
+            # Refinement owns 65-80%; emitting 80 here first would make the
+            # progress bar jump backwards once refinement starts.
+            if not any_refine:
+                self.progress_updated.emit(80, QCoreApplication.translate("pipeline_worker", "Step 2/4: OCR recognition complete."))
             t1_ocr = time.perf_counter()
             est_skipped = max(0, total_roi_frames - total_ocr_calls)
             logger.info(
@@ -542,28 +571,51 @@ class PipelineWorker(QThread):
 
             if self.is_cancelled: return
 
-            # Optional per-ROI boundary refinement: only run frame-by-frame OCR around
-            # text appearance/disappearance edges to improve timing accuracy.
-            # This is designed to correct cases where the optimizer fills/propagates text
-            # across visually-similar frames during subtitle fade-in/out.
-            if not self.merge_rois:
-                try:
-                    any_refine = any(bool(r.get("fade_in_refine_enabled")) for r in (self.roi_data or []))
-                except Exception:
-                    any_refine = False
-                if any_refine:
-                    self.progress_updated.emit(
-                        80,
-                        QCoreApplication.translate(
-                            "pipeline_worker",
-                            "Step 2/4: Refining fade-in timing (frame-by-frame near edges)...",
-                        ),
-                    )
-                    ocr_results = self._refine_fade_in_boundaries(
-                        ocr_results,
-                        max_backtrack_frames=max(3, int(self.fps * 1.0)) if self.fps and self.fps > 0 else 25,
-                        max_forward_frames=max(2, int(self.fps * 0.5)) if self.fps and self.fps > 0 else 12,
-                    )
+            if any_refine:
+                # Refinement can take as long as the main OCR pass, so it
+                # owns a visible progress range (65–80%) instead of sitting
+                # at a single percentage point.
+                refine_start_progress = 65
+                refine_progress_range = 15
+                last_refine_progress = -1
+                last_refine_emit_done = -1
+
+                def _refine_progress(done: int, total: int) -> None:
+                    nonlocal last_refine_progress, last_refine_emit_done
+                    if total <= 0:
+                        return
+                    progress = refine_start_progress + int((done / total) * refine_progress_range)
+                    progress = min(refine_start_progress + refine_progress_range, progress)
+                    # Update on every percent step, and refresh the done/total
+                    # counter roughly every 1% of work so the label keeps
+                    # moving even between percent steps.
+                    if progress != last_refine_progress or (
+                        done - last_refine_emit_done >= max(1, total // 100)
+                    ):
+                        last_refine_progress = progress
+                        last_refine_emit_done = done
+                        self.progress_updated.emit(
+                            progress,
+                            QCoreApplication.translate(
+                                "pipeline_worker",
+                                "Step 2/4: Refining subtitle boundaries frame-by-frame... ({}/{})"
+                            ).format(done, total),
+                        )
+
+                self.progress_updated.emit(
+                    refine_start_progress,
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Step 2/4: Refining subtitle boundaries frame-by-frame...",
+                    ),
+                )
+                ocr_results = self._refine_fade_in_boundaries(
+                    ocr_results,
+                    max_backtrack_frames=max(3, int(self.fps * 1.0)) if self.fps and self.fps > 0 else 25,
+                    max_forward_frames=max(2, int(self.fps * 0.5)) if self.fps and self.fps > 0 else 12,
+                    edge_extend_frames=max(2, int(self.fps * 2.0)) if self.fps and self.fps > 0 else 50,
+                    progress_callback=_refine_progress,
+                )
 
             self.progress_updated.emit(
                 80,
@@ -620,6 +672,28 @@ class PipelineWorker(QThread):
                     polisher_cfg,
                     log_line=lambda s: self.llm_detail.emit(s),
                 )
+            # Per-ROI placement metadata for ROIs with "write pose tags" on.
+            roi_pose_tags: Dict[str, Dict[str, Any]] = {}
+            # Per-ROI text-filter policy ("keep_all" for manual ROIs — scene
+            # text must survive; "auto" for detected main-subtitle bands).
+            roi_text_filter_policies: Dict[str, str] = {}
+            for idx, roi in enumerate(self.roi_data or []):
+                if not isinstance(roi, dict):
+                    continue
+                pose = roi.get("pose")
+                if roi.get("write_pose_tags") and isinstance(pose, dict):
+                    roi_pose_tags[f"roi_{idx}"] = pose
+                roi_text_filter_policies[f"roi_{idx}"] = str(
+                    roi.get("text_filter_policy") or "keep_all"
+                )
+            if self.merge_rois:
+                # 所有 ROI 合成同一张画布：任一 keep_all 即整体不过滤。
+                merged_policy = (
+                    "keep_all"
+                    if "keep_all" in set(roi_text_filter_policies.values())
+                    else "auto"
+                )
+                roi_text_filter_policies = {"roi_merged": merged_policy}
             converter = subtitle_generator.OCRToASSOptimizer(
                 video_path=self.video_path,
                 output_path=self.output_ass_path,
@@ -629,6 +703,9 @@ class PipelineWorker(QThread):
                 template_path=self.template_path,
                 subtitle_polisher=polisher_cfg,
                 source_filter_config=self.source_filter_config,
+                roi_pose_tags=roi_pose_tags or None,
+                roi_text_filter_policies=roi_text_filter_policies or None,
+                watermark_filter_config=self.watermark_filter_config,
             )
             converter.convert_from_memory(
                 iter(restored_results),
@@ -651,7 +728,7 @@ class PipelineWorker(QThread):
                 ).format((t1_total - t0_total))
             )
 
-            self.finished.emit(self.output_ass_path)
+            self.pipeline_finished.emit(self.output_ass_path)
 
         except Exception as e:
             logger.error(
@@ -668,6 +745,14 @@ class PipelineWorker(QThread):
                 ).format(e)
             )
         finally:
+            # Cancel/early-return paths bypass the normal shutdown; the
+            # executor's workers are non-daemon threads and would keep the
+            # process busy (and OCR models loaded) long after "cancel".
+            if stream_executor is not None:
+                try:
+                    stream_executor.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    logger.warning("Failed to shut down streaming OCR executor.", exc_info=True)
             if self.work_dir and not self.debug_mode:
                 try:
                     shutil.rmtree(self.work_dir)
@@ -694,56 +779,53 @@ class PipelineWorker(QThread):
             logger.warning(QCoreApplication.translate("pipeline_worker", "Forcibly terminating thread..."))
             super().terminate()
 
-    @staticmethod
-    def _ocr_text_present(ocr_data: object) -> bool:
-        if not isinstance(ocr_data, dict):
-            return False
-        texts = ocr_data.get("rec_texts", [])
-        if not isinstance(texts, list):
-            return False
-        return any(bool(str(t).strip()) for t in texts)
+    def _make_boundary_probe_funcs(self, cap, optimizer):
+        """Build OCR callbacks for boundary refinement.
 
-    def _roi_index_from_identifier(self, roi_identifier: str) -> Optional[int]:
-        # roi_identifier is "roi_{idx}" in non-merged mode.
-        if not roi_identifier:
-            return None
-        m = re.fullmatch(r"roi_(\d+)", str(roi_identifier).strip())
-        if not m:
-            return None
-        try:
-            return int(m.group(1))
-        except Exception:
-            return None
-
-    def _run_single_frame_ocr(self, roi_entry: Dict, frame_num: int, roi_identifier: str) -> Optional[tuple]:
+        All random-access OCR shares one VideoCapture and one optimizer, and
+        every result carries the frame's own POS_MSEC timestamp so refined
+        boundaries stay consistent with the sequential extraction timeline.
         """
-        Random access: extract one crop and OCR it. Returns a tuple shaped like ocr_results items.
-        """
-        if self.is_cancelled:
-            return None
-        try:
-            crop = roi_extractor.extract_single_roi_crop(self.video_path, roi_entry, int(frame_num))
-        except Exception:
-            crop = None
-        if crop is None:
-            return None
+        min_score = 0.6  # matches OCRToASSOptimizer.MIN_SCORE_THRESHOLD
 
-        # Best-effort timestamp from fps (fine for local edge refinement).
-        frame_time_sec = (float(frame_num) / float(self.fps)) if self.fps and self.fps > 0 else 0.0
-        frame_data = (roi_entry, crop, int(frame_num), str(roi_identifier), frame_time_sec)
-        try:
-            opt = OcrOptimizer(
-                work_dir=self.work_dir or "",
-                visualize=self.visualize,
-                in_memory_mode=True,
-                save_ocr_json=self.save_intermediate_json,
-                ocr_engine_id=self.ocr_engine_id,
+        def _ocr_at(roi_entry: Dict, roi_id: str, frame_num: int, upscale: bool) -> Optional[tuple]:
+            if self.is_cancelled:
+                return None
+            ct = roi_extractor.extract_single_roi_crop_with_time(
+                self.video_path, roi_entry, int(frame_num), cap=cap, fps=self.fps
             )
-            res = opt._run_single_ocr(frame_data)
-            opt.cleanup()
-            return res
-        except Exception:
-            return None
+            if ct is None:
+                return None
+            crop, time_sec = ct
+            if upscale:
+                h, w = crop.shape[:2]
+                if w > 0 and h > 0 and max(w * 2, h * 2) <= 8192:
+                    crop = cv2.resize(crop, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
+            try:
+                # use_cache=False: the same frame may be probed twice here with
+                # different crops (normal + 2x upscale); the (roi, frame) cache
+                # key cannot distinguish them.
+                return optimizer._run_single_ocr(
+                    (roi_entry, crop, int(frame_num), roi_id, float(time_sec)),
+                    use_cache=False,
+                )
+            except Exception:
+                logger.warning("Boundary refinement OCR failed at frame %s", frame_num, exc_info=True)
+                return None
+
+        def ocr_frame_func(roi_entry: Dict, roi_id: str, frame_num: int) -> Optional[tuple]:
+            return _ocr_at(roi_entry, roi_id, frame_num, upscale=False)
+
+        def probe_frame_func(roi_entry: Dict, roi_id: str, frame_num: int) -> Optional[tuple]:
+            # Sensitive detector: a faint fade-in/out frame often only becomes
+            # readable after a 2x upscale, which is exactly the 1-2 frame lag
+            # this refinement exists to fix.
+            r = _ocr_at(roi_entry, roi_id, frame_num, upscale=False)
+            if r is not None and boundary_refine.ocr_text_present(r[1], min_score):
+                return r
+            return _ocr_at(roi_entry, roi_id, frame_num, upscale=True)
+
+        return ocr_frame_func, probe_frame_func
 
     def _refine_fade_in_boundaries(
         self,
@@ -751,115 +833,62 @@ class PipelineWorker(QThread):
         *,
         max_backtrack_frames: int,
         max_forward_frames: int,
+        edge_extend_frames: int = 0,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[tuple]:
         """
         For ROIs that enabled fade refinement, re-run OCR frame-by-frame around
-        text appearance/disappearance edges to improve timing accuracy.
+        text appearance/disappearance edges and walk to the true first/last
+        visible-text frame, so subtitle timing matches the picture instead of
+        the first frame OCR happened to read.
 
-        - Fade-in (empty -> non-empty): fixes premature start caused by fill/skip.
-        - Fade-out (non-empty -> empty): fixes late end caused by fill/skip.
+        ``edge_extend_frames`` lets the walk cross the ROI's own start/end
+        (random-access probing), recovering subtitles clipped by the ROI
+        time range.
         """
         if not ocr_results:
             return ocr_results
+        if not self.video_path:
+            return ocr_results
 
-        # Index results by (roi_id, frame_num) to allow in-place replacement.
-        index_map: Dict[tuple, int] = {}
-        for idx, item in enumerate(ocr_results):
-            try:
-                frame_num = int(item[2])
-                roi_id = str(item[3])
-                index_map[(roi_id, frame_num)] = idx
-            except Exception:
-                continue
-
-        # Scan per ROI sequentially by frame_num.
-        by_roi: Dict[str, List[tuple]] = defaultdict(list)
-        for item in ocr_results:
-            try:
-                by_roi[str(item[3])].append(item)
-            except Exception:
-                continue
-        for roi_id in by_roi:
-            by_roi[roi_id].sort(key=lambda x: int(x[2]))
-
-        for roi_id, items in sorted(by_roi.items(), key=lambda kv: kv[0]):
-            if self.is_cancelled:
-                return ocr_results
-            roi_idx = self._roi_index_from_identifier(roi_id)
-            if roi_idx is None or not (0 <= roi_idx < len(self.roi_data)):
-                continue
-            roi_entry_cfg = self.roi_data[roi_idx]
-            if not bool(roi_entry_cfg.get("fade_in_refine_enabled")):
-                continue
-
-            # Walk frames to find transitions: empty <-> non-empty.
-            prev_has = False
-            prev_frame_num: Optional[int] = None
-            for it in items:
-                if self.is_cancelled:
-                    return ocr_results
-                frame_num = int(it[2])
-                has = self._ocr_text_present(it[1])
-                if has and not prev_has:
-                    # Fade-in edge at this frame. Refine around appearance.
-                    start_frame = int(roi_entry_cfg.get("start_frame", frame_num))
-                    end_frame = int(roi_entry_cfg.get("end_frame", frame_num))
-                    # Backtrack window
-                    back_start = max(start_frame, frame_num - int(max_backtrack_frames))
-                    # Forward window (optional) to stabilize around fade-in.
-                    fwd_end = min(end_frame, frame_num + int(max_forward_frames))
-
-                    # Re-OCR a small window frame-by-frame and overwrite results.
-                    # This ensures earlier frames aren't wrongly filled with later text.
-                    for f in range(back_start, fwd_end + 1):
-                        if self.is_cancelled:
-                            return ocr_results
-                        r = self._run_single_frame_ocr(roi_entry_cfg, f, roi_id)
-                        if r is None:
-                            continue
-                        pos = index_map.get((roi_id, int(f)))
-                        if pos is not None:
-                            ocr_results[pos] = r
-                    # After overwriting, stop further backtracking for nearby frames by
-                    # re-evaluating prev_has from the just-processed edge frame.
-                    pos_edge = index_map.get((roi_id, frame_num))
-                    if pos_edge is not None:
-                        prev_has = self._ocr_text_present(ocr_results[pos_edge][1])
-                    else:
-                        prev_has = True
-                    prev_frame_num = frame_num
-                    continue
-
-                if (not has) and prev_has:
-                    # Fade-out edge at this frame (current is empty, previous had text).
-                    # Refine around disappearance to avoid overly-long end time.
-                    # Use previous frame as the "last known text" anchor when available.
-                    anchor = prev_frame_num if prev_frame_num is not None else (frame_num - 1)
-                    start_frame = int(roi_entry_cfg.get("start_frame", anchor))
-                    end_frame = int(roi_entry_cfg.get("end_frame", anchor))
-                    back_start = max(start_frame, int(anchor) - int(max_backtrack_frames))
-                    fwd_end = min(end_frame, frame_num + int(max_forward_frames))
-
-                    for f in range(back_start, fwd_end + 1):
-                        if self.is_cancelled:
-                            return ocr_results
-                        r = self._run_single_frame_ocr(roi_entry_cfg, f, roi_id)
-                        if r is None:
-                            continue
-                        pos = index_map.get((roi_id, int(f)))
-                        if pos is not None:
-                            ocr_results[pos] = r
-
-                    pos_now = index_map.get((roi_id, frame_num))
-                    if pos_now is not None:
-                        prev_has = self._ocr_text_present(ocr_results[pos_now][1])
-                    else:
-                        prev_has = False
-                    prev_frame_num = frame_num
-                    continue
-
-                prev_has = has
-                prev_frame_num = frame_num
-
-        return ocr_results
+        cap = cv2.VideoCapture(self.video_path)
+        if not cap.isOpened():
+            logger.warning("Boundary refinement skipped: could not reopen video.")
+            return ocr_results
+        optimizer = OcrOptimizer(
+            work_dir=self.work_dir or "",
+            visualize=self.visualize,
+            in_memory_mode=True,
+            save_ocr_json=self.save_intermediate_json,
+            ocr_engine_id=self.ocr_engine_id,
+            engine_options=self.engine_options,
+        )
+        try:
+            ocr_frame_func, probe_frame_func = self._make_boundary_probe_funcs(cap, optimizer)
+            refined = boundary_refine.refine_boundaries(
+                ocr_results,
+                self.roi_data,
+                ocr_frame_func=ocr_frame_func,
+                probe_frame_func=probe_frame_func,
+                is_cancelled_func=lambda: self.is_cancelled,
+                max_backtrack_frames=max_backtrack_frames,
+                max_forward_frames=max_forward_frames,
+                edge_extend_frames=edge_extend_frames,
+                progress_callback=progress_callback,
+            )
+            extra_calls = int(getattr(optimizer, "ocr_calls", 0))
+            if extra_calls:
+                logger.info(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Boundary refinement used {} extra single-frame OCR calls."
+                    ).format(extra_calls)
+                )
+            return refined
+        except Exception:
+            logger.warning("Boundary refinement failed; keeping original timing.", exc_info=True)
+            return ocr_results
+        finally:
+            optimizer.cleanup()
+            cap.release()
 

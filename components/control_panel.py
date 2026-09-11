@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import copy
+import logging
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -30,6 +31,8 @@ from core.subtitle_llm_polish import (
     pick_default_openai_compatible_model,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class _FetchOpenAIModelsThread(QThread):
     finished_ok = Signal(list)
@@ -55,6 +58,27 @@ class ControlPanelWidget(QWidget):
     color_gate_preview_requested = Signal()
     auto_detection_requested = Signal()  # User requests re-analysis
     preset_changed_by_user = Signal(str)  # User manually switched preset
+
+    def _make_collapsible_group(self, title: str, checked: bool = False):
+        """Create a QGroupBox that collapses its content when unticked.
+
+        Returns (group_box, content_widget, content_layout); add children to
+        content_layout. Unticked = collapsed to the title row only, which keeps
+        the settings panel short while preserving every option.
+        """
+        group = QGroupBox(title)
+        group.setCheckable(True)
+        group.setChecked(checked)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 4, 0, 0)
+        content_layout.setSpacing(8)
+        inner = QVBoxLayout(group)
+        inner.setContentsMargins(10, 6, 10, 10)
+        inner.addWidget(content)
+        group.toggled.connect(content.setVisible)
+        content.setVisible(checked)
+        return group, content, content_layout
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -95,8 +119,62 @@ class ControlPanelWidget(QWidget):
         self.ocr_engine_detect_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "检测可用引擎"))
         engine_layout.addWidget(self.ocr_engine_label, 0, 0)
         engine_layout.addWidget(self.ocr_engine_combo, 0, 1, 1, 2)
-        engine_layout.addWidget(self.ocr_engine_status, 1, 0, 1, 3)
         engine_layout.addWidget(self.ocr_engine_detect_btn, 0, 3)
+
+        # ── 识别语言（贯通到引擎 initialize(lang=...)）──
+        self.ocr_lang_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "识别语言："))
+        self.ocr_lang_combo = QComboBox()
+        self.ocr_lang_combo.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，"
+                "其他语言自动回落 PP-OCRv5 多语言模型。",
+            )
+        )
+        for _lang_label, _lang_value in (
+            ("中文简体", "ch"),
+            ("English", "en"),
+            ("日本語", "japan"),
+            ("한국어", "korean"),
+            ("Русский", "russian"),
+            ("Français", "french"),
+            ("Deutsch", "german"),
+            ("Italiano", "italian"),
+            ("Español", "spanish"),
+            ("Português", "portuguese"),
+            ("العربية", "arabic"),
+        ):
+            self.ocr_lang_combo.addItem(
+                QCoreApplication.translate("ControlPanelWidget", _lang_label), _lang_value
+            )
+        self.ocr_lang_combo.setCurrentIndex(0)
+        engine_layout.addWidget(self.ocr_lang_label, 1, 0)
+        engine_layout.addWidget(self.ocr_lang_combo, 1, 1, 1, 2)
+
+        # ── 模型档位（PaddleOCR PP-OCRv6 tiny/small/medium）──
+        self.ocr_model_tier_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "模型档位："))
+        self.ocr_model_tier_combo = QComboBox()
+        self.ocr_model_tier_combo.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "PaddleOCR 模型档位：Tiny 最快，Small 均衡，Medium 最准。"
+                "“自动”使用 PP-OCRv6 默认模型。",
+            )
+        )
+        for _tier_label, _tier_value in (
+            ("自动(Auto)", "auto"),
+            ("Tiny(最快)", "tiny"),
+            ("Small(均衡)", "small"),
+            ("Medium(最准)", "medium"),
+        ):
+            self.ocr_model_tier_combo.addItem(
+                QCoreApplication.translate("ControlPanelWidget", _tier_label), _tier_value
+            )
+        self.ocr_model_tier_combo.setCurrentIndex(0)
+        engine_layout.addWidget(self.ocr_model_tier_label, 2, 0)
+        engine_layout.addWidget(self.ocr_model_tier_combo, 2, 1, 1, 2)
+
+        engine_layout.addWidget(self.ocr_engine_status, 3, 0, 1, 4)
         main_layout.addWidget(engine_group)
 
         # ── 文字来源过滤 ──
@@ -198,9 +276,18 @@ class ControlPanelWidget(QWidget):
         draw_mode_layout.setSpacing(12)
         self.rect_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "矩形（拖动）"))
         self.poly_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "多边形（点击）"))
+        self.edit_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "编辑（拖动调整）"))
+        self.edit_mode_radio.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "在画面上直接调整已有 ROI：拖动整体移动；矩形拖 8 个控制点缩放；"
+                "多边形拖顶点改形。自动检测的 ROI 可用此模式微调。",
+            )
+        )
         self.rect_mode_radio.setChecked(True)
         draw_mode_layout.addWidget(self.rect_mode_radio)
         draw_mode_layout.addWidget(self.poly_mode_radio)
+        draw_mode_layout.addWidget(self.edit_mode_radio)
         draw_mode_layout.addStretch(1)
         main_layout.addWidget(draw_mode_group)
 
@@ -210,6 +297,15 @@ class ControlPanelWidget(QWidget):
         extract_layout.setSpacing(8)
         self.run_pipeline_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "字幕 OCR 识别并导出"))
         self.run_pipeline_btn.setMinimumHeight(34)
+
+        # Collapsible sub-groups keep the default view short: power-user options
+        # stay available but hidden until the group title is ticked.
+        self.llm_group, _llm_content, llm_content = self._make_collapsible_group(
+            QCoreApplication.translate("ControlPanelWidget", "大模型润色（DeepSeek / OpenAI，可选）")
+        )
+        self.advanced_group, _advanced_content, advanced_content = self._make_collapsible_group(
+            QCoreApplication.translate("ControlPanelWidget", "高级选项")
+        )
 
         options_layout = QGridLayout()
         options_layout.setHorizontalSpacing(12)
@@ -239,7 +335,31 @@ class ControlPanelWidget(QWidget):
         options_layout.addWidget(self.merge_roi_checkbox, 2, 1)
         options_layout.addWidget(self.time_slice_seconds_edit, 2, 2)
         options_layout.addWidget(seconds_label, 2, 3)
+        self.auto_roi_on_load_checkbox = QCheckBox(
+            QCoreApplication.translate("ControlPanelWidget", "加载视频后自动检测字幕 ROI")
+        )
+        self.auto_roi_on_load_checkbox.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "加载视频后在后台采样扫描全片，自动生成顶部/底部字幕带 ROI"
+                "（文字过滤策略为「自动过滤」，可随时在 ROI 列表右键切换）。",
+            )
+        )
+        options_layout.addWidget(self.auto_roi_on_load_checkbox, 3, 0)
         options_layout.setColumnStretch(4, 1)
+
+        # Persist the auto-ROI-on-load toggle immediately.
+        from PySide6.QtCore import QSettings
+
+        settings = QSettings()
+        self.auto_roi_on_load_checkbox.setChecked(
+            settings.value("pipeline/auto_roi_on_load", True, type=bool)
+        )
+
+        def _save_auto_roi_on_load(checked: bool) -> None:
+            QSettings().setValue("pipeline/auto_roi_on_load", bool(checked))
+
+        self.auto_roi_on_load_checkbox.toggled.connect(_save_auto_roi_on_load)
 
         self.color_gate_checkbox = QCheckBox(
             QCoreApplication.translate(
@@ -252,7 +372,8 @@ class ControlPanelWidget(QWidget):
             QCoreApplication.translate(
                 "ControlPanelWidget",
                 "在阶段一抽样 ROI 区间内若干帧并在当前画面上自动标定 HSV。"
-                "仅当预览结果满意并在对话框中点击「采用」后，才会在本轮 OCR 启用；可随时关闭恢复默认逻辑。",
+                "仅当预览结果满意并在对话框中点击「采用」后，才会在本轮 OCR 启用；可随时关闭恢复默认逻辑。"
+                "若预览不满意或选择「不采用」，请保持勾选关闭或未确认——程序将按原版流程输出全部 ROI 帧。",
             )
         )
         self.color_gate_preview_btn = QPushButton(
@@ -261,14 +382,6 @@ class ControlPanelWidget(QWidget):
         self.color_gate_preview_btn.setEnabled(False)
         self.color_gate_status_label = QLabel(self._color_gate_status_text())
         self.color_gate_status_label.setWordWrap(True)
-        gate_tip = QLabel(
-            QCoreApplication.translate(
-                "ControlPanelWidget",
-                "若预览不满意或选择「不采用」，请保持勾选关闭或未确认——程序将按原版流程输出全部 ROI 帧。",
-            )
-        )
-        gate_tip.setWordWrap(True)
-        gate_tip.setStyleSheet("color: palette(mid); font-size: 11px;")
         gate_row = QHBoxLayout()
         gate_row.setSpacing(8)
         gate_row.addWidget(self.color_gate_checkbox, 0)
@@ -279,24 +392,30 @@ class ControlPanelWidget(QWidget):
         llm_polish_grid.setHorizontalSpacing(12)
         llm_polish_grid.setVerticalSpacing(6)
         self.deepseek_polish_checkbox = QCheckBox(QCoreApplication.translate("ControlPanelWidget", "DeepSeek 字幕润色"))
-        self.deepseek_fragment_merge_checkbox = QCheckBox(
-            QCoreApplication.translate(
-                "ControlPanelWidget",
-                "DeepSeek 合并碎片字幕（选择最完整文本并合并时间范围）",
-            )
-        )
-        llm_tip = QLabel(
+        self.deepseek_polish_checkbox.setToolTip(
             QCoreApplication.translate(
                 "ControlPanelWidget",
                 "兼容 OpenAI 的接口。默认提供方为 DeepSeek，会自动填充 Base URL；当你输入 API Key 后，"
                 "应用会调用 /v1/models 拉取模型列表（也可手动编辑模型 ID）。",
             )
         )
-        llm_tip.setWordWrap(True)
-        llm_tip.setStyleSheet("color: palette(mid); font-size: 11px;")
+        self.deepseek_fragment_merge_checkbox = QCheckBox(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "DeepSeek 合并碎片字幕（选择最完整文本并合并时间范围）",
+            )
+        )
         self.deepseek_api_key_edit = QLineEdit()
         self.deepseek_api_key_edit.setPlaceholderText(QCoreApplication.translate("ControlPanelWidget", "API Key"))
         self.deepseek_api_key_edit.setEchoMode(QLineEdit.Password)
+        self.deepseek_api_key_edit.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "API Key 不会以明文写入配置文件：优先保存在系统钥匙串"
+                "（需安装 keyring）；不可用时使用本地加密存储"
+                "（密钥文件仅当前用户可读）。清除可点击右侧按钮。",
+            )
+        )
         self.deepseek_api_base_edit = QLineEdit()
         self.deepseek_api_base_edit.setPlaceholderText(QCoreApplication.translate("ControlPanelWidget", "API Base URL"))
         self.deepseek_api_base_edit.setText(DEFAULT_DEEPSEEK_BASE)
@@ -339,30 +458,33 @@ class ControlPanelWidget(QWidget):
         self.deepseek_strategy_checkbox.setChecked(False)
         llm_polish_grid.addWidget(self.deepseek_polish_checkbox, 0, 0, 1, 4)
         llm_polish_grid.addWidget(self.deepseek_fragment_merge_checkbox, 1, 0, 1, 4)
-        llm_polish_grid.addWidget(llm_tip, 2, 0, 1, 4)
-        llm_polish_grid.addWidget(self.llm_provider_label, 3, 0, 1, 1)
-        llm_polish_grid.addWidget(self.llm_provider_combo, 3, 1, 1, 3)
+        llm_polish_grid.addWidget(self.llm_provider_label, 2, 0, 1, 1)
+        llm_polish_grid.addWidget(self.llm_provider_combo, 2, 1, 1, 3)
         deepseek_key_row = QHBoxLayout()
         deepseek_key_row.setSpacing(8)
         deepseek_key_row.addWidget(self.deepseek_api_key_edit, 1)
         deepseek_key_row.addWidget(self.clear_saved_key_btn)
-        llm_polish_grid.addLayout(deepseek_key_row, 4, 0, 1, 3)
-        llm_polish_grid.addWidget(self.refresh_models_btn, 4, 3, 1, 1)
-        llm_polish_grid.addWidget(self.deepseek_api_base_edit, 5, 0, 1, 2)
-        llm_polish_grid.addWidget(self.deepseek_model_combo, 5, 2, 1, 2)
-        llm_polish_grid.addWidget(self.deepseek_strategy_checkbox, 6, 0, 1, 4)
+        llm_polish_grid.addLayout(deepseek_key_row, 3, 0, 1, 3)
+        llm_polish_grid.addWidget(self.refresh_models_btn, 3, 3, 1, 1)
+        llm_polish_grid.addWidget(self.deepseek_api_base_edit, 4, 0, 1, 2)
+        llm_polish_grid.addWidget(self.deepseek_model_combo, 4, 2, 1, 2)
+        llm_polish_grid.addWidget(self.deepseek_strategy_checkbox, 5, 0, 1, 4)
+
+        advanced_content.addLayout(options_layout)
+        advanced_content.addLayout(gate_row)
+        advanced_content.addWidget(self.color_gate_status_label)
+        llm_content.addLayout(llm_polish_grid)
 
         extract_layout.addWidget(self.run_pipeline_btn)
-        extract_layout.addLayout(options_layout)
-        extract_layout.addLayout(gate_row)
-        extract_layout.addWidget(self.color_gate_status_label)
-        extract_layout.addWidget(gate_tip)
-        extract_layout.addLayout(llm_polish_grid)
+        extract_layout.addWidget(self.llm_group)
+        extract_layout.addWidget(self.advanced_group)
         main_layout.addWidget(extract_group)
 
         self.browse_template_btn.clicked.connect(self.browse_template_requested)
         self.run_pipeline_btn.clicked.connect(self.run_pipeline_requested)
         self.rect_mode_radio.toggled.connect(self._on_draw_mode_toggled)
+        self.poly_mode_radio.toggled.connect(self._on_draw_mode_toggled)
+        self.edit_mode_radio.toggled.connect(self._on_draw_mode_toggled)
         self.llm_provider_combo.currentIndexChanged.connect(self._on_llm_provider_changed)
         self.deepseek_api_key_edit.editingFinished.connect(self._on_deepseek_credentials_edited)
         self.deepseek_api_base_edit.editingFinished.connect(self._on_deepseek_credentials_edited)
@@ -465,11 +587,14 @@ class ControlPanelWidget(QWidget):
             return None
         return self._color_gate_spec
 
-    def _on_draw_mode_toggled(self, checked):
-        if checked:
-            self.draw_mode_changed.emit("rect")
+    def _on_draw_mode_toggled(self, *_checked) -> None:
+        if self.rect_mode_radio.isChecked():
+            mode = "rect"
+        elif self.edit_mode_radio.isChecked():
+            mode = "edit"
         else:
-            self.draw_mode_changed.emit("poly")
+            mode = "poly"
+        self.draw_mode_changed.emit(mode)
 
     def _save_llm_to_settings(self) -> None:
         if self._loading_llm_settings:
@@ -523,6 +648,11 @@ class ControlPanelWidget(QWidget):
         base = self.deepseek_api_base_edit.text().strip()
         if not key or not base:
             return
+        old_thread = self._fetch_thread
+        if old_thread is not None and old_thread.isRunning():
+            # Give a stale fetch a short grace period to finish; if it doesn't,
+            # its (older) generation is simply ignored in the callbacks below.
+            old_thread.wait(500)
         self._models_fetch_gen += 1
         gen = self._models_fetch_gen
         self.refresh_models_btn.setEnabled(False)
@@ -540,8 +670,29 @@ class ControlPanelWidget(QWidget):
             partial(self._on_models_fetch_error, gen),
             Qt.ConnectionType.SingleShotConnection,
         )
-        t.finished.connect(lambda: self.refresh_models_btn.setEnabled(True))
+        t.finished.connect(partial(self._on_models_fetch_finished, gen, t))
+        t.finished.connect(t.deleteLater)
         t.start()
+
+    def _on_models_fetch_finished(self, gen: int, thread: _FetchOpenAIModelsThread) -> None:
+        if thread is self._fetch_thread:
+            self._fetch_thread = None
+        if gen != self._models_fetch_gen:
+            # A newer fetch has started; leave the button state to that fetch.
+            return
+        self.refresh_models_btn.setEnabled(True)
+
+    def shutdown_background_threads(self, timeout_ms: int = 5000) -> bool:
+        """Wait for the model-list fetch thread; return True if still running."""
+        t = self._fetch_thread
+        if t is None:
+            return False
+        if not t.isFinished():
+            t.wait(timeout_ms)
+        still_running = not t.isFinished()
+        if not still_running:
+            self._fetch_thread = None
+        return still_running
 
     def _apply_models_fetch_result(self, gen: int, model_ids: list) -> None:
         if gen != self._models_fetch_gen:
@@ -598,6 +749,8 @@ class ControlPanelWidget(QWidget):
             "deepseek_strategy_review": self.deepseek_strategy_checkbox.isChecked(),
             # New: engine and source filter
             "ocr_engine_id": self.get_selected_engine_id(),
+            "ocr_lang": self.ocr_lang_combo.currentData() or "ch",
+            "ocr_model_tier": self.ocr_model_tier_combo.currentData() or "auto",
             "source_filter_config": self.get_source_filter_config(),
         }
 
@@ -630,6 +783,7 @@ class ControlPanelWidget(QWidget):
                 QCoreApplication.translate("ControlPanelWidget", "✅ 已就绪")
             )
         except Exception:
+            logger.warning("Engine list population failed", exc_info=True)
             self.ocr_engine_combo.addItem("PaddleOCR", "paddle")
             self.ocr_engine_status.setText("")
 
@@ -644,6 +798,21 @@ class ControlPanelWidget(QWidget):
             return self.ocr_engine_combo.itemData(idx) or ""
         return ""
 
+    # ── OCR Language ComboBox ───────────────────────────────
+
+    def get_selected_lang(self) -> str:
+        """Return the currently selected OCR language code (defaults to "ch")."""
+        return self.ocr_lang_combo.currentData() or "ch"
+
+    def set_selected_lang(self, lang: str) -> None:
+        """Select the item whose data matches `lang`; silently ignore if absent."""
+        if not lang:
+            return
+        for i in range(self.ocr_lang_combo.count()):
+            if self.ocr_lang_combo.itemData(i) == lang:
+                self.ocr_lang_combo.setCurrentIndex(i)
+                return
+
     # ── Scene Preset ComboBox ───────────────────────────────
 
     def _populate_preset_combo(self) -> None:
@@ -656,7 +825,7 @@ class ControlPanelWidget(QWidget):
                 if preset:
                     self.scene_preset_combo.addItem(preset.name, pid)
         except Exception:
-            pass
+            logger.warning("Preset combo population failed", exc_info=True)
 
     def _on_preset_combo_changed(self, index: int) -> None:
         """Apply preset defaults when user selects a different preset."""
@@ -674,7 +843,7 @@ class ControlPanelWidget(QWidget):
             self._user_overrode = False
             self.preset_changed_by_user.emit(preset_id)
         except Exception:
-            pass
+            logger.warning("Failed to apply preset '%s'", preset_id, exc_info=True)
 
     def _apply_preset_checkboxes(self, preset) -> None:
         """Apply a preset's default checkbox states."""
@@ -789,7 +958,7 @@ class ControlPanelWidget(QWidget):
             self._apply_preset_checkboxes(preset)
             self._user_overrode = False
         except Exception:
-            pass
+            logger.warning("Failed to apply alternative preset '%s'", preset_id, exc_info=True)
 
     def _on_user_manual_adjust(self) -> None:
         """User manually toggled a checkbox — switch to custom mode."""
@@ -818,6 +987,10 @@ class ControlPanelWidget(QWidget):
             )
 
     # ── Source filter config ─────────────────────────────────
+
+    def is_source_filter_enabled(self) -> bool:
+        """Return whether the source-filter master toggle is currently checked."""
+        return self.source_filter_enabled_checkbox.isChecked()
 
     def get_source_filter_config(self) -> dict:
         """Return the current source filter configuration."""
@@ -855,6 +1028,8 @@ class ControlPanelWidget(QWidget):
         """Restore a previously saved source filter config."""
         if not config:
             return
+        if "enabled" in config:
+            self.source_filter_enabled_checkbox.setChecked(bool(config["enabled"]))
         self._user_overrode = config.get("user_overrode", False)
         preset_id = config.get("preset_id", "custom")
         self._suppress_preset_signal = True
@@ -863,9 +1038,23 @@ class ControlPanelWidget(QWidget):
                 self.scene_preset_combo.setCurrentIndex(i)
                 break
         self._suppress_preset_signal = False
-        self.keep_overlay_checkbox.setChecked(config.get("keep_overlay", True))
-        self.keep_scene_checkbox.setChecked(config.get("keep_scene", True))
-        self.keep_unknown_checkbox.setChecked(config.get("keep_unknown", True))
+        # Toggling the keep_* checkboxes fires _on_user_manual_adjust, which
+        # would immediately flag the just-restored preset as "custom" and drop
+        # its classification bias/weights — suppress signals while restoring.
+        keep_boxes = (
+            self.keep_overlay_checkbox,
+            self.keep_scene_checkbox,
+            self.keep_unknown_checkbox,
+        )
+        for box in keep_boxes:
+            box.blockSignals(True)
+        try:
+            self.keep_overlay_checkbox.setChecked(config.get("keep_overlay", True))
+            self.keep_scene_checkbox.setChecked(config.get("keep_scene", True))
+            self.keep_unknown_checkbox.setChecked(config.get("keep_unknown", True))
+        finally:
+            for box in keep_boxes:
+                box.blockSignals(False)
         if self._user_overrode:
             self.source_status_label.setText(
                 '✏️ <span style="color:#666">'

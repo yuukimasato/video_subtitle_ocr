@@ -12,15 +12,29 @@ class QtLogHandler(logging.Handler, QObject):
         self.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] - %(message)s', datefmt='%H:%M:%S'))
 
     def emit(self, record):
-        msg = self.format(record)
-        self.new_record.emit(msg)
+        try:
+            msg = self.format(record)
+            self.new_record.emit(msg)
+        except Exception:
+            self.handleError(record)
+
+# Module-level marker so repeated setup_logger() calls stay idempotent.
+_logger_configured = False
 
 def setup_logger():
+    global _logger_configured
+
+    logger = logging.getLogger()
+    if not _logger_configured:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] - %(message)s', datefmt='%H:%M:%S')
+        _logger_configured = True
+
+    # Return the already-installed handler if present; never attach a second one.
+    for existing in logger.handlers:
+        if isinstance(existing, QtLogHandler):
+            return logger, existing
 
     qt_handler = QtLogHandler()
-
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] - %(message)s', datefmt='%H:%M:%S')
-    logger = logging.getLogger()
     logger.addHandler(qt_handler)
-    
+
     return logger, qt_handler

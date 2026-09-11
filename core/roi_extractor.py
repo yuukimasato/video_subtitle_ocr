@@ -7,6 +7,7 @@ from collections import defaultdict
 from PySide6.QtCore import QCoreApplication
 
 from core import color_presence_gate as color_gate
+from utils.time_utils import parse_time
 
 logger = logging.getLogger(__name__)
 
@@ -103,25 +104,45 @@ def apply_roi_preprocess_to_crop(bgr: np.ndarray, roi_entry: Dict) -> np.ndarray
     return out
 
 
-def extract_single_roi_crop(
+def extract_single_roi_crop_with_time(
     video_path: str,
     roi_entry: Dict,
     frame_num: int,
-) -> Optional[np.ndarray]:
+    cap: Optional[cv2.VideoCapture] = None,
+    fps: float = 0.0,
+) -> Optional[Tuple[np.ndarray, float]]:
     """
-    Random-access extract a single ROI crop at a given frame index.
-    Intended for boundary refinement (small number of seeks).
+    Random-access extract a single ROI crop at a given frame index, together
+    with the frame timestamp in seconds (CAP_PROP_POS_MSEC preferred, with
+    frame_num/fps as fallback — matching the sequential extractor so refined
+    boundaries don't shift timestamps).
+
+    `cap` may be a reusable, already-opened VideoCapture to avoid reopening
+    the video for every random access (boundary refinement issues many small
+    seeks); when omitted, a temporary capture is opened and released here.
     """
     if not video_path:
         return None
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+
+    owned_cap = cap is None
+    if owned_cap:
+        cap = cv2.VideoCapture(video_path)
+    if cap is None or not cap.isOpened():
         return None
     try:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_num))
         ret, frame = cap.read()
         if not ret or frame is None:
             return None
+
+        try:
+            ms = float(cap.get(cv2.CAP_PROP_POS_MSEC))
+            frame_time_sec = ms / 1000.0 if ms > 0 else 0.0
+        except Exception:
+            frame_time_sec = 0.0
+        if frame_time_sec <= 0 and fps and fps > 0:
+            frame_time_sec = float(frame_num) / float(fps)
+
         h_img, w_img = frame.shape[:2]
         roi_type = roi_entry.get("type", "rect")
         points = roi_entry.get("points")
@@ -162,27 +183,42 @@ def extract_single_roi_crop(
         else:
             return None
 
-        return apply_roi_preprocess_to_crop(crop, roi_entry)
+        if crop is None or crop.size == 0:
+            return None
+        return apply_roi_preprocess_to_crop(crop, roi_entry), frame_time_sec
     finally:
-        cap.release()
+        if owned_cap:
+            cap.release()
+
+
+def extract_single_roi_crop(
+    video_path: str,
+    roi_entry: Dict,
+    frame_num: int,
+) -> Optional[np.ndarray]:
+    """
+    Random-access extract a single ROI crop at a given frame index.
+    Intended for boundary refinement (small number of seeks).
+    """
+    result = extract_single_roi_crop_with_time(video_path, roi_entry, frame_num)
+    return result[0] if result is not None else None
 
 
 def get_roi_frame_number(roi_entry: Dict, fps: float, time_key: str, frame_key: str) -> int:
     if frame_key in roi_entry and roi_entry[frame_key] is not None:
         return int(roi_entry[frame_key])
     time_val = roi_entry.get(time_key, 0)
-    if isinstance(time_val, str): 
+    if isinstance(time_val, str):
         try:
-            parts = time_val.replace(',', '.').split(':')
-            if len(parts) == 3:
-                h, m, s_ms = parts
-                s_parts = s_ms.split('.')
-                s = int(s_parts[0])
-                ms = int(s_parts[1]) if len(s_parts) > 1 else 0
-                total_seconds = float(h) * 3600 + float(m) * 60 + float(s) + ms / 1000.0
-                return int(total_seconds * fps)
-        except:
-            pass 
+            # Supports both "HH:MM:SS.mmm" and "MM:SS.mmm"; the fractional part is interpreted by digits (".5" = 500ms).
+            return int(parse_time(time_val) * fps)
+        except (ValueError, TypeError):
+            logger.warning(
+                QCoreApplication.translate(
+                    "roi_extractor",
+                    "Unrecognized time string {!r} for key '{}'; falling back to numeric seconds."
+                ).format(time_val, time_key)
+            )
     return int(float(time_val) * fps)
 
 def calculate_total_roi_frames(
@@ -391,6 +427,12 @@ def extract_merged_roi_frames(
             pass
         return 0.0
 
+    merged_gate_bounds = None
+    merged_gate_min_ratio = 0.01
+    if color_presence_gate is not None:
+        merged_gate_bounds = _hsv_bounds_from_gate_spec(color_presence_gate)
+        merged_gate_min_ratio = float(color_presence_gate.get("min_ratio", 0.01))
+
     try:
         active_rois: Set[int] = set()
         current_frame_num = 0
@@ -424,9 +466,7 @@ def extract_merged_roi_frames(
                 frame_time_sec = frame_num / fps
 
             if color_presence_gate is not None:
-                bdict = _hsv_bounds_from_gate_spec(color_presence_gate)
-                min_r = float(color_presence_gate.get("min_ratio", 0.01))
-                ok, _ = color_gate.frame_passes_for_active_rois(frame, roi_data, active_rois, bdict, min_r)
+                ok, _ = color_gate.frame_passes_for_active_rois(frame, roi_data, active_rois, merged_gate_bounds, merged_gate_min_ratio)
                 if not ok:
                     current_frame_num += 1
                     continue
@@ -510,6 +550,14 @@ def extract_roi_frames(
     else:
         logger.info(QCoreApplication.translate("roi_extractor", "Using CPU for ROI extraction (GPU not available or OpenCV not compiled with CUDA)."))
 
+    # Color gate bounds are constant for the whole run; build them once here
+    # instead of per ROI per frame.
+    gate_bounds = None
+    gate_min_ratio = 0.01
+    if color_presence_gate is not None:
+        gate_bounds = _hsv_bounds_from_gate_spec(color_presence_gate)
+        gate_min_ratio = float(color_presence_gate.get("min_ratio", 0.01))
+
     def _get_frame_time_sec(cap_obj: cv2.VideoCapture) -> float:
         # CAP_PROP_POS_MSEC is often more accurate than frame_num/fps for VFR inputs.
         # It is still OpenCV-provided, but avoids systematic drift when FPS metadata is off.
@@ -584,7 +632,15 @@ def extract_roi_frames(
                 roi_entry = roi_data[roi_idx]
                 roi_identifier = f"roi_{roi_idx}"
                 roi_type = roi_entry.get('type', 'rect')
-                points = roi_entry['points']
+                points = roi_entry.get('points')
+                if points is None:
+                    logger.error(
+                        QCoreApplication.translate(
+                            "roi_extractor",
+                            "ROI {} has no 'points' field; skipped."
+                        ).format(roi_identifier)
+                    )
+                    continue
                 
                 roi_frame_result = None
                 
@@ -620,38 +676,27 @@ def extract_roi_frames(
                                 ).format(points)
                             )
                             continue
-                        
+
                         poly_points[:, 0] = np.clip(poly_points[:, 0], 0, w_img - 1)
                         poly_points[:, 1] = np.clip(poly_points[:, 1], 0, h_img - 1)
 
-                        if gpu_frame is not None:
-                            cpu_mask = np.zeros((h_img, w_img), dtype=np.uint8)
-                            cv2.fillPoly(cpu_mask, [poly_points], 255)
-                            
-                            gpu_mask = cv2.cuda_GpuMat()
-                            gpu_mask.upload(cpu_mask)
-
-                            gpu_masked_frame = cv2.cuda_GpuMat()
-                            cv2.cuda.bitwise_and(current_processing_frame, current_processing_frame, gpu_masked_frame, mask=gpu_mask)
-                            
-                            x, y, w, h = cv2.boundingRect(poly_points)
-                            
-                            y1, y2 = max(0, y), min(h_img, y + h)
-                            x1, x2 = max(0, x), min(w_img, x + w)
-                            if y2 > y1 and x2 > x1:
-                                gpu_roi_frame = gpu_masked_frame[y1:y2, x1:x2]
-                                roi_frame_result = gpu_roi_frame.download()
-                        else:
-                            mask = np.zeros((h_img, w_img), dtype=np.uint8)
-                            cv2.fillPoly(mask, [poly_points], 255)
-                            masked_frame = cv2.bitwise_and(current_processing_frame, current_processing_frame, mask=mask)
-                            
-                            x, y, w, h = cv2.boundingRect(poly_points)
-                            
-                            y1, y2 = max(0, y), min(h_img, y + h)
-                            x1, x2 = max(0, x), min(w_img, x + w)
-                            if y2 > y1 and x2 > x1:
-                                roi_frame_result = masked_frame[y1:y2, x1:x2]
+                        x, y, w, h = cv2.boundingRect(poly_points)
+                        y1, y2 = max(0, y), min(h_img, y + h)
+                        x1, x2 = max(0, x), min(w_img, x + w)
+                        if y2 > y1 and x2 > x1:
+                            # Local bounding-rect mask: faster than a full-frame
+                            # mask (the old GPU path uploaded one every frame),
+                            # and the outside-polygon background is white —
+                            # consistent with the random-access extractor and
+                            # the merged-composite path.
+                            local_pts = poly_points.copy()
+                            local_pts[:, 0] -= x1
+                            local_pts[:, 1] -= y1
+                            local_mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
+                            cv2.fillPoly(local_mask, [local_pts], 255)
+                            crop = frame[y1:y2, x1:x2].copy()
+                            crop[local_mask == 0] = (255, 255, 255)
+                            roi_frame_result = crop
                     except Exception as e:
                         logger.error(
                             QCoreApplication.translate(
@@ -670,9 +715,7 @@ def extract_roi_frames(
                     continue
 
                 if roi_frame_result is not None and roi_frame_result.size > 0 and color_presence_gate is not None:
-                    bdict = _hsv_bounds_from_gate_spec(color_presence_gate)
-                    min_r = float(color_presence_gate.get("min_ratio", 0.01))
-                    passed, _ = color_gate.single_roi_passes(frame, roi_entry, bdict, min_r)
+                    passed, _ = color_gate.single_roi_passes(frame, roi_entry, gate_bounds, gate_min_ratio)
                     if not passed:
                         continue
 

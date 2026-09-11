@@ -17,6 +17,8 @@ class DeepSeekProgressPanel(QGroupBox):
 
         self._log = QTextEdit()
         self._log.setReadOnly(True)
+        # Cap the log document so long sessions don't grow it without bound.
+        self._log.document().setMaximumBlockCount(5000)
         self._log.setMinimumHeight(140)
         self._log.setMaximumHeight(320)
         self._log.setPlaceholderText(

@@ -57,13 +57,16 @@ def get_device_mode() -> str:
     # ── Strategy 3: Runtime GPU check via PaddlePaddle ────
     try:
         import paddle
+        if not hasattr(paddle, 'device'):
+            # Old paddle versions without the device module cannot report
+            # GPU availability here; treat as CPU-only.
+            return "cpu"
         if paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0:
             return "gpu"
-        if hasattr(paddle, 'device'):
-            if getattr(paddle.device, 'is_compiled_with_rocm', lambda: False)():
-                return "gpu"
-            if getattr(paddle.device, 'is_compiled_with_xpu', lambda: False)():
-                return "gpu"
+        if getattr(paddle.device, 'is_compiled_with_rocm', lambda: False)():
+            return "gpu"
+        if getattr(paddle.device, 'is_compiled_with_xpu', lambda: False)():
+            return "gpu"
     except Exception:
         pass
 
@@ -95,7 +98,8 @@ def process_images(input_dir, output_dir, visualize=False):
         f for f in os.listdir(input_dir)
         if f.lower().endswith(('.jpg', '.jpeg', '.png'))
     ])
-    frames_iter = (({}, os.path.join(input_dir, f), i, f"file_{i}") for i, f in enumerate(image_files))
+    # full_frame 标记：坐标已位于原图坐标系，coordinate_restorer 不做偏移。
+    frames_iter = (({"full_frame": True}, os.path.join(input_dir, f), i, f"file_{i}") for i, f in enumerate(image_files))
     for _ in run_batch_ocr(frames_iter, output_dir):
         pass
 

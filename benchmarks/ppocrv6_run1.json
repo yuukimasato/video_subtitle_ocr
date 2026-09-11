@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-08T01:50:43",
+  "video": {
+    "path": "benchmarks/test_video_subtitle.mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 30.0,
+    "total_frames": 450,
+    "duration_sec": 15.0
+  },
+  "config": {
+    "lang": "ch",
+    "model_tier": "auto",
+    "engine": "paddle",
+    "roi": [
+      0,
+      560,
+      1280,
+      160
+    ]
+  },
+  "environment": {
+    "python": "3.12.3",
+    "paddleocr": "3.7.0",
+    "rapidocr": "unknown"
+  },
+  "results": {
+    "ass_path": "benchmarks/test_video_subtitle.benchmark.ass",
+    "total_roi_frames": 450,
+    "ocr_calls": 95,
+    "frames_filled": 450,
+    "ocr_segment_count": 3,
+    "row_accuracy": 0.75,
+    "correct_rows": 3,
+    "total_rows": 4,
+    "avg_best_similarity": 0.75,
+    "per_subtitle": [
+      {
+        "text": "这是一段测试字幕",
+        "start": 0.5,
+        "end": 3.5,
+        "best_similarity": 1.0,
+        "matched_ocr": "这是一段测试字幕",
+        "correct": true
+      },
+      {
+        "text": "欢迎使用视频字幕OCR系统",
+        "start": 4.0,
+        "end": 7.0,
+        "best_similarity": 1.0,
+        "matched_ocr": "欢迎使用视频字幕OCR系统",
+        "correct": true
+      },
+      {
+        "text": "今天天气真不错",
+        "start": 7.5,
+        "end": 10.5,
+        "best_similarity": 0.0,
+        "matched_ocr": "",
+        "correct": false
+      },
+      {
+        "text": "我们一起去公园散步吧",
+        "start": 11.0,
+        "end": 14.5,
+        "best_similarity": 1.0,
+        "matched_ocr": "我们一起去公园散步吧",
+        "correct": true
+      }
+    ]
+  },
+  "stage_timings_sec": {
+    "extract_roi": 0.1768,
+    "ocr": 7.3843,
+    "restore": 0.0033,
+    "ass": 0.0022,
+    "total": 7.5667
+  },
+  "memory": {
+    "ru_maxrss_kb": 2124352
+  }
+}

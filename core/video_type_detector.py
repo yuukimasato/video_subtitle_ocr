@@ -21,6 +21,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 
+import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -210,9 +211,14 @@ def analyze_metadata(meta: VideoMetadata) -> Dict[str, float]:
     # ── Filename keyword cues ──
     name_lower = meta.file_name.lower()
     for preset_id, keywords in KEYWORD_MAP.items():
-        for kw in keywords:
-            if kw.lower() in name_lower:
-                scores[preset_id] += 0.30
+        bonus = 0.0
+        # Dedupe case-insensitively ("cam"/"CAM", "Live"/...) so one keyword
+        # cannot score the same preset twice.
+        for kw in dict.fromkeys(k.lower() for k in keywords):
+            if kw in name_lower:
+                bonus += 0.30
+        # Cap keyword evidence so scores stay within [0, 1] semantics.
+        scores[preset_id] += min(bonus, 0.60)
 
     return scores
 
@@ -277,7 +283,19 @@ def build_sample_frame_list(
         mid = (s + e) // 2
         samples.update([s, mid, e])
 
-    return sorted(samples)[:30]
+    ordered = sorted(samples)
+    if len(ordered) <= 30:
+        return ordered
+    # Evenly re-sample instead of truncating: plain [:30] would drop the tail
+    # (credits/ending frames) whenever sampling produced more than 30 indices.
+    picked: List[int] = []
+    seen = set()
+    for i in np.linspace(0, len(ordered) - 1, 30).round().astype(int):
+        v = int(ordered[int(i)])
+        if v not in seen:
+            seen.add(v)
+            picked.append(v)
+    return picked
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -287,19 +305,32 @@ def build_sample_frame_list(
 def extract_motion_features(
     sample_frames: List[np.ndarray],
     fps: float,
+    sample_span_sec: Optional[float] = None,
 ) -> Tuple[float, float, int, float, float]:
     """Extract motion features from sampled frames.
+
+    Args:
+        sample_frames: Decoded sample frames (in sampling order).
+        fps: Video frame rate.
+        sample_span_sec: Real time span the samples cover,
+            (last_index - first_index) / fps. Required for a meaningful
+            cut_frequency; falls back to a (much too small) heuristic when
+            unknown.
 
     Returns:
         (avg_motion, motion_variance, cut_count, cut_frequency, static_ratio)
     """
+    try:
+        from skimage.metrics import structural_similarity as ssim
+    except ImportError:
+        ssim = None
+
     motions = []
     cut_count = 0
     static_count = 0
 
     for i in range(1, len(sample_frames)):
         try:
-            import cv2
             gray_prev = cv2.cvtColor(sample_frames[i - 1], cv2.COLOR_BGR2GRAY)
             gray_curr = cv2.cvtColor(sample_frames[i], cv2.COLOR_BGR2GRAY)
 
@@ -310,21 +341,34 @@ def extract_motion_features(
             if motion < 0.005:
                 static_count += 1
 
-            # Scene cut: structural similarity drops sharply
-            try:
-                from skimage.metrics import structural_similarity as ssim
-                ssim_val = ssim(gray_prev, gray_curr)
-                if ssim_val < 0.3:
-                    cut_count += 1
-            except ImportError:
-                pass
+            # Scene cut: structural similarity drops sharply. SSIM at reduced
+            # resolution is plenty for cut detection and much faster than
+            # full-frame comparison.
+            if ssim is not None:
+                try:
+                    h, w = gray_prev.shape[:2]
+                    scale = min(1.0, 480.0 / max(h, w))
+                    if scale < 1.0:
+                        a = cv2.resize(gray_prev, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                        b = cv2.resize(gray_curr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                    else:
+                        a, b = gray_prev, gray_curr
+                    if ssim(a, b) < 0.3:
+                        cut_count += 1
+                except Exception:
+                    pass
         except Exception:
             continue
 
     avg_motion = float(np.mean(motions)) if motions else 0.0
     motion_var = float(np.var(motions)) if motions else 0.0
     static_ratio = static_count / max(1, len(motions))
-    est_duration = len(sample_frames) / max(fps, 0.001)
+    # Samples are spread across the video, NOT contiguous: dividing cut_count
+    # by len(samples)/fps massively overstates the frequency.
+    if sample_span_sec is not None and sample_span_sec > 0:
+        est_duration = sample_span_sec
+    else:
+        est_duration = len(sample_frames) / max(fps, 0.001)
     cut_freq = cut_count / max(1.0, est_duration)
 
     return avg_motion, motion_var, cut_count, cut_freq, static_ratio
@@ -378,10 +422,11 @@ def compute_multi_font_score(text_regions: List[np.ndarray]) -> float:
 
     for region in text_regions:
         try:
-            import cv2
             h, w = region.shape[:2]
             heights.append(h)
-            colors.append(float(region.mean(axis=(0, 1))))
+            # np.mean over all pixels/channels — region.mean(axis=(0, 1))
+            # returns a (3,) array for BGR input which float() would reject.
+            colors.append(float(np.mean(region)))
 
             gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
             _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -419,7 +464,6 @@ def detect_letterbox(sample_frames: List[np.ndarray]) -> Tuple[float, float]:
         return 0.0, 0.0
 
     try:
-        import cv2
         gray = cv2.cvtColor(sample_frames[0], cv2.COLOR_BGR2GRAY)
         h, w = gray.shape
 
@@ -661,10 +705,15 @@ class VideoTypeDetector:
         if not sample_indices:
             return features
 
-        # Decode sample frames
-        sample_frames = self._decode_frames(video_path, sample_indices)
+        # Decode sample frames (also report which indices actually decoded,
+        # so the real sampling span can be derived for cut_frequency).
+        sample_frames, decoded_indices = self._decode_frames(video_path, sample_indices)
         if not sample_frames:
             return features
+
+        sample_span_sec = None
+        if len(decoded_indices) >= 2 and meta.fps > 0:
+            sample_span_sec = (decoded_indices[-1] - decoded_indices[0]) / meta.fps
 
         # Motion features
         try:
@@ -674,7 +723,7 @@ class VideoTypeDetector:
                 features.scene_cut_count,
                 features.scene_cut_frequency,
                 features.static_ratio,
-            ) = extract_motion_features(sample_frames, meta.fps)
+            ) = extract_motion_features(sample_frames, meta.fps, sample_span_sec)
         except Exception as e:
             logger.debug(f"Motion feature extraction failed: {e}")
 
@@ -683,20 +732,20 @@ class VideoTypeDetector:
 
         # Color features from first frame
         try:
-            import cv2
             hsv = cv2.cvtColor(sample_frames[0], cv2.COLOR_BGR2HSV)
             features.dominant_color_saturation = float(hsv[:, :, 1].mean() / 255.0)
             # Color spread: variance of hue histogram
             hist = cv2.calcHist([hsv], [0], None, [32], [0, 180])
-            hist_norm = hist / hist.sum()
-            features.color_histogram_spread = float(1.0 - max(hist_norm)[0])
+            total = float(hist.sum())
+            if total > 0:
+                hist_norm = hist / total
+                features.color_histogram_spread = float(1.0 - max(hist_norm)[0])
             features.brightness_variance = float(hsv[:, :, 2].var() / (255.0 ** 2))
         except Exception as e:
             logger.debug(f"Color feature extraction failed: {e}")
 
         # Text density estimate (heuristic: edge density as proxy)
         try:
-            import cv2
             text_densities = []
             for frame in sample_frames[:10]:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -711,7 +760,6 @@ class VideoTypeDetector:
             font_scores = []
             for frame in sample_frames[:5]:
                 # Crude text region detection via MSER
-                import cv2
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 mser = cv2.MSER_create()
                 regions, _ = mser.detectRegions(gray)
@@ -731,28 +779,34 @@ class VideoTypeDetector:
 
     def _decode_frames(
         self, video_path: str, frame_indices: List[int]
-    ) -> List[np.ndarray]:
-        """Decode specific frames from a video."""
+    ) -> Tuple[List[np.ndarray], List[int]]:
+        """Decode specific frames from a video.
+
+        Returns (frames, decoded_indices): the decoded frames and the frame
+        indices they correspond to (only successfully decoded ones).
+        """
+        cap = cv2.VideoCapture(video_path)
         try:
-            import cv2
-            cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                return []
+                return [], []
 
             frames = []
+            decoded_indices = []
             for idx in frame_indices:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
                 if ret and frame is not None:
                     frames.append(frame)
+                    decoded_indices.append(int(idx))
                 if len(frames) >= 30:
                     break
 
-            cap.release()
-            return frames
+            return frames, decoded_indices
         except Exception as e:
             logger.warning(f"Frame decoding failed: {e}")
-            return []
+            return [], []
+        finally:
+            cap.release()
 
     # ── Layer 1: Deterministic rules ───────────────────────
 

@@ -27,6 +27,9 @@ class OCREngineInfo:
     supports_gpu: bool  # Whether GPU acceleration is supported
     supports_languages: List[str] = field(default_factory=lambda: ["ch", "en"])
     estimated_speed_rank: int = 3  # Estimated speed rank (1 = fastest)
+    # Model tiers selectable via engine options ("tiny"/"small"/"medium").
+    # Empty list = engine has no tier selection.
+    supported_model_tiers: List[str] = field(default_factory=list)
 
 
 class BaseOCREngine(ABC):
@@ -69,6 +72,26 @@ class BaseOCREngine(ABC):
             converted to unified format by normalize_result().
         """
         ...
+
+    def predict_batch(self, images: List[Any]) -> List[Any]:
+        """Batch prediction. Default: sequential single-image calls. Returns list aligned with inputs.
+
+        Engines with native batch support (e.g. PaddleOCR 3.x) should override
+        this method for better throughput. The returned list must be aligned
+        with the input list (one raw result per input image).
+        """
+        return [self.predict(img) for img in images]
+
+    def normalize_batch_result(self, raw_results: List[Any]) -> List[Dict[str, Any]]:
+        """Normalize a predict_batch() output into per-image unified dicts.
+
+        Default assumes PaddleOCR semantics: each element of ``raw_results``
+        is one per-image result object, wrapped in a single-element list for
+        normalize_result(). Engines whose predict() returns a different shape
+        (e.g. RapidOCR's flat list of [box, text, score] triples) must
+        override this method.
+        """
+        return [self.normalize_result([r]) for r in raw_results]
 
     @abstractmethod
     def normalize_result(self, raw_result: List[Any]) -> Dict[str, Any]:

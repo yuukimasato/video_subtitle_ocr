@@ -1,14 +1,22 @@
 # video-subtitle-ocr CPU requirements
 # Pinned to known-compatible versions for reliable installation.
 # PaddlePaddle 3.3.x has known regressions with oneDNN/new-executor/PIR;
-# we pin to 3.2.x which is the last stable release line.
+# we pin to 3.2.x (>=3.2.1 required by PP-OCRv6) which is the last stable line.
 PySide6>=6.5,<7.0
 numpy>=1.24,<3.0
-opencv-python>=4.8,<5.0
-paddlepaddle>=3.1,<3.3
-paddleocr>=2.10,<4.0
+# paddleocr>=3.7 -> paddlex[ocr] hard-pins opencv-contrib-python==4.10.0.84.
+# Keep ONLY this one opencv package (never mix with opencv-python, ABI clash).
+opencv-contrib-python==4.10.0.84
+paddlepaddle>=3.2.1,<3.3
+paddleocr>=3.7.0,<4.0
 scikit-image>=0.22
 Levenshtein>=0.25
 openai>=1.0
 tenacity>=8.0
 json-repair>=0.7
+# Optional: OS keychain storage for the saved API key (gnome-keyring/KWallet/
+# macOS Keychain/Windows Credential Manager). Without it the key is stored
+# encrypted in the local config with a user-only master key file:
+#   pip install keyring
+# Optional CPU fallback engine (PP-OCRv6 ONNX models, no PaddlePaddle needed):
+#   pip install "rapidocr>=3.9,<4.0" onnxruntime

@@ -32,7 +32,10 @@ def is_mainly_cjk(text: str, threshold: float = 0.5) -> bool:
         return False
 
     no_space_count = len(re.findall(_NO_SPACE_LANGUAGES, text))
-    total_chars = len("".join(text.split()))
+    # 分母只统计"文字类"字符（字母或 CJK 等），排除标点/数字/拉丁之外的符号，
+    # 避免混排文本低估 CJK 占比；若无文字类字符再退回非空白字符计数。
+    letter_total = sum(1 for ch in text if ch.isalpha())
+    total_chars = letter_total if letter_total > 0 else len("".join(text.split()))
 
     return no_space_count / total_chars > threshold if total_chars > 0 else False
 

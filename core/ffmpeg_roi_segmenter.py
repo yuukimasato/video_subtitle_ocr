@@ -52,9 +52,10 @@ def detect_static_segments_freezedetect(
     n = max(1e-6, float(noise))
 
     vf = f"crop={w}:{h}:{x}:{y},freezedetect=n={n}:d={d}"
-    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-i", video_path, "-vf", vf, "-an", "-f", "null", "-"]
+    cmd = ["ffmpeg", "-hide_banner", "-nostats"]
     if max_analyze_sec is not None and max_analyze_sec > 0:
-        cmd = ["ffmpeg", "-hide_banner", "-nostats", "-t", str(float(max_analyze_sec)), "-i", video_path, "-vf", vf, "-an", "-f", "null", "-"]
+        cmd += ["-t", str(float(max_analyze_sec))]
+    cmd += ["-i", video_path, "-vf", vf, "-an", "-f", "null", "-"]
 
     out = _run_ffmpeg(cmd)
     # Example lines:
@@ -62,9 +63,19 @@ def detect_static_segments_freezedetect(
     # [freezedetect @ ...] freeze_end: 13.678 | freeze_duration: 1.333
     start_re = re.compile(r"freeze_start:\s*([0-9]*\.?[0-9]+)")
     end_re = re.compile(r"freeze_end:\s*([0-9]*\.?[0-9]+)")
+    # Input #0 头部的 Duration: HH:MM:SS.xx 行即使 -nostats 也会输出，用于闭合结尾悬空段。
+    duration_re = re.compile(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.[0-9]+)?)")
 
     segments: List[Segment] = []
     current_start: Optional[float] = None
+    last_seen_t: Optional[float] = None
+    video_duration: Optional[float] = None
+    m = duration_re.search(out)
+    if m:
+        try:
+            video_duration = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+        except Exception:
+            video_duration = None
     for line in out.splitlines():
         m1 = start_re.search(line)
         if m1:
@@ -72,16 +83,31 @@ def detect_static_segments_freezedetect(
                 current_start = float(m1.group(1))
             except Exception:
                 current_start = None
+            if current_start is not None:
+                last_seen_t = current_start if last_seen_t is None else max(last_seen_t, current_start)
             continue
         m2 = end_re.search(line)
         if m2 and current_start is not None:
             try:
                 end_t = float(m2.group(1))
+                last_seen_t = end_t if last_seen_t is None else max(last_seen_t, end_t)
                 if end_t >= current_start:
                     segments.append(Segment(start_sec=current_start, end_sec=end_t))
             except Exception:
                 pass
             current_start = None
+
+    # 视频结尾仍处于 freeze 状态时，freezedetect 只输出 freeze_start 而无
+    # freeze_end，该段会丢失：这里把悬空的 current_start 与视频时长闭合；
+    # 拿不到时长时退回用输出中最后见到的时间戳闭合（可能低估段长）。
+    if current_start is not None:
+        end_t = video_duration if video_duration is not None else last_seen_t
+        if end_t is None or end_t < current_start:
+            end_t = current_start
+        if max_analyze_sec is not None and max_analyze_sec > 0:
+            end_t = min(end_t, float(max_analyze_sec))
+        segments.append(Segment(start_sec=current_start, end_sec=end_t))
+        current_start = None
 
     if segments:
         logger.info(

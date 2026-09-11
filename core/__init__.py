@@ -41,13 +41,6 @@ try:
 except ImportError:
     pass
 
-# Unlimited-OCR (high-speed alternative)
-try:
-    from core.ocr_engine_unlimited import UnlimitedOCREngine
-    _engine_classes.append(UnlimitedOCREngine)
-except ImportError:
-    pass
-
 for eng_cls in _engine_classes:
     try:
         OCREngineRegistry.register(eng_cls)

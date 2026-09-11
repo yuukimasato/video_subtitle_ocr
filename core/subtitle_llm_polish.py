@@ -13,8 +13,10 @@ import json
 import logging
 import re
 import ssl
+import threading
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -23,6 +25,11 @@ from core.llm_prompts import get_prompt
 from core.text_utils import count_words
 
 logger = logging.getLogger(__name__)
+
+# 批次间并发的默认上限。LLM 请求是 I/O 等待，纯串行会让第 4 步耗时随批次数
+# 线性放大；4 路并发配合 llm_client 的 429 有界退避在实际限速下仍能站稳。
+DEFAULT_MAX_CONCURRENT_REQUESTS = 4
+_MAX_CONCURRENT_REQUESTS_CAP = 8
 
 
 def _short_text(s: str, max_len: int = 96) -> str:
@@ -69,6 +76,8 @@ class SubtitlePolisherConfig:
     strategy_review_enabled: bool = False
     strategy_max_iterations: int = 3
     fragment_merge_enabled: bool = False
+    # 批次间并发请求数（润色/碎片合并共用）；1 = 退化为旧的串行行为。
+    max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS
     log_line: Optional[LogLine] = None
 
 
@@ -303,6 +312,7 @@ def _post_chat(
     基于 core.llm_client.call_llm，自动获得：
     - tenacity 指数退避重试（速率限制时最多 10 次）
     - base_url 自动规范化（补全 /v1 后缀）
+    - timeout_sec 作为单次请求的 HTTP 超时（透传给 openai 客户端）
     """
     response = call_llm(
         messages=messages,
@@ -310,6 +320,7 @@ def _post_chat(
         temperature=temperature,
         base_url=cfg.api_base_url,
         api_key=cfg.api_key,
+        timeout=timeout_sec,
     )
     return str(response.choices[0].message.content)
 
@@ -528,6 +539,111 @@ def _validate_polish_result(
     return True, ""
 
 
+def _polish_one_batch(
+    cfg: SubtitlePolisherConfig,
+    batch_idx: int,
+    total_batches: int,
+    start: int,
+    end: int,
+    batch_ids: List[str],
+    batch_objs: List[Dict[str, str]],
+    *,
+    cancel_check: CancelCheck,
+) -> Dict[str, str]:
+    """对单个批次执行 LLM → 验证 → 反馈 → 重试循环；失败时返回 {}（保留原文）。
+
+    线程安全性：只读 cfg，只写自身局部状态；log_line 的实现方（GUI 面板 /
+    Qt 信号 emit）需自行保证线程安全。
+    """
+    user_json = json.dumps({"lines": batch_objs}, ensure_ascii=False)
+    user_content = (
+        "请校对以下 JSON 对象中的 lines[].text。\n"
+        "输出严格为 JSON：`{\"lines\":[{\"id\":\"...\",\"text\":\"...\"}]}`，不要 Markdown。\n"
+        "对每条 text：若含 OCR 误输出的「反斜杠+小写 n/r/t」或多余换行/制表符，请改为句内单个半角空格；"
+        "「反斜杠+大写 N」的 ASS 硬换行可保留。\n\n"
+        + user_json
+    )
+    raw = ""
+    try:
+        # ── Agent Loop: LLM → 验证 → 反馈 → 重试（最多 MAX_POLISH_RETRIES 轮）──
+        mapping: Dict[str, str] = {}
+        last_error = ""
+        validated = False
+        # 构建初始消息（仅在首轮构造，后续追加反馈）
+        messages = [
+            {
+                "role": "system",
+                "content": get_prompt("subtitle_polish"),
+            },
+            {"role": "user", "content": user_content},
+        ]
+        for attempt in range(MAX_POLISH_RETRIES):
+            if cancel_check():
+                break
+
+            raw = _post_chat(
+                cfg, messages,
+                temperature=0.2,
+                timeout_sec=120.0,
+            )
+            mapping = _parse_polish_response(raw, batch_ids)
+
+            # 验证结果
+            is_valid, error_msg = _validate_polish_result(
+                batch_objs, mapping, batch_ids
+            )
+            if is_valid:
+                validated = True
+                break  # 验证通过
+
+            # 验证失败，追加 assistant 响应 + 反馈，下一轮重试
+            last_error = error_msg
+            messages.append({"role": "assistant", "content": raw})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Validation failed:\n{error_msg}\n"
+                        f"Please fix ALL errors and output ONLY a valid JSON "
+                        f'with the exact format: {{"lines":[{{"id":"...","text":"..."}}]}}'
+                    ),
+                }
+            )
+            logger.debug(
+                "[subtitle_llm_polish] batch [%s,%s) attempt %d/%d failed validation: %s",
+                start, end, attempt + 1, MAX_POLISH_RETRIES,
+                error_msg[:200],
+            )
+
+        if not validated and mapping:
+            # 重试耗尽仍未通过验证：丢弃未验证的输出，保留本批原文。
+            logger.warning(
+                "[subtitle_llm_polish] batch [%s,%s) failed validation after %d attempts; "
+                "keeping originals. Last error: %s",
+                start, end, MAX_POLISH_RETRIES, last_error[:200],
+            )
+            _cfg_log(
+                cfg,
+                f"[字幕润色] 批次 {batch_idx + 1}/{total_batches} 校验未通过"
+                f"（重试 {MAX_POLISH_RETRIES} 次后仍无效），已保留本批原文。",
+            )
+            mapping = {}
+
+        # ── 应用优化结果（写回 out 由调用方完成，避免多线程竞争同一列表）──
+        return mapping
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError, KeyError, RuntimeError) as e:
+        logger.warning(
+            "[subtitle_llm_polish] batch [%s,%s) failed (%s); keeping originals. raw_head=%s",
+            start,
+            end,
+            e,
+            (raw[:200] + "...") if len(raw) > 200 else raw,
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
+        _cfg_log(cfg, f"[字幕润色] 批次 {batch_idx + 1}/{total_batches} 请求失败，已保留本批原文：{e}")
+        return {}
+
+
 def polish_subtitle_texts(
     texts: Sequence[str],
     cfg: SubtitlePolisherConfig,
@@ -542,110 +658,100 @@ def polish_subtitle_texts(
     n = len(flat)
     out = list(flat)
     bs = max(1, min(int(cfg.batch_size), 120))
-    start = 0
-    batch_idx = 0
-    total_batches = (n + bs - 1) // bs
-    while start < n:
-        if cancel_check():
-            logger.info("[subtitle_llm_polish] cancelled; keeping remaining originals.")
-            break
+    batches: List[Tuple[int, int, List[str], List[Dict[str, str]]]] = []
+    for start in range(0, n, bs):
         end = min(start + bs, n)
         batch_ids = [str(i) for i in range(start, end)]
         batch_objs = [{"id": batch_ids[j - start], "text": flat[j]} for j in range(start, end)]
-        user_json = json.dumps({"lines": batch_objs}, ensure_ascii=False)
-        user_content = (
-            "请校对以下 JSON 对象中的 lines[].text。\n"
-            "输出严格为 JSON：`{\"lines\":[{\"id\":\"...\",\"text\":\"...\"}]}`，不要 Markdown。\n"
-            "对每条 text：若含 OCR 误输出的「反斜杠+小写 n/r/t」或多余换行/制表符，请改为句内单个半角空格；"
-            "「反斜杠+大写 N」的 ASS 硬换行可保留。\n\n"
-            + user_json
+        batches.append((start, end, batch_ids, batch_objs))
+    total_batches = len(batches)
+    if not total_batches:
+        return out
+
+    max_workers = max(
+        1,
+        min(
+            int(getattr(cfg, "max_concurrent_requests", DEFAULT_MAX_CONCURRENT_REQUESTS) or 1),
+            _MAX_CONCURRENT_REQUESTS_CAP,
+            total_batches,
+        ),
+    )
+
+    def _apply_and_log(
+        start: int,
+        end: int,
+        batch_idx: int,
+        batch_ids: List[str],
+        mapping: Dict[str, str],
+    ) -> None:
+        for lid in batch_ids:
+            if lid in mapping:
+                out[int(lid)] = mapping[lid]
+        n_changed = 0
+        samples: List[str] = []
+        for j in range(start, end):
+            if out[j] != flat[j]:
+                n_changed += 1
+                if len(samples) < 35:
+                    samples.append(
+                        f"  行[{j}] 「{_short_text(flat[j], 88)}」→「{_short_text(out[j], 88)}」"
+                    )
+        _cfg_log(
+            cfg,
+            f"[字幕润色] 批次 {batch_idx + 1}/{total_batches}（行 {start}–{end - 1}），"
+            f"共 {n_changed} 条与 OCR 原文不同。",
         )
-        raw = ""
-        try:
-            # ── Agent Loop: LLM → 验证 → 反馈 → 重试（最多 MAX_POLISH_RETRIES 轮）──
-            mapping: Dict[str, str] = {}
-            last_error = ""
-            # 构建初始消息（仅在首轮构造，后续追加反馈）
-            messages = [
-                {
-                    "role": "system",
-                    "content": get_prompt("subtitle_polish"),
-                },
-                {"role": "user", "content": user_content},
-            ]
-            for attempt in range(MAX_POLISH_RETRIES):
-                if cancel_check():
-                    break
+        for line in samples:
+            _cfg_log(cfg, line)
+        if n_changed == 0:
+            _cfg_log(cfg, "  （本批模型输出与原文一致，无字面变更。）")
 
-                raw = _post_chat(
-                    cfg, messages,
-                    temperature=0.2,
-                    timeout_sec=120.0,
-                )
-                mapping = _parse_polish_response(raw, batch_ids)
+    completed_lock = threading.Lock()
+    completed_count = 0
 
-                # 验证结果
-                is_valid, error_msg = _validate_polish_result(
-                    batch_objs, mapping, batch_ids
-                )
-                if is_valid:
-                    break  # 验证通过
-
-                # 验证失败，追加 assistant 响应 + 反馈，下一轮重试
-                last_error = error_msg
-                messages.append({"role": "assistant", "content": raw})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Validation failed:\n{error_msg}\n"
-                            f"Please fix ALL errors and output ONLY a valid JSON "
-                            f'with the exact format: {{"lines":[{{"id":"...","text":"..."}}]}}'
-                        ),
-                    }
-                )
-                logger.debug(
-                    "[subtitle_llm_polish] batch [%s,%s) attempt %d/%d failed validation: %s",
-                    start, end, attempt + 1, MAX_POLISH_RETRIES,
-                    error_msg[:200],
-                )
-
-            # ── 应用优化结果 ──
-            for lid in batch_ids:
-                if lid in mapping:
-                    out[int(lid)] = mapping[lid]
-            n_changed = 0
-            samples: List[str] = []
-            for j in range(start, end):
-                if out[j] != flat[j]:
-                    n_changed += 1
-                    if len(samples) < 35:
-                        samples.append(
-                            f"  行[{j}] 「{_short_text(flat[j], 88)}」→「{_short_text(out[j], 88)}」"
-                        )
-            _cfg_log(
-                cfg,
-                f"[字幕润色] 批次 {batch_idx + 1}/{total_batches}（行 {start}–{end - 1}），"
-                f"共 {n_changed} 条与 OCR 原文不同。",
-            )
-            for line in samples:
-                _cfg_log(cfg, line)
-            if n_changed == 0:
-                _cfg_log(cfg, "  （本批模型输出与原文一致，无字面变更。）")
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError, KeyError, RuntimeError) as e:
-            logger.warning(
-                "[subtitle_llm_polish] batch [%s,%s) failed (%s); keeping originals. raw_head=%s",
-                start,
-                end,
-                e,
-                (raw[:200] + "...") if len(raw) > 200 else raw,
-                exc_info=logger.isEnabledFor(logging.DEBUG),
-            )
-            _cfg_log(cfg, f"[字幕润色] 批次 {batch_idx + 1}/{total_batches} 请求失败，已保留本批原文：{e}")
-        batch_idx += 1
+    def _report_done() -> None:
+        nonlocal completed_count
+        with completed_lock:
+            completed_count += 1
+            idx = completed_count
         if on_batch_done:
-            on_batch_done(batch_idx, total_batches)
-        start = end
+            on_batch_done(idx, total_batches)
+
+    if max_workers <= 1:
+        for idx, (start, end, batch_ids, batch_objs) in enumerate(batches):
+            if cancel_check():
+                logger.info("[subtitle_llm_polish] cancelled; keeping remaining originals.")
+                break
+            mapping = _polish_one_batch(
+                cfg, idx, total_batches, start, end, batch_ids, batch_objs,
+                cancel_check=cancel_check,
+            )
+            _apply_and_log(start, end, idx, batch_ids, mapping)
+            _report_done()
+        return out
+
+    # 并发路径：批次之间相互独立（各自写回互不重叠的下标区间）。
+    logger.info(
+        "[subtitle_llm_polish] polishing %d lines in %d batches (concurrency=%d).",
+        n, total_batches, max_workers,
+    )
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for idx, (start, end, batch_ids, batch_objs) in enumerate(batches):
+            if cancel_check():
+                logger.info("[subtitle_llm_polish] cancelled; keeping remaining originals.")
+                break
+            fut = executor.submit(
+                _polish_one_batch,
+                cfg, idx, total_batches, start, end, batch_ids, batch_objs,
+                cancel_check=cancel_check,
+            )
+            futures[fut] = (idx, start, end, batch_ids)
+        for fut in as_completed(futures):
+            idx, start, end, batch_ids = futures[fut]
+            mapping = fut.result()
+            _apply_and_log(start, end, idx, batch_ids, mapping)
+            _report_done()
     return out
 
 

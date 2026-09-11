@@ -1,6 +1,16 @@
 # i18n/translator.py
+import logging
 import os
 from PySide6.QtCore import QTranslator, QCoreApplication, QLocale
+
+logger = logging.getLogger(__name__)
+
+# 界面源文案为中文；以下 locale 直接使用源文案，无需加载 .qm 文件。
+# 其余 locale 按 app_<lang>.qm 查找翻译（当前提供 app_ja_JP.qm / app_zh_CN.qm），
+# 未提供翻译的 locale 同样回退到中文源文案。
+_ENGLISH_LOCALES = frozenset({"en", "en_US", "en_GB", "en_CA", "en_AU", "en_NZ"})
+
+
 class Translator:
     def __init__(self):
         self.translator = QTranslator(QCoreApplication.instance())
@@ -11,28 +21,20 @@ class Translator:
         """
         app = QCoreApplication.instance()
         if not app:
-            print("Error: QApplication instance not found.")
+            logger.error("Translator: QApplication instance not found.")
             return
         app.removeTranslator(self.translator)
         i18n_dir = os.path.dirname(os.path.abspath(__file__))
         
-        if not lang or lang.startswith("en"):
-            print("Translator: Using default language (English).")
+        if not lang or lang in _ENGLISH_LOCALES:
+            logger.info("Translator: Using default language (English).")
             return
         qm_file = os.path.join(i18n_dir, f"app_{lang}.qm")
         if os.path.exists(qm_file):
             if self.translator.load(qm_file):
                 app.installTranslator(self.translator)
-                print(f"Translator: Successfully loaded and installed '{qm_file}'")
+                logger.info("Translator: Successfully loaded and installed '%s'", qm_file)
             else:
-                print(f"Error: Failed to load translation file '{qm_file}'")
+                logger.error("Translator: Failed to load translation file '%s'", qm_file)
         else:
-            print(f"Warning: Translation file not found '{qm_file}'")
-_translator_instance = None
-def initialize_translator():
-    global _translator_instance
-    if _translator_instance is None:
-        _translator_instance = Translator()
-    return _translator_instance
-def _t(context: str, text: str, disambiguation: str = None, n: int = -1) -> str:
-    return QCoreApplication.translate(context, text, disambiguation, n)
+            logger.warning("Translator: Translation file not found '%s'", qm_file)

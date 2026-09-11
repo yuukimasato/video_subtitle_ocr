@@ -80,10 +80,22 @@ class TextSourceClassifier:
         min_confidence: float = 0.35,
         llm_config: Optional[dict] = None,
     ):
-        self.weights = weights or dict(self.DEFAULT_WEIGHTS)
+        # 构造时把权重归一化为和为 1，避免自定义权重使加权和偏离 [-1, 1]。
+        self.weights = dict(weights) if weights else dict(self.DEFAULT_WEIGHTS)
+        try:
+            _total = sum(float(v) for v in self.weights.values())
+        except (TypeError, ValueError):
+            _total = 0.0
+        if _total > 0:
+            self.weights = {k: float(v) / _total for k, v in self.weights.items()}
+        else:
+            self.weights = dict(self.DEFAULT_WEIGHTS)
         self.classification_bias = classification_bias
         self.min_confidence = min_confidence
         self.llm_config = llm_config
+        # LLM 辅助判定按 (文本, 纵向位置) 去重：同一条边界文本每帧出现都会
+        # 触发低置信度路径，否则一部视频会发出数千次内容相同的 API 请求。
+        self._llm_cache: Dict[Tuple[str, int], Optional[Tuple[TextSource, float]]] = {}
 
     def classify(
         self,
@@ -147,12 +159,25 @@ class TextSourceClassifier:
 
         # Layer 5: LLM assist (optional, triggered when rule confidence is low)
         if confidence < 0.7 and self.llm_config:
-            llm_result = self._llm_assist(features, context)
+            cache_key = (
+                self._normalize_for_cache(str(getattr(features, "raw_text", "") or "")),
+                int(round(features.relative_y * 10)),
+            )
+            if cache_key in self._llm_cache:
+                llm_result = self._llm_cache[cache_key]
+            else:
+                llm_result = self._llm_assist(features, context)
+                self._llm_cache[cache_key] = llm_result
             if llm_result is not None:
                 llm_source, llm_conf = llm_result
                 source = llm_source
                 confidence = llm_conf
                 reasons.append("LLM 辅助判定")
+
+        # 应用最小置信度阈值：最终结论置信度低于 self.min_confidence 时
+        # 视为不可判定，返回 UNKNOWN（保留原置信度数值）。
+        if confidence < self.min_confidence:
+            source = TextSource.UNKNOWN
 
         return ClassificationResult(
             source=source,
@@ -160,6 +185,11 @@ class TextSourceClassifier:
             rationale="; ".join(reasons) if reasons else "综合特征判定",
             feature_scores=scores,
         )
+
+    @staticmethod
+    def _normalize_for_cache(text: str) -> str:
+        """LLM 缓存键的文本归一化：压缩空白，忽略首尾差异。"""
+        return " ".join(text.split())
 
     def _llm_assist(
         self, features: TextRegionFeatures,
@@ -197,12 +227,12 @@ class TextSourceClassifier:
         nearby_texts = []
         if context:
             for f in context[:5]:  # Limit to 5 nearby texts
-                nearby_texts.append(
-                    getattr(f, 'text_length', 0) > 0
-                    and f"text_len={f.text_length}"
-                    or ""
-                )
-            nearby_texts = [t for t in nearby_texts if t]
+                raw = str(getattr(f, "raw_text", "") or "").strip()
+                if raw:
+                    # 优先提供截断的原始文本（前 40 字符），比纯长度信息更有语义价值。
+                    nearby_texts.append(raw[:40])
+                elif getattr(f, "text_length", 0) > 0:
+                    nearby_texts.append(f"text_len={f.text_length}")
 
         llm_context = {
             "position": position_desc,

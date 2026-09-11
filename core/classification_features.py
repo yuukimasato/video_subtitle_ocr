@@ -189,24 +189,28 @@ def compute_contrast_with_background(text_region: np.ndarray) -> float:
     if h < 6 or w < 6:
         return 0.0
 
-    # Interior (center 60%)
+    # Interior (center ~60%)
     cy, cx = h // 2, w // 2
-    inner_h, inner_w = max(1, h // 3), max(1, w // 3)
+    inner_h, inner_w = max(1, int(h * 0.3)), max(1, int(w * 0.3))
     inner = gray[cy - inner_h:cy + inner_h, cx - inner_w:cx + inner_w]
 
-    # Border (outer 20% on each side)
+    # Border (outer ~10% on each side); 图很小时收缩 border，
+    # 保证 border 与内部区域不重叠（border_h + inner_h <= 中心行）。
     border_h, border_w = max(1, h // 10), max(1, w // 10)
+    border_h = min(border_h, max(1, cy - inner_h))
+    border_w = min(border_w, max(1, cx - inner_w))
     top = gray[0:border_h, :]
     bottom = gray[-border_h:, :]
-    left = gray[:, 0:border_w]
-    right = gray[:, -border_w:]
+    # 左右条带排除上下 border 已覆盖的角部行，避免四角像素被重复计入均值。
+    left = gray[border_h:h - border_h, 0:border_w]
+    right = gray[border_h:h - border_h, -border_w:]
 
     inner_mean = inner.mean()
     border_vals = np.concatenate([
-        top.flatten(), bottom.flatten(),
-        left.flatten(), right.flatten(),
+        top.ravel(), bottom.ravel(),
+        left.ravel(), right.ravel(),
     ])
-    border_mean = border_vals.mean()
+    border_mean = border_vals.mean() if border_vals.size else inner_mean
 
     contrast = abs(inner_mean - border_mean) / 255.0
     return float(min(1.0, contrast))

@@ -23,16 +23,36 @@ logger = logging.getLogger(__name__)
 _engine_instance: Optional[BaseOCREngine] = None
 _engine_lock = threading.Lock()
 _current_engine_id: Optional[str] = None
+# Engine initialization options saved by set_engine() and applied (as kwargs)
+# in get_engine() when the engine instance is lazily initialized.
+_engine_options: Dict[str, Any] = {}
 
 
-def set_engine(engine_id: str) -> None:
+def set_engine(engine_id: str, options: Optional[Dict[str, Any]] = None) -> None:
     """Switch the current OCR engine.
 
     The new engine will be lazily initialized on the next call to get_engine().
     Any existing engine instance is cleaned up immediately.
+
+    Idempotent: requesting the engine that is already active (same id and
+    options) keeps the initialized instance instead of tearing it down —
+    OcrOptimizer calls this on its first OCR call, and reloading the model
+    for every optimizer instance would dominate runtime.
+
+    Args:
+        engine_id: Engine identifier from the registry (e.g. "paddle", "rapid").
+        options: Engine initialization options (e.g. lang, model_tier), passed
+            as kwargs to the engine's initialize(). None clears saved options.
     """
-    global _current_engine_id, _engine_instance
+    global _current_engine_id, _engine_instance, _engine_options
+    new_options = dict(options) if options else {}
     with _engine_lock:
+        if (
+            _engine_instance is not None
+            and _current_engine_id == engine_id
+            and _engine_options == new_options
+        ):
+            return
         if _engine_instance is not None:
             try:
                 _engine_instance.cleanup()
@@ -40,7 +60,8 @@ def set_engine(engine_id: str) -> None:
                 logger.warning(f"Error cleaning up OCR engine: {e}")
             _engine_instance = None
         _current_engine_id = engine_id
-        logger.info(f"OCR engine switched to: {engine_id}")
+        _engine_options = new_options
+        logger.info(f"OCR engine switched to: {engine_id} (options={_engine_options})")
 
 
 def get_engine() -> BaseOCREngine:
@@ -72,8 +93,19 @@ def get_engine() -> BaseOCREngine:
                 f"Available engines: {[e.engine_id for e in OCREngineRegistry.list_available()]}"
             )
 
-        _engine_instance = engine_cls()
-        _engine_instance.initialize()
+        engine = engine_cls()
+        try:
+            engine.initialize(**_engine_options)
+        except Exception:
+            # Never leave a half-initialized singleton behind: the next
+            # get_engine() must retry initialization instead of returning a
+            # broken instance forever.
+            try:
+                engine.cleanup()
+            except Exception:
+                pass
+            raise
+        _engine_instance = engine
         return _engine_instance
 
 
@@ -117,7 +149,10 @@ def run_batch_ocr(
         img_input = frame_info[1]
         frame_num = frame_info[2]
         roi_identifier = frame_info[3]
-        frame_time_sec = float(frame_info[4]) if len(frame_info) >= 5 and frame_info[4] is not None else 0.0
+        try:
+            frame_time_sec = float(frame_info[4]) if len(frame_info) >= 5 and frame_info[4] is not None else 0.0
+        except (TypeError, ValueError):
+            frame_time_sec = 0.0
 
         # Run OCR through the current engine
         raw_result = engine.predict(img_input)
@@ -137,34 +172,28 @@ def run_batch_ocr(
             except Exception as e:
                 logger.warning(f"Failed to save OCR JSON to {json_path}: {e}")
 
-        # Optional visualization
+        # Optional visualization (reuses the raw predict result — no second
+        # OCR pass, no lossy JPEG round-trip)
         if visualize:
-            _save_visualization(engine, img_input, ocr_output_dir or work_dir,
-                                frame_num, roi_identifier)
+            _save_visualization(raw_result, work_dir, frame_num, roi_identifier)
 
         yield (roi_entry_orig, ocr_data_dict, frame_num, roi_identifier, frame_time_sec)
 
 
-def _save_visualization(engine, img_input, output_dir, frame_num, roi_identifier):
-    """Save OCR visualization if the engine supports it."""
+def _save_visualization(raw_result, work_dir: str, frame_num: int, roi_identifier: str):
+    """Save OCR visualization from an existing predict() result, if the engine
+    supports it (PaddleOCR-style results expose save_to_img)."""
     try:
-        import tempfile
-
-        if isinstance(img_input, str):
-            img_path = img_input
-        else:
-            import cv2
-            temp_dir = tempfile.mkdtemp()
-            img_path = os.path.join(temp_dir, f"temp_viz_{frame_num}_{roi_identifier}.jpg")
-            cv2.imwrite(img_path, img_input)
-
-        viz_dir = os.path.join(output_dir, "..", "ocr_visualization")
+        if not hasattr(raw_result, "__iter__"):
+            return
+        viz_dir = os.path.join(work_dir, "ocr_visualization")
         os.makedirs(viz_dir, exist_ok=True)
-
-        result = engine.predict(img_path)
-        if hasattr(result, '__iter__'):
-            for res in result:
-                if hasattr(res, 'save_to_img'):
-                    res.save_to_img(viz_dir)
+        saved = False
+        for res in raw_result:
+            if hasattr(res, "save_to_img"):
+                res.save_to_img(viz_dir)
+                saved = True
+        if not saved:
+            logger.debug(f"No visualization produced for frame {frame_num} ({roi_identifier})")
     except Exception as e:
         logger.debug(f"Visualization skipped: {e}")

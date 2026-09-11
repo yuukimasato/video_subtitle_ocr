@@ -13,8 +13,14 @@ from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
+    stop_after_delay,
     wait_random_exponential,
 )
+
+# Bounded backoff: max 10 attempts AND max 5 minutes total wait; after that the
+# caller degrades gracefully (e.g. keeps unpolished subtitles) instead of hanging.
+_LLM_RETRY_MAX_ATTEMPTS = 10
+_LLM_RETRY_TOTAL_DELAY_SECONDS = 300
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -45,6 +51,7 @@ def normalize_base_url(base_url: str) -> str:
 def get_llm_client(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> OpenAI:
     """获取 LLM 客户端实例。
 
@@ -53,6 +60,7 @@ def get_llm_client(
     Args:
         base_url: API 基础 URL（可选，默认读取 OPENAI_BASE_URL）
         api_key: API 密钥（可选，默认读取 OPENAI_API_KEY）
+        timeout: 请求超时秒数（可选；None/<=0 使用 openai 库默认值）
 
     Returns:
         OpenAI 客户端实例
@@ -68,14 +76,17 @@ def get_llm_client(
 
     base_url = normalize_base_url(base_url)
 
-    return OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    client_kwargs: dict = {
+        "base_url": base_url,
+        "api_key": api_key,
+    }
+    if timeout is not None and timeout > 0:
+        client_kwargs["timeout"] = float(timeout)
+    return OpenAI(**client_kwargs)
 
 
 @retry(
-    stop=stop_after_attempt(10),
+    stop=(stop_after_attempt(_LLM_RETRY_MAX_ATTEMPTS) | stop_after_delay(_LLM_RETRY_TOTAL_DELAY_SECONDS)),
     wait=wait_random_exponential(multiplier=1, min=5, max=60),
     retry=retry_if_exception_type(openai.RateLimitError),
 )
@@ -84,9 +95,12 @@ def _call_llm_api(
     messages: List[dict],
     model: str,
     temperature: float = 1,
+    timeout: Optional[float] = None,
     **kwargs: Any,
 ) -> Any:
     """实际调用 LLM API（带速率限制重试）"""
+    if timeout is not None and timeout > 0:
+        kwargs["timeout"] = float(timeout)
     response = client.chat.completions.create(
         model=model,
         messages=messages,  # pyright: ignore[reportArgumentType]
@@ -103,6 +117,7 @@ def call_llm(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     client: Optional[OpenAI] = None,
+    timeout: Optional[float] = None,
     **kwargs: Any,
 ) -> Any:
     """调用 LLM API。
@@ -114,6 +129,7 @@ def call_llm(
         base_url: API 基础 URL（可选）
         api_key: API 密钥（可选）
         client: 预初始化的 OpenAI 客户端（可选，优先级最高）
+        timeout: 单次请求超时秒数（可选；None/<=0 使用 openai 库默认值）
         **kwargs: 传递给 API 的其他参数
 
     Returns:
@@ -123,9 +139,9 @@ def call_llm(
         ValueError: API 返回空响应
     """
     if client is None:
-        client = get_llm_client(base_url=base_url, api_key=api_key)
+        client = get_llm_client(base_url=base_url, api_key=api_key, timeout=timeout)
 
-    response = _call_llm_api(client, messages, model, temperature, **kwargs)
+    response = _call_llm_api(client, messages, model, temperature, timeout=timeout, **kwargs)
 
     if not (
         response

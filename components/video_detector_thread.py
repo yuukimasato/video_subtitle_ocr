@@ -8,9 +8,14 @@ Emits the DetectionResult when complete.
 
 from __future__ import annotations
 
-from typing import List, Dict, Optional
+import logging
+import os
+
+from typing import List, Dict
 
 from PySide6.QtCore import QThread, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class VideoDetectorThread(QThread):
@@ -18,7 +23,7 @@ class VideoDetectorThread(QThread):
 
     Usage:
         thread = VideoDetectorThread(video_path=..., roi_data=..., ...)
-        thread.finished.connect(on_done)
+        thread.detection_done.connect(on_done)
         thread.start()
     """
 
@@ -47,15 +52,25 @@ class VideoDetectorThread(QThread):
 
     def run(self) -> None:
         """Run detection in background thread."""
+        if self._fps <= 0 or self._total_frames <= 0:
+            # Degenerate metadata (broken container / fps probe failure) would
+            # otherwise produce absurd durations that poison every rule.
+            self.detection_error.emit(
+                f"invalid video metadata (fps={self._fps}, frames={self._total_frames})"
+            )
+            return
         try:
             from core.video_type_detector import VideoTypeDetector, VideoMetadata
 
-            # Build metadata
-            import os
+            try:
+                file_size_mb = os.path.getsize(self._video_path) / (1024.0 * 1024.0)
+            except OSError:
+                file_size_mb = 0.0
+
             meta = VideoMetadata(
                 file_path=self._video_path,
                 file_name=os.path.basename(self._video_path),
-                duration_sec=self._total_frames / max(self._fps, 0.001),
+                duration_sec=self._total_frames / self._fps,
                 width=self._video_width,
                 height=self._video_height,
                 fps=self._fps,
@@ -64,7 +79,7 @@ class VideoDetectorThread(QThread):
                 has_audio=True,  # Best-effort; audio check requires ffprobe
                 audio_stream_count=1,
                 codec_name="",
-                file_size_mb=0.0,
+                file_size_mb=file_size_mb,
                 file_name_keywords=[],
             )
 
@@ -77,4 +92,5 @@ class VideoDetectorThread(QThread):
             self.detection_done.emit(result)
 
         except Exception as e:
+            logger.exception("Video type auto-detection failed")
             self.detection_error.emit(str(e))

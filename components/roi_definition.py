@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QColorDialog,
     QLabel,
+    QVBoxLayout,
+    QWidget,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Signal, QCoreApplication
@@ -109,6 +111,7 @@ class RoiDefinitionWidget(QGroupBox):
                 "淡入/淡出微调（在检测到文字边界附近逐帧 OCR，找更精确的起止时间）",
             )
         )
+        self.fade_in_refine_checkbox.setChecked(True)
         self.fade_in_refine_checkbox.setToolTip(
             QCoreApplication.translate(
                 "RoiDefinitionWidget",
@@ -116,6 +119,29 @@ class RoiDefinitionWidget(QGroupBox):
             )
         )
         roi_layout.addRow(self.fade_in_refine_checkbox)
+
+        self.pose_tags_checkbox = QCheckBox(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "写入画面位置标签（\\pos \\frz \\frx \\fry，多边形自动计算位置与倾角）",
+            )
+        )
+        self.pose_tags_checkbox.setChecked(False)
+        self.pose_tags_checkbox.setToolTip(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\\pos)与"
+                "长边倾角(\\frz)；\\frx/\\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。",
+            )
+        )
+        roi_layout.addRow(self.pose_tags_checkbox)
+
+        # Color-restrict details live in their own container so the form row
+        # collapses (hidden) until the checkbox is ticked — keeps the panel short.
+        self._color_details_widget = QWidget()
+        color_details_layout = QVBoxLayout(self._color_details_widget)
+        color_details_layout.setContentsMargins(0, 0, 0, 0)
+        color_details_layout.setSpacing(8)
 
         color_row = QHBoxLayout()
         color_row.setSpacing(8)
@@ -128,7 +154,7 @@ class RoiDefinitionWidget(QGroupBox):
         color_row.addWidget(self.text_color_btn)
         color_row.addWidget(self.outline_color_btn)
         color_row.addWidget(self.shadow_color_btn)
-        roi_layout.addRow(QCoreApplication.translate("RoiDefinitionWidget", "保留颜色："), color_row)
+        color_details_layout.addLayout(color_row)
 
         tol_row = QHBoxLayout()
         tol_row.setSpacing(8)
@@ -149,7 +175,9 @@ class RoiDefinitionWidget(QGroupBox):
         )
         tol_row.addWidget(self.color_morph_spin)
         tol_row.addStretch()
-        roi_layout.addRow(tol_row)
+        color_details_layout.addLayout(tol_row)
+
+        roi_layout.addRow(self._color_details_widget)
 
         self.add_roi_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "添加新 ROI"))
         self.update_roi_btn = QPushButton(QCoreApplication.translate("RoiDefinitionWidget", "更新选中 ROI"))
@@ -209,6 +237,7 @@ class RoiDefinitionWidget(QGroupBox):
         style_btn(self.shadow_color_btn, self._shadow_bgr)
 
     def _on_color_restrict_toggled(self, checked: bool) -> None:
+        self._color_details_widget.setVisible(bool(checked))
         for w in (
             self.text_color_btn,
             self.outline_color_btn,
@@ -253,6 +282,7 @@ class RoiDefinitionWidget(QGroupBox):
         self._on_color_restrict_toggled(enabled and self.color_restrict_checkbox.isChecked())
         self.blur_checkbox.setEnabled(enabled)
         self.fade_in_refine_checkbox.setEnabled(enabled)
+        self.pose_tags_checkbox.setEnabled(enabled)
 
     def get_color_restrict_dict(self) -> Optional[Dict]:
         if not self.color_restrict_checkbox.isChecked():
@@ -270,7 +300,9 @@ class RoiDefinitionWidget(QGroupBox):
         if not roi:
             self.color_restrict_checkbox.setChecked(False)
             self.blur_checkbox.setChecked(False)
-            self.fade_in_refine_checkbox.setChecked(False)
+            # Default for a NEW ROI: boundary refinement on (frame-accurate timing).
+            self.fade_in_refine_checkbox.setChecked(True)
+            self.pose_tags_checkbox.setChecked(False)
             self._text_bgr = [255, 255, 255]
             self._outline_bgr = [0, 0, 0]
             self._shadow_bgr = [0, 0, 0]
@@ -281,7 +313,10 @@ class RoiDefinitionWidget(QGroupBox):
             return
         spec = roi.get("color_restrict")
         self.blur_checkbox.setChecked(bool(roi.get("blur_enabled", False)))
-        self.fade_in_refine_checkbox.setChecked(bool(roi.get("fade_in_refine_enabled", False)))
+        # 缺省视为开启（与 pipeline 的边界精修默认一致），旧配置未写该字段时
+        # 复选框状态也反映实际行为。
+        self.fade_in_refine_checkbox.setChecked(bool(roi.get("fade_in_refine_enabled", True)))
+        self.pose_tags_checkbox.setChecked(bool(roi.get("write_pose_tags", False)))
         if not isinstance(spec, dict) or not spec.get("enabled"):
             self.color_restrict_checkbox.setChecked(False)
             tb = spec.get("text_bgr") if isinstance(spec, dict) else None

@@ -1,0 +1,190 @@
+# 测试指南
+
+本文档描述 `video-subtitle-ocr` 的测试分层、各层运行方法，以及最近一次
+完整测试的记录。新版本发布前建议按顺序完整跑一遍（另见
+[packaging.md](packaging.md) 的“版本发布检查清单”）。
+
+## 目录
+
+- [测试分层总览](#测试分层总览)
+- [1. 单元测试（离线 mock）](#1-单元测试离线-mock)
+- [2. CLI 端到端冒烟](#2-cli-端到端冒烟)
+- [3. GUI 离屏冒烟](#3-gui-离屏冒烟)
+- [4. 流水线回归基准](#4-流水线回归基准)
+- [5. DEB 安装/卸载测试（无 root）](#5-deb-安装卸载测试无-root)
+- [测试记录](#测试记录)
+
+## 测试分层总览
+
+| 层级 | 对象 | 依赖 | 耗时 |
+| --- | --- | --- | --- |
+| 单元测试 | `core/`、`utils/` 等纯逻辑 | 无需 OCR 引擎（离线 mock） | ~3 s |
+| CLI 冒烟 | `cli.py` 四段流水线 | OCR 引擎 + 测试视频 | ~10 s（paddle）/ ~100 s（rapid） |
+| GUI 冒烟 | `main_window/` 包界面装配 | PySide6（离屏平台） | ~5 s |
+| 回归基准 | 准确率 / 耗时 / 内存 | 同 CLI | ~10 s |
+| deb 安装测试 | 打包树 + 维护脚本 | dpkg（无 root 可用） | ~1 min（venv 预置） |
+
+测试统一使用项目虚拟环境 `.venv`（开发依赖见 `requirements-dev.txt`：
+`pytest`、`ruff`）。以下命令均在 `video_subtitle_ocr/` 目录下执行。
+
+## 1. 单元测试（离线 mock）
+
+```bash
+python -m pytest tests/ -v
+```
+
+覆盖要点：
+
+- `test_ocr_optimizer.py`：跳帧/投票/批处理回退/缓存淘汰/取消语义；
+- `test_llm_client_backoff.py`：LLM 调用的**有界退避**（最大次数、单次与
+  总等待上限、仅对 429/限流类错误重试，耗尽后返回可恢复错误）；
+- `test_vlm_refine.py`：VLM 复核的触发条件、JSON 修复与异常隔离；
+- `test_boundary_refine.py` / `test_pipeline_refine_integration.py`：
+  字幕边界精修（含真实视频集成用例）；
+- `test_subtitle_roi_suggester.py` / `test_roi_pose_tags.py`：
+  ROI 自动建议与 `\pos`/`\frz` 标签计算；
+- `test_engine_manager.py` / `test_engine_paddle_selection.py` /
+  `test_engine_rapid.py`：引擎注册、选择与档位路由。
+
+全部测试离线运行，不需要安装 PaddleOCR/RapidOCR，也不访问网络。
+个别标记为需要真实引擎的用例会在缺引擎时自动 `SKIP`。
+
+## 2. CLI 端到端冒烟
+
+使用 `benchmarks/test_video_subtitle.mp4`（含 4 条已知字幕，ground truth 见
+`benchmarks/gt.json`）：
+
+```bash
+python cli.py --version
+python cli.py benchmarks/test_video_subtitle.mp4 -o /tmp/out.ass
+grep '^Dialogue' /tmp/out.ass        # 应为 4 条，文本与 gt.json 一致
+
+# 备用引擎（ONNX，CPU 较慢约 100 s）：
+python cli.py benchmarks/test_video_subtitle.mp4 --engine rapid -o /tmp/out_rapid.ass
+
+# 引擎自动选择（auto → 已安装引擎中的注册表默认，通常为 paddle）：
+python cli.py benchmarks/test_video_subtitle.mp4 --engine auto -o /tmp/out_auto.ass
+```
+
+## 3. GUI 离屏冒烟
+
+无显示器环境验证主窗口可正常装配与显示：
+
+```bash
+QT_QPA_PLATFORM=offscreen python -c "
+import sys; sys.path.insert(0, '.')
+from PySide6.QtWidgets import QApplication
+from main_window import SubtitleOCRGUI
+app = QApplication([]); w = SubtitleOCRGUI(); w.show()
+print('GUI OK:', w.windowTitle())"
+```
+
+预期输出 `GUI OK: 视频字幕 OCR 工具`，无 Qt 插件/组件导入错误。
+
+## 4. 流水线回归基准
+
+对比历史基准报告，防止模型或流水线改动造成准确率/性能回退：
+
+```bash
+python scripts/benchmark_regression.py \
+    --video benchmarks/test_video_subtitle.mp4 \
+    --ground-truth benchmarks/gt.json \
+    --output my_run.json --baseline benchmarks/ppocrv6_run2.json
+```
+
+判定标准：行准确率不得低于基线；`ocr_calls` 显著变化需解释；
+耗时/内存变化在 ±20% 内视为噪声（CPU 机器波动较大）。
+
+## 5. DEB 安装/卸载测试（无 root）
+
+完整步骤见 [packaging.md](packaging.md) 的“安装测试（无 root 环境）”。
+要点：
+
+1. `./build_deb.sh` 构建后，在 staging 根中用
+   `dpkg --root=... --force-not-root --force-script-chrootless -i` 安装；
+2. **venv 预置加速**：postinst 会检测已存在的 venv 并跳过创建。将开发机
+   已装好依赖的 `.venv` 软链到 staging 根，可跳过数百 MB 的 wheel 下载，
+   只验证维护脚本与启动器逻辑：
+
+   ```bash
+   ln -s "$PWD/video_subtitle_ocr/.venv" \
+         /tmp/instroot/opt/apps/video_subtitle_ocr/.venv
+   ```
+
+   注意：这会跳过“全新 venv 创建 + 全量 pip 安装”路径；发布前如改动过
+   postinst 的安装逻辑，应至少在干净 staging 根上完整跑一次（联网）。
+3. 用 `VSO_APP_DIR` 指向 staging 根验证 `--version` 与真实视频 OCR；
+4. `dpkg -r` 验证 remove 保留 venv、`dpkg -P` 验证 purge 全部清除。
+
+## 测试记录
+
+### 2026-09-08 · v2.2.0 · Linux 7.0.0-30-generic x86_64 · Python 3.12.3
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **101 passed, 1 skipped**（3.0 s） |
+| CLI paddle 端到端 | 4/4 条字幕正确，450 帧 / 123 次 OCR 调用 / 9.5 s |
+| CLI rapid 端到端 | 可用，4 条字幕均识别（约 97 s，存在行切分差异，备用引擎预期内） |
+| CLI `--engine auto` | 可用（修复了 auto 未注册导致的 RuntimeError 后复测通过） |
+| GUI 离屏冒烟 | 通过（`GUI OK: 视频字幕 OCR 工具`） |
+| 回归基准 vs `ppocrv6_run2` | 行准确率 100%（持平）；ocr_calls 123（持平）；峰值内存 −230 MB；总耗时 +0.45 s（噪声范围） |
+| deb 构建 | `video-subtitle-ocr_2.2.0_all.deb` 构建成功，`dpkg-deb -I/-c` 校验通过 |
+| deb 安装测试 | rootless 安装（**全新 venv + 全量 pip 联网安装路径实测**，非软链加速）→ CLI `--version`/真实视频 OCR（5 条）→ GUI 离屏冒烟 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
+
+### 2026-09-10 · v2.3.0 · Linux 7.0.0-30-generic x86_64 · Python 3.12.3
+
+> 本版主要变化：`main_window.py` → `main_window/` 包、`core/subtitle_generator.py` →
+> `core/subtitle_generator/` 包（纯结构重构，零行为变化）；测试数量 101 → 170。
+
+| 项目 | 结果 |
+| --- | --- |
+| ruff | 未配置规则集，默认规则报 1135 条既有风格项（UP/BLE001 等），非缺陷；打包前不做批量改写 |
+| 单元测试 | **170 passed, 1 skipped**（3.7 s；skip 为需真实 OCR 引擎的用例） |
+| CLI paddle 端到端 | 5/5 条字幕正确（含淡入淡出用例），450 帧 / 8.1 s |
+| CLI rapid 端到端 | 可用，85 s，5 条字幕文本均可识别（6 行 Dialogue，存在行切分差异，备用引擎预期内） |
+| CLI `--version` | `video-subtitle-ocr-cli 2.3.0` |
+| GUI 离屏冒烟 | 通过（`GUI OK: 视频字幕 OCR 工具`） |
+| 回归基准 vs `ppocrv6_run2` | 行准确率 100%（持平）；头尾误差 avg 0.007/0.027 s、max 0.033 s（≤1 帧@30fps，达标）；ocr_calls 123→133、frames_filled 450→475（**边界精修默认启用**所致，非回退）；`restore` 时段 0.003→7.79 s 为基准脚本 t3~t4 把边界精修耗时计入所致（新功能工作量，非坐标还原回退）；总耗时 9.2→15.6 s 同源 |
+| deb 构建 | `video-subtitle-ocr_2.3.0_all.deb` 构建成功，`dpkg-deb -I/-c` 校验通过 |
+| deb 安装测试 | rootless 安装（**全新 venv + 全量 pip 联网安装路径实测**，非软链加速）→ CLI `--version`/真实视频 OCR（5 条）→ GUI 离屏冒烟 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
+
+### 2026-09-11 · v2.4.0 · Linux 7.0.0-30-generic x86_64 · Python 3.12.3
+
+> 本版主要变化：ROI 画布编辑（「编辑（拖动调整）」模式）+ 倾斜字幕带多边形 ROI 检测；
+> 测试数量 170 → 189。新增模型链路与多语言专项检查。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **189 passed, 1 skipped**（3.7 s；skip 为需真实 OCR 引擎的用例） |
+| CLI paddle 端到端 | 5/5 条字幕正确（含淡入淡出用例），8.2 s |
+| CLI rapid 端到端 | 可用，75.5 s，5 条字幕文本均可识别（6 行 Dialogue，行切分差异，备用引擎预期内） |
+| CLI `--engine auto` | 可用，7.7 s，5 条字幕正确 |
+| CLI `--version` | `video-subtitle-ocr-cli 2.4.0` |
+| GUI 离屏冒烟 | 通过（`GUI OK: 视频字幕 OCR 工具`） |
+| 回归基准 vs `ppocrv6_run2` | 行准确率 100%（5/5，持平）；头尾误差 avg 0.007/0.027 s、max 0.033 s（≤1 帧@30fps，达标）；ocr_calls 133、frames_filled 475（与 2.3.0 持平）；总耗时 15.3 s（噪声范围） |
+| 模型下载（专项） | 未缓存模型按需下载正常：`cyrillic_PP-OCRv5_mobile_rec`（俄语回落路径）、`PP-OCRv6_tiny_det/rec`、`PP-OCRv6_small_det/rec` 均自动下载（aistudio 404 后自动回落 modelscope 源）并完成推理 |
+| 模型切换（专项） | 语言路由（ch/en/japan→v6；korean/russian/arabic→v5 多语言）、档位切换（tiny/small/auto）、引擎切换（paddle↔rapid↔paddle）后推理均正常；探测图 2/2 行识别（置信度 ≥0.99） |
+| preload 脚本（专项） | `preload_models.py` 正常完成 ch/en 预下载流程 |
+| 多语言切换（专项） | 界面语言跟随系统 locale：`zh_CN`→中文（源文案）、`ja_JP`→日语（含 2.4.0 新增文案的翻译）、其余 locale（en_US/zh_TW/ko_KR）回退中文源文案；修复 deb 包描述对本地化语言的过度声明（实际 zh/ja） |
+| i18n | `pyside6-lupdate -tr-function-alias translate+=_tr` 刷新 .ts，补译新增文案后 `app_ja_JP.qm` 有效翻译 119 → 131 条，lrelease 编译并经 QTranslator 实测加载 |
+| deb 构建 | `video-subtitle-ocr_2.4.0_all.deb` 构建成功（5.3 MB，143 项），`dpkg-deb -I/-c` 校验通过，无 tests/.venv/__pycache__ 泄漏 |
+| deb 安装测试 | rootless 安装（**全新 venv + 全量依赖安装路径**，wheel 命中本机 pip 缓存；postinst 自 2.3.0 未改动）→ CLI `--version`（2.4.0）/真实视频 OCR（5 条）→ GUI 启动器与离屏冒烟 → 日语 .qm 从安装目录加载 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
+
+### 2026-09-12 · v2.4.2 · Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
+
+> 本版主要变化：CLI 默认底部条带由固定 160px 改为帧高 20%（≥160px，修复 1080p
+> 及以上分辨率双行字幕首行被条带截掉而整行丢失）；`cli.py __version__` 补齐与
+> DEBIAN/control 的同步（2.4.1 发布时遗漏，且 2.4.1 无测试记录，本记录一并覆盖）。
+> man 页同步默认 ROI 描述、版本头（2.2.0 → 2.4.2）并补齐 `--scan` 系列选项。
+> 测试数量 189 → 214（2.4.1 期间新增的用例）。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **214 passed, 1 skipped**（8.9 s；skip 为需真实 OCR 引擎的用例）；ruff 未装于 venv，跳过 |
+| CLI paddle 端到端 | 5/5 条字幕正确（含淡入淡出用例），8.0 s（仓库）/ 8.4 s（staging 安装） |
+| CLI `--version` | `video-subtitle-ocr-cli 2.4.2`（修复前报 2.4.0） |
+| 真实视频专项（1080p 动画，174 s / 4188 帧，含双行字幕） | 修复前（固定 160px）：49 条人工字幕中 2 条双行事件首行整行丢失、1 处乱码碎裂；修复后（216px）：49 条全部覆盖（双行以单事件 `\N` 输出，时间轴帧级吻合），0 缺失 0 多余；剩余 3 处外观级差异（尾部省略号 ×2、行首破折号 ×1）。CPU 全片耗时 129 s → 190 s（条带增高所致，预期内） |
+| GUI | 离屏冒烟通过；X11 真机启动渲染正常、加载视频/后台视频类型检测/closeEvent 线程收尾均正常退出 |
+| 回归基准 vs `ppocrv6_run2` | 行准确率 100%（5/5，持平）；头尾误差 avg 0.007/0.027 s、max 0.033 s（≤1 帧@30fps，达标）；ocr_calls 133、frames_filled 475（与 2.4.0 持平，基准用固定 ROI 不受默认条带影响）；总耗时 15.9 s（噪声范围） |
+| deb 构建 | `video-subtitle-ocr_2.4.2_all.deb` 构建成功（5.4 MB，145 项），`dpkg-deb -I/-c` 校验通过，无 tests/.venv/__pycache__ 泄漏；包内 cli.py 已含新默认条带与 2.4.2 版本号 |
+| deb 安装测试 | rootless 安装（**全新 venv + 全量 pip 联网安装路径实测**）→ CLI `--version`（2.4.2）/真实视频 OCR（5 条）→ GUI 离屏冒烟 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
