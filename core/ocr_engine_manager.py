@@ -114,6 +114,11 @@ def get_current_engine_id() -> str:
     return _current_engine_id or OCREngineRegistry.get_default()
 
 
+def is_engine_initialized() -> bool:
+    """True when an engine instance is already live in this process."""
+    return _engine_instance is not None
+
+
 def run_batch_ocr(
     frames_iter: Iterator[Tuple],
     work_dir: str,

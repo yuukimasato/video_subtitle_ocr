@@ -186,12 +186,26 @@ class OcrOptimizer:
         return (ratio < thr), curr_gray
 
     def _ensure_engine_selected(self) -> None:
-        # Switch engine on first OCR call if a specific engine is requested.
-        # "auto" (and the empty string) keep the registry default selection.
-        if self.ocr_engine_id not in ("", "auto") and not getattr(self, '_engine_switched', False):
-            from core.ocr_engine_manager import set_engine
-            set_engine(self.ocr_engine_id, self.engine_options)
+        # Apply the engine selection/options on the first OCR call. For
+        # ""/"auto" the already-selected (or registry-default) engine is
+        # kept — but when no engine has been initialized yet, the options
+        # (lang, model_tier, ...) must still reach initialize(): previously
+        # the empty id skipped set_engine entirely, silently pinning auto
+        # runs to the version-default (medium) models regardless of
+        # --model-tier. An engine deliberately initialized elsewhere (e.g.
+        # preload or a registered test double) always wins.
+        if getattr(self, '_engine_switched', False):
+            return
+        if self.ocr_engine_id in ("", "auto"):
+            from core import ocr_engine_manager as _mgr
+            if not _mgr.is_engine_initialized():
+                _mgr.set_engine(_mgr.get_current_engine_id() or "",
+                                self.engine_options)
             self._engine_switched = True
+            return
+        from core.ocr_engine_manager import set_engine
+        set_engine(self.ocr_engine_id, self.engine_options)
+        self._engine_switched = True
 
     def _run_single_ocr(self, frame_data: Tuple, use_cache: bool = True) -> Tuple:
         self._ensure_engine_selected()
