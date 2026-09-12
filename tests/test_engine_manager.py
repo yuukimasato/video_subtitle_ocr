@@ -143,3 +143,36 @@ def test_get_engine_raises_for_unknown_engine_id(monkeypatch):
     mgr.set_engine("does_not_exist")
     with pytest.raises(RuntimeError, match="does_not_exist"):
         mgr.get_engine()
+
+
+def test_build_standalone_engine_resolves_empty_id(monkeypatch):
+    """Empty engine id must resolve via the registry, not raise NameError.
+
+    build_standalone_engine used to call an undefined module-level
+    get_default(), so every parallel-refinement thread started with an
+    empty ctx.ocr_engine_id crashed (NameError) and the pipeline silently
+    fell back to serial refinement.
+    """
+    monkeypatch.setattr(OCREngineRegistry, "get_default", classmethod(lambda cls: "dummy"))
+    monkeypatch.setattr(OCREngineRegistry, "get", classmethod(lambda cls, engine_id: DummyEngine))
+    engine = mgr.build_standalone_engine("", {"lang": "zh"})
+    assert DummyEngine.registry_get_calls[-1] == "dummy"
+    assert engine.init_kwargs == {"lang": "zh"}
+    engine.cleanup()
+
+
+def test_build_standalone_engine_resolves_auto_id(monkeypatch):
+    """'auto' must resolve to the registry default like the singleton path."""
+    monkeypatch.setattr(OCREngineRegistry, "get_default", classmethod(lambda cls: "dummy"))
+    monkeypatch.setattr(OCREngineRegistry, "get", classmethod(lambda cls, engine_id: DummyEngine))
+    engine = mgr.build_standalone_engine("auto", None)
+    assert DummyEngine.registry_get_calls[-1] == "dummy"
+    engine.cleanup()
+
+
+def test_build_standalone_engine_keeps_explicit_id(monkeypatch):
+    """An explicit engine id is passed through unchanged."""
+    monkeypatch.setattr(OCREngineRegistry, "get", classmethod(lambda cls, engine_id: DummyEngine))
+    engine = mgr.build_standalone_engine("dummy", None)
+    assert DummyEngine.registry_get_calls[-1] == "dummy"
+    engine.cleanup()

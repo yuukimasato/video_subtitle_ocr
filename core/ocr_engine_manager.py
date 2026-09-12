@@ -127,7 +127,10 @@ def build_standalone_engine(engine_id: Optional[str], options: Optional[Dict[str
     singleton's ``_predict_lock``. Caller owns the instance and must call
     ``cleanup()`` when done.
     """
-    resolved = engine_id or get_default()
+    resolved = (
+        engine_id if engine_id and engine_id != "auto"
+        else OCREngineRegistry.get_default()
+    )
     if not resolved:
         raise RuntimeError(
             "No OCR engine available. Please install at least one OCR engine "

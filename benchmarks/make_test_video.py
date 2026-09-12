@@ -47,8 +47,35 @@ SEAM_HOSTILE_SUBTITLES = [
     {"start": 146.5, "end": 149.0, "text": "片尾淡入淡出", "fade": True},
 ]
 
-FONT = "/home/hope/.local/share/fonts/opentype/SourceHanSansSC-Regular.otf"
-FONT_BOLD = "/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/benchmarks/SourceHanSansSC-Regular.otf"
+def _find_cjk_font() -> str:
+    """Locate an installed CJK-capable font for ffmpeg drawtext."""
+    candidates = [
+        Path.home() / ".local/share/fonts/opentype/SourceHanSansSC-Regular.otf",
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    try:
+        out = subprocess.run(
+            ["fc-match", "-f", "%{file}", "sans:lang=zh"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            found = Path(out.stdout.strip())
+            if found.is_file():
+                return str(found)
+    except Exception:
+        pass
+    raise SystemExit(
+        "no CJK font found for drawtext; install Noto Sans CJK / WenQuanYi "
+        "or place SourceHanSansSC-Regular.otf under ~/.local/share/fonts"
+    )
+
+
+FONT = _find_cjk_font()
 
 
 def esc(text: str) -> str:
