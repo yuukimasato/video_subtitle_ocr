@@ -1844,42 +1844,42 @@
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="116"/>
+        <location filename="../core/ocr_optimizer.py" line="117"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation>无法获取帧 {} 的图像数据。输入类型：{}</translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="338"/>
+        <location filename="../core/ocr_optimizer.py" line="379"/>
         <source>Batch OCR prediction failed; falling back to per-frame OCR.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="374"/>
+        <location filename="../core/ocr_optimizer.py" line="415"/>
         <source>Sampled frames disagree on line count; keeping base frame OCR result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="489"/>
+        <location filename="../core/ocr_optimizer.py" line="530"/>
         <source>VLM refine returned {0} lines for {1} expected; keeping original result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="498"/>
+        <location filename="../core/ocr_optimizer.py" line="539"/>
         <source>VLM refine failed; keeping original voting result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="519"/>
+        <location filename="../core/ocr_optimizer.py" line="560"/>
         <source>OCR optimizer detected cancellation signal, terminating early.</source>
         <translation>OCR优化器检测到取消信号，提前终止。</translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="620"/>
+        <location filename="../core/ocr_optimizer.py" line="661"/>
         <source>Smart frame skipping: ROI &apos;{}&apos; from frame {} to {} has similar content, skipping {} OCR operations.</source>
         <translation>智能跳帧：抓取区域(ROI) &apos;{}&apos; 从帧 {} 到 {} 内容相似，跳过 {} 次OCR操作。</translation>
     </message>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="640"/>
+        <location filename="../core/ocr_optimizer.py" line="681"/>
         <source>Cleaning up cache.</source>
         <translation>正在清理缓存。</translation>
     </message>
@@ -1982,32 +1982,32 @@
         <translation>OCR流水线将以 {} 模式运行。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="90"/>
+        <location filename="../core/pipeline_stages.py" line="95"/>
         <source>Step 1/4: Calculating number of ROI frames to process...</source>
         <translation>步骤1/4：正在计算要处理的抓取区域(ROI)帧数...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="109"/>
+        <location filename="../core/pipeline_stages.py" line="114"/>
         <source>ROI extraction step did not produce any data. Please check ROI time and region settings.</source>
         <translation>抓取区域(ROI)提取步骤未产生任何数据。请检查抓取区域(ROI)时间与区域设置。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="113"/>
+        <location filename="../core/pipeline_stages.py" line="118"/>
         <source>Step 1/4: Calculation complete, total {} frames. Starting extraction...</source>
         <translation>步骤1/4：计算完成，共 {} 帧。正在开始提取...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="157"/>
+        <location filename="../core/pipeline_stages.py" line="162"/>
         <source>Streaming mode enabled (time_slice={}s). OCR will run during extraction to reduce peak memory.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="302"/>
+        <location filename="../core/pipeline_stages.py" line="307"/>
         <source>Step 1/4: Extracting ROI frames... ({}/{})</source>
         <translation>步骤1/4：正在提取抓取区域(ROI)帧... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="332"/>
+        <location filename="../core/pipeline_stages.py" line="337"/>
         <source>Step 1/4: ROI frame extraction complete. Total {} ROI frames.</source>
         <translation>步骤1/4：抓取区域(ROI)帧提取完成。共 {} 个抓取区域(ROI)帧。</translation>
     </message>
@@ -2016,7 +2016,7 @@
         <translation type="vanished">抓取区域(ROI)提取过程中出错：{}</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="148"/>
+        <location filename="../core/pipeline_stages.py" line="153"/>
         <source>Step 2/4: Starting intelligent OCR recognition... (0/{})</source>
         <translation>步骤2/4：正在开始智能OCR识别... (0/{})</translation>
     </message>
@@ -2025,85 +2025,90 @@
         <translation type="vanished">正在开始处理 {}，包含 {} 帧...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="225"/>
-        <location filename="../core/pipeline_stages.py" line="283"/>
-        <location filename="../core/pipeline_stages.py" line="394"/>
-        <location filename="../core/pipeline_stages.py" line="489"/>
+        <location filename="../core/pipeline_stages.py" line="230"/>
+        <location filename="../core/pipeline_stages.py" line="288"/>
+        <location filename="../core/pipeline_stages.py" line="399"/>
+        <location filename="../core/pipeline_stages.py" line="494"/>
         <source>Step 2/4: OCR recognition in progress... ({}/{})</source>
         <translation>步骤2/4：OCR识别进行中... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="234"/>
+        <location filename="../core/pipeline_stages.py" line="239"/>
         <source>Streaming OCR will flush in parallel (cpu_workers={}, max_stream_workers={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="340"/>
+        <location filename="../core/pipeline_stages.py" line="345"/>
         <source>ROI extraction done: {} ROI-frames in {:.2f}s ({:.1f} roi-frames/s).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="348"/>
+        <location filename="../core/pipeline_stages.py" line="353"/>
         <source>ROI extraction yielded no frames. If color presence filtering is enabled, try preview again with a higher ratio threshold or disable it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="443"/>
+        <location filename="../core/pipeline_stages.py" line="448"/>
         <source>Running OCR in parallel (device={}, groups={}, max_workers={}, save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="474"/>
+        <location filename="../core/pipeline_stages.py" line="479"/>
         <source>Running OCR sequentially (device={}, groups={}, save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="527"/>
+        <location filename="../core/pipeline_stages.py" line="532"/>
         <source>OCR recognition step did not produce any results.</source>
         <translation>OCR识别步骤未产生任何结果。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="575"/>
+        <location filename="../core/pipeline_stages.py" line="580"/>
         <source>Step 2/4: OCR recognition complete.</source>
         <translation>步骤2/4：OCR识别完成。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="578"/>
+        <location filename="../core/pipeline_stages.py" line="583"/>
         <source>OCR done: {} roi-frames filled, {} OCR calls (est. skipped {}), {:.2f}s.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="615"/>
+        <location filename="../core/pipeline_stages.py" line="620"/>
         <source>Step 2/4: Refining subtitle boundaries frame-by-frame... ({}/{})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="623"/>
+        <location filename="../core/pipeline_stages.py" line="628"/>
         <source>Step 2/4: Refining subtitle boundaries frame-by-frame...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="647"/>
+        <location filename="../core/pipeline_stages.py" line="649"/>
+        <source>Boundary refinement running on {} threads...</source>
+        <translation>Boundary refinement running on {} threads...</translation>
+    </message>
+    <message>
+        <location filename="../core/pipeline_stages.py" line="693"/>
         <source>Step 3/4: Starting coordinate restoration... (0/{})</source>
         <translation>步骤3/4：正在开始坐标恢复... (0/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="672"/>
+        <location filename="../core/pipeline_stages.py" line="718"/>
         <source>Step 3/4: Restoring coordinates... ({}/{})</source>
         <translation>步骤3/4：正在恢复坐标... ({}/{})</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="679"/>
+        <location filename="../core/pipeline_stages.py" line="725"/>
         <source>Coordinate restoration step did not produce any results.</source>
         <translation>坐标恢复步骤未产生任何结果。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="681"/>
+        <location filename="../core/pipeline_stages.py" line="727"/>
         <source>Step 3/4: Coordinate restoration complete.</source>
         <translation>步骤3/4：坐标恢复完成。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="684"/>
+        <location filename="../core/pipeline_stages.py" line="730"/>
         <source>Coordinate restoration done: {} frames in {:.2f}s (save_json={}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2168,7 +2173,7 @@
         <translation>正在强制终止线程...</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="794"/>
+        <location filename="../core/pipeline_stages.py" line="840"/>
         <source>Boundary refinement used {} extra single-frame OCR calls.</source>
         <translation type="unfinished"></translation>
     </message>

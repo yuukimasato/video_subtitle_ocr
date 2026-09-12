@@ -192,6 +192,10 @@ python scripts/benchmark_regression.py \
 | **Phase 2 · 并行精修**（同日追加） | 24min 视频精修阶段 290.3s → **202.6s（1.43×）**、GUI 管线全程 470.9s → **349.3s（1.35×）**：边界任务化（原始结果上扫描 job → 按任务序合并写入）+ 每线程独立引擎/VideoCapture（≤4 线程，按核数/内存自适应）+ ground window 一次 `predict_batch`。等价验证：桩引擎单元测试（文本/时间戳级与 legacy 一致）、管线级双门禁通过（分片 worker 仍用串行精修，避免引擎数 = worker×线程的内存放大） |
 | Phase 2 · 已试并否决 | 回走探测批处理（每 4 帧一次推测性 `predict_batch`）：精修 222.7 → 318.9s，**反而变慢**——短回走在停止点之外的浪费超过批处理节省，CPU 上 `predict(list)` 也不比逐帧省。已回退，代码不入库 |
 | **Phase 3 · GPU 感知批量通道**（同日追加，无 GPU 硬件验证） | ①`predict_batch` 按设备分块（GPU 12 / CPU 6，实例内缓存探测结果），投票采样与精修 ground window 走统一通道；②GPU 下并行精修线程数收敛至 ≤2（VRAM 保护），CPU 维持 ≤4；③架构结论入 `optimization_analysis.md`：锚帧/二分 OCR 为决策关键串行链，"先选帧后批量"不可行，P7 需硬件实测暂缓。**CPU 验证**：275 单测全绿（新增分块对齐/计数/GPU 尺寸/GPU 线程帽 5 项）、回归基准与双等价门禁通过、ocr_calls 133 不变；**GPU 收益预期数倍但未实测**，待硬件落地后按 testing.md 流程补测 |
+| i18n（Phase 1-3 新增文案） | lupdate 刷新（349 条，新增精修并行提示），zh/ja 补译并 lrelease 编译（ja 118 / zh 86 条有效） |
+| man 页 | CLI man 新增 `--workers` 说明、版本头 2.4.2 → 2.5.0；GUI man 版本头同步 |
+| deb 构建 | `video-subtitle-ocr_2.5.0_all.deb` 构建成功（5.4MB，152 项），`dpkg-deb -I/-c` 校验通过：含 chunk_*/refine_executor 全部新模块，无 tests/.venv/__pycache__ 泄漏 |
+| deb 安装测试 | rootless 全新 venv + 全量 pip 依赖安装路径（wheel 命中本机缓存）→ CLI `--version`（2.5.0）→ 真实视频 OCR（5/5 条，3.8s）→ GUI 离屏冒烟（`GUI OK: 视频字幕 OCR 工具`）→ remove（启动器删除、venv 保留）→ purge（应用目录全清、数据库无记录）全流程通过 |
 | 短视频旁路 | 16s 视频自动走单进程原路径（规划器 min_total_s=600），行为与 2.4.2 一致 |
 | 后续优化项 | ①精修探测批处理 + 边界级并行（Phase 2，精修占 GUI 管线 62% 且为逐帧延迟型负载）②GPU 批处理推理（Phase 3，设计文档预期的主要杠杆）③P7 检测/识别解耦评估 |
 
