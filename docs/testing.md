@@ -191,6 +191,7 @@ python scripts/benchmark_regression.py \
 | 引擎选项修复的实测影响 | 修复前 `--engine auto` 下 `--model-tier tiny` 被静默忽略、实际用 medium：同视频无精修 medium ≈ 630-707s vs tiny 159s（**受影响用户的真实提速 ≈ 4×**）；修复后 stderr 确认 tiny 生效 |
 | **Phase 2 · 并行精修**（同日追加） | 24min 视频精修阶段 290.3s → **202.6s（1.43×）**、GUI 管线全程 470.9s → **349.3s（1.35×）**：边界任务化（原始结果上扫描 job → 按任务序合并写入）+ 每线程独立引擎/VideoCapture（≤4 线程，按核数/内存自适应）+ ground window 一次 `predict_batch`。等价验证：桩引擎单元测试（文本/时间戳级与 legacy 一致）、管线级双门禁通过（分片 worker 仍用串行精修，避免引擎数 = worker×线程的内存放大） |
 | Phase 2 · 已试并否决 | 回走探测批处理（每 4 帧一次推测性 `predict_batch`）：精修 222.7 → 318.9s，**反而变慢**——短回走在停止点之外的浪费超过批处理节省，CPU 上 `predict(list)` 也不比逐帧省。已回退，代码不入库 |
+| **Phase 3 · GPU 感知批量通道**（同日追加，无 GPU 硬件验证） | ①`predict_batch` 按设备分块（GPU 12 / CPU 6，实例内缓存探测结果），投票采样与精修 ground window 走统一通道；②GPU 下并行精修线程数收敛至 ≤2（VRAM 保护），CPU 维持 ≤4；③架构结论入 `optimization_analysis.md`：锚帧/二分 OCR 为决策关键串行链，"先选帧后批量"不可行，P7 需硬件实测暂缓。**CPU 验证**：275 单测全绿（新增分块对齐/计数/GPU 尺寸/GPU 线程帽 5 项）、回归基准与双等价门禁通过、ocr_calls 133 不变；**GPU 收益预期数倍但未实测**，待硬件落地后按 testing.md 流程补测 |
 | 短视频旁路 | 16s 视频自动走单进程原路径（规划器 min_total_s=600），行为与 2.4.2 一致 |
 | 后续优化项 | ①精修探测批处理 + 边界级并行（Phase 2，精修占 GUI 管线 62% 且为逐帧延迟型负载）②GPU 批处理推理（Phase 3，设计文档预期的主要杠杆）③P7 检测/识别解耦评估 |
 

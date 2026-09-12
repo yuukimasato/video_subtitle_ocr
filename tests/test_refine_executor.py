@@ -286,3 +286,12 @@ def test_scan_respects_refine_disable():
 def test_clip_window_job_fields():
     job = RefineJob("roi_0", 0, 5, "in", 0, 100)
     assert job.direction == "in" and job.roi_end == 100
+
+
+def test_auto_refine_workers_gpu_caps_at_two():
+    # VRAM is the scarce resource on GPU: threads cap at 2 regardless of cores.
+    assert auto_refine_workers(cpu_count=32, available_ram_mb=32768, gpu_mode="gpu") == 2
+    # CPU keeps the normal cap.
+    assert auto_refine_workers(cpu_count=32, available_ram_mb=32768, gpu_mode="cpu") == 4
+    # RAM still binds first.
+    assert auto_refine_workers(cpu_count=32, available_ram_mb=700, gpu_mode="gpu") == 1

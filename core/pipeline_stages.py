@@ -637,7 +637,11 @@ def refine_stage(
     workers = int(ctx.refine_workers) if ctx.refine_workers > 0 else None
     if workers is None:
         from core.refine_executor import auto_refine_workers
-        workers = auto_refine_workers()
+        try:
+            device = ocr_processor.get_device_mode()
+        except Exception:
+            device = "cpu"
+        workers = auto_refine_workers(gpu_mode=device)
     if workers >= 2 and ctx.video_path and ocr_results:
         try:
             from core.refine_executor import refine_boundaries_parallel

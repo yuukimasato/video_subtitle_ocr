@@ -47,19 +47,27 @@ REFINE_MAX_THREADS = 4
 
 
 def auto_refine_workers(
-    cpu_count: Optional[int] = None, available_ram_mb: Optional[int] = None
+    cpu_count: Optional[int] = None,
+    available_ram_mb: Optional[int] = None,
+    gpu_mode: Optional[str] = None,
 ) -> int:
     """Threads for the parallel refine executor (0-ish clamp: >=1).
 
-    Each thread owns an engine instance (~600MB); more threads help only
-    until memory bandwidth saturates, so the cap is conservative.
+    Each thread owns an engine instance (~600MB RAM; on GPU its VRAM
+    equivalent); more threads help only until memory bandwidth saturates,
+    so the cap is conservative. On GPU the cap drops to 2 — VRAM is the
+    scarce resource there, and the GPU throughput lever is batched
+    inference, not threads.
     """
     if available_ram_mb is None:
         available_ram_mb = _probe_available_ram_mb()
     if cpu_count is None:
         cpu_count = os.cpu_count() or 2
     by_ram = max(1, int(available_ram_mb // REFINE_ENGINE_MEM_BUDGET_MB))
-    return max(1, min(REFINE_MAX_THREADS, int(cpu_count), by_ram))
+    cap = REFINE_MAX_THREADS
+    if gpu_mode and str(gpu_mode).lower() == "gpu":
+        cap = min(cap, 2)
+    return max(1, min(cap, int(cpu_count), by_ram))
 
 
 def _probe_available_ram_mb() -> int:

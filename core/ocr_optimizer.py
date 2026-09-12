@@ -9,6 +9,7 @@ from collections import Counter, defaultdict, OrderedDict
 from PySide6.QtCore import QCoreApplication 
 
 from core import ocr_engine_manager
+from core import ocr_processor
 
 logger = logging.getLogger(__name__)
 
@@ -277,13 +278,33 @@ class OcrOptimizer:
                 return batch_results
         return [self._run_single_ocr(frame_data) for frame_data in sample_frames]
 
+    def _predict_batch_chunk_size(self) -> int:
+        """Max frames per native predict_batch call, sized for the device.
+
+        GPU batches are the throughput lever (design target 8–16); on CPU
+        batching mostly saves per-call overhead, so a smaller chunk keeps
+        peak memory low. Result is cached per optimizer instance — the
+        device does not change mid-run.
+        """
+        if getattr(self, "_batch_chunk_size", None):
+            return self._batch_chunk_size
+        try:
+            device = ocr_processor.get_device_mode()
+        except Exception:
+            device = "cpu"
+        size = 12 if device == "gpu" else 6
+        self._batch_chunk_size = size
+        return size
+
     def _run_batch_ocr_on_samples(self, sample_frames: List[Tuple]) -> Optional[List[Tuple]]:
         """Best-effort batch OCR on sampled frames.
 
         Returns a list of result tuples (same shape as _run_single_ocr) aligned
         with the input order, or None so callers fall back to per-frame OCR.
         Frames whose result is already in the OCR cache are reused instead of
-        being predicted again.
+        being predicted again. Pending frames are predicted in device-sized
+        chunks (``_predict_batch_chunk_size``) so GPU batches stay inside
+        memory budgets.
         """
         try:
             self._ensure_engine_selected()
@@ -304,26 +325,27 @@ class OcrOptimizer:
             if not pending and not results_by_pos:
                 return None
 
-            if pending:
-                raw_list = engine.predict_batch([img for _, _, img in pending])
-                if not isinstance(raw_list, list) or len(raw_list) != len(pending):
+            batch_normalizer = getattr(engine, "normalize_batch_result", None)
+
+            def predict_chunk(chunk: List[Tuple]) -> None:
+                """One native predict_batch call for ``chunk`` of pending items."""
+                raw_list = engine.predict_batch([img for _, _, img in chunk])
+                if not isinstance(raw_list, list) or len(raw_list) != len(chunk):
                     raise ValueError(
                         "predict_batch returned {} results for {} images".format(
                             len(raw_list) if isinstance(raw_list, list) else type(raw_list).__name__,
-                            len(pending)
+                            len(chunk)
                         )
                     )
-
                 # Prefer the engine's own batch normalizer (shape-specific, e.g.
                 # RapidOCR's flat triples vs PaddleOCR's per-image dicts); fall
                 # back to the PaddleOCR-style [item] wrap for minimal fake engines.
-                batch_normalizer = getattr(engine, "normalize_batch_result", None)
                 normalized_items = (
                     list(batch_normalizer(raw_list))
                     if callable(batch_normalizer)
                     else [engine.normalize_result([raw_item]) for raw_item in raw_list]
                 )
-                for (pos, frame_data, _), ocr_data in zip(pending, normalized_items):
+                for (pos, frame_data, _), ocr_data in zip(chunk, normalized_items):
                     # Same tuple shape and time handling as _run_single_ocr.
                     frame_time_sec = float(frame_data[4]) if len(frame_data) >= 5 and frame_data[4] is not None else 0.0
                     result = (
@@ -340,6 +362,11 @@ class OcrOptimizer:
                         result,
                         self.image_cache_max_entries,
                     )
+
+            if pending:
+                chunk_size = self._predict_batch_chunk_size()
+                for start in range(0, len(pending), chunk_size):
+                    predict_chunk(pending[start:start + chunk_size])
             if not results_by_pos:
                 return None
             if pending:

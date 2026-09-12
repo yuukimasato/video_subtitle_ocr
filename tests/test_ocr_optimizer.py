@@ -422,3 +422,44 @@ def test_batch_path_with_rapid_style_engine(tmp_path, monkeypatch):
     non_empty = [r for r in results if r[1].get("rec_texts")]
     assert non_empty, "batch path emptied all RapidOCR-style results"
     assert all(r[1]["rec_texts"] == ["字幕回归"] for r in non_empty)
+
+
+# ---------------------------------------------------------------------------
+# g) Device-sized predict_batch chunking (Phase 3)
+# ---------------------------------------------------------------------------
+
+def test_batch_chunk_size_gpu_vs_cpu(tmp_path, install_fake_engine, monkeypatch):
+    install_fake_engine(FakeEngine())
+    opt = make_optimizer(tmp_path)
+    monkeypatch.setattr("core.ocr_processor.get_device_mode", lambda: "gpu")
+    assert opt._predict_batch_chunk_size() == 12
+    opt2 = make_optimizer(tmp_path)
+    monkeypatch.setattr("core.ocr_processor.get_device_mode", lambda: "cpu")
+    assert opt2._predict_batch_chunk_size() == 6
+    # Cached per instance: a second call does not re-probe the device.
+    assert opt2._predict_batch_chunk_size() == 6
+
+
+def test_batch_ocr_on_samples_chunks_pending(tmp_path, install_fake_engine, monkeypatch):
+    engine = install_fake_engine(FakeEngine(default_text="字幕默认"))
+    opt = make_optimizer(tmp_path)
+    monkeypatch.setattr("core.ocr_processor.get_device_mode", lambda: "cpu")  # chunk=6
+    frames = make_frames(14)
+    out = opt._run_batch_ocr_on_samples(frames)
+    assert out is not None and len(out) == 14
+    # 14 pending frames at chunk size 6 -> 6+6+2.
+    assert engine.batch_calls == 3
+    assert engine.batch_sizes == [6, 6, 2]
+    # Results stay aligned with the input order.
+    assert [r[2] for r in out] == [f[2] for f in frames]
+    assert opt.ocr_calls == 1  # whole batch invocation counts once
+
+
+def test_batch_ocr_on_samples_single_chunk_when_under_size(tmp_path, install_fake_engine, monkeypatch):
+    engine = install_fake_engine(FakeEngine(default_text="字幕默认"))
+    opt = make_optimizer(tmp_path)
+    monkeypatch.setattr("core.ocr_processor.get_device_mode", lambda: "cpu")
+    frames = make_frames(3)
+    out = opt._run_batch_ocr_on_samples(frames)
+    assert engine.batch_calls == 1 and engine.batch_sizes == [3]
+    assert [r[2] for r in out] == [f[2] for f in frames]
