@@ -9,8 +9,8 @@ determine whether text is OVERLAY (post-production) or SCENE (in-scene).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from dataclasses import dataclass
+from typing import Tuple, Optional
 
 import numpy as np
 
@@ -41,6 +41,10 @@ class TextRegionFeatures:
     exit_style: str = "cut"
 
     # ── Visual features ──
+    # 管线目前不计算视觉特征（extract_visual_features 未接入生成阶段），
+    # 以下字段保持默认值。visual_measured=False 时分类器不得用这些
+    # 未测量值参与打分（如 edge_density=0 会被误读为"画面模糊→场景文字"）。
+    visual_measured: bool = False
     contrast_with_bg: float = 0.0
     has_stroke_border: bool = False
     has_drop_shadow: bool = False

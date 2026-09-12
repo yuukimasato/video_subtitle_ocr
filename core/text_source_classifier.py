@@ -138,8 +138,24 @@ class TextSourceClassifier:
         if abs(semantic_score) > self.HIGH_CONFIDENCE_THRESHOLD:
             reasons.append(self._semantic_reason(features, semantic_score))
 
-        # Weighted fusion
-        weighted = sum(scores[k] * self.weights.get(k, 0.25) for k in scores)
+        # Weighted fusion. The visual layer only participates when its
+        # features were actually measured: unmeasured defaults (edge_density
+        # 0.0, stroke/shadow False) read as "blurry scene text" and would
+        # systematically drag real subtitles below the OVERLAY threshold.
+        # Excluded layers have their weights renormalized so the fused score
+        # keeps its [-1, 1] scale.
+        visual_measured = bool(getattr(features, "visual_measured", False))
+        fused_keys = [
+            k for k in scores if k != "visual" or visual_measured
+        ]
+        weight_total = sum(self.weights.get(k, 0.25) for k in fused_keys)
+        if weight_total > 0:
+            weighted = sum(
+                scores[k] * self.weights.get(k, 0.25) / weight_total
+                for k in fused_keys
+            )
+        else:
+            weighted = 0.0
         # Apply classification bias
         weighted += self.classification_bias
         # Map [-1, 1] to [0, 1] (1 = OVERLAY)

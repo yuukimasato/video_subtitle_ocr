@@ -486,7 +486,15 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.preset:
+        # Validate up front: the pipeline only checks the preset again in
+        # stage 4, after a full OCR pass has already run.
+        from core.scene_presets import get_preset_by_id
+
+        if get_preset_by_id(args.preset) is None:
+            parser.error(f"unknown preset id: {args.preset}")
+    return args
 
 
 def main(argv=None) -> int:
