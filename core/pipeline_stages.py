@@ -72,6 +72,11 @@ class PipelineContext:
     # path never had it); the chunk path must match, so the flag lives on
     # the context. The GUI pipeline keeps the default (True).
     enable_boundary_refine: bool = True
+    # Boundary-refinement executor threads: 0 = auto (min(4, cores, RAM
+    # budget); >=2 uses the parallel executor), 1 = legacy serial path.
+    # Chunk workers pin this to 1: cross-window parallelism already
+    # saturates the machine and per-thread engines would multiply memory.
+    refine_workers: int = 0
 
 
 def extract_and_ocr_stage(
@@ -625,6 +630,43 @@ def refine_stage(
             "Step 2/4: Refining subtitle boundaries frame-by-frame...",
         ),
     )
+
+    # Parallel executor (Phase 2): >=2 threads refine independent boundary
+    # jobs concurrently on per-thread engines. Any failure falls back to the
+    # legacy serial path, which stays the reference implementation.
+    workers = int(ctx.refine_workers) if ctx.refine_workers > 0 else None
+    if workers is None:
+        from core.refine_executor import auto_refine_workers
+        workers = auto_refine_workers()
+    if workers >= 2 and ctx.video_path and ocr_results:
+        try:
+            from core.refine_executor import refine_boundaries_parallel
+            logger.info(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Boundary refinement running on {} threads..."
+                ).format(workers)
+            )
+            return refine_boundaries_parallel(
+                ocr_results,
+                ctx.roi_data,
+                video_path=ctx.video_path,
+                fps=ctx.fps,
+                engine_id=ctx.ocr_engine_id,
+                engine_options=ctx.engine_options,
+                workers=workers,
+                max_backtrack_frames=max(3, int(ctx.fps * 1.0)) if ctx.fps and ctx.fps > 0 else 25,
+                max_forward_frames=max(2, int(ctx.fps * 0.5)) if ctx.fps and ctx.fps > 0 else 12,
+                edge_extend_frames=max(2, int(ctx.fps * 2.0)) if ctx.fps and ctx.fps > 0 else 50,
+                progress_callback=_refine_progress,
+                is_cancelled_func=cancel_check,
+            )
+        except Exception:
+            logger.warning(
+                "Parallel boundary refinement failed; falling back to serial.",
+                exc_info=True,
+            )
+
     return refine_fade_in_boundaries(
         ctx,
         ocr_results,

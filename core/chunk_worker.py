@@ -82,7 +82,10 @@ def run_window_stages(ctx: PipelineContext, window: ChunkWindow, *, progress_cb,
     clipped_rois = clip_roi_data_to_window(ctx.roi_data, window, ctx.fps)
     if not clipped_rois:
         return []
-    wctx = dc_replace(ctx, roi_data=clipped_rois)
+    # Cross-window parallelism already saturates the machine: keep boundary
+    # refinement serial inside each chunk worker (per-thread engines would
+    # multiply engine memory by workers × refine threads).
+    wctx = dc_replace(ctx, roi_data=clipped_rois, refine_workers=1)
     ocr_results, stats = extract_and_ocr_stage(
         wctx, progress_cb=progress_cb, cancel_check=cancel_check)
     if ctx.enable_boundary_refine:

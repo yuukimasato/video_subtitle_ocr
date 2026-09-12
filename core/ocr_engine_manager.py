@@ -119,6 +119,31 @@ def is_engine_initialized() -> bool:
     return _engine_instance is not None
 
 
+def build_standalone_engine(engine_id: Optional[str], options: Optional[Dict[str, Any]] = None) -> "BaseOCREngine":
+    """Build a fresh, INDEPENDENT engine instance (not the process singleton).
+
+    Used by the parallel boundary-refinement executor, where each worker
+    thread needs its own engine so OCR calls don't serialize on the
+    singleton's ``_predict_lock``. Caller owns the instance and must call
+    ``cleanup()`` when done.
+    """
+    resolved = engine_id or get_default()
+    if not resolved:
+        raise RuntimeError(
+            "No OCR engine available. Please install at least one OCR engine "
+            "(e.g., PaddleOCR: pip install paddleocr)."
+        )
+    engine_cls = OCREngineRegistry.get(resolved)
+    if engine_cls is None:
+        raise RuntimeError(
+            f"OCR engine '{resolved}' is not registered or not available. "
+            f"Available engines: {[e.engine_id for e in OCREngineRegistry.list_available()]}"
+        )
+    engine = engine_cls()
+    engine.initialize(**(options or {}))
+    return engine
+
+
 def run_batch_ocr(
     frames_iter: Iterator[Tuple],
     work_dir: str,
