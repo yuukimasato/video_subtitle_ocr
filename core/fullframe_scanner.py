@@ -50,6 +50,13 @@ WATERMARK_CENTER_TOLERANCE_PX = 24.0
 # 场景文字空间聚类的量化网格（像素）。
 SCENE_GRID_PX = 64
 
+# 场景候选合并：归一化文本一致且空间重叠（IoU 达标）或相邻（彼此外扩
+# 长边的 SCENE_MERGE_EXPAND_RATIO 倍后相交）时视为同一实体文字。
+# 手机/文档在相邻采样帧间位置略移，或同一文字跨 64px 网格被拆开时，
+# 聚类会为同一封邮件产出多个候选；合并后用户精修的 ROI 列表不再重复。
+SCENE_MERGE_IOU = 0.5
+SCENE_MERGE_EXPAND_RATIO = 0.5
+
 # 快照缩略图最大宽度（像素）。
 SNAPSHOT_MAX_WIDTH = 320
 
@@ -421,7 +428,83 @@ def _build_scene_candidates(
             "roi_entry": roi_entry,
         })
     candidates.sort(key=lambda c: c["hit_count"], reverse=True)
+    candidates = _merge_scene_candidates(candidates, fps)
     return candidates
+
+
+def _bbox_iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _bboxes_near(
+    a: Tuple[float, float, float, float],
+    b: Tuple[float, float, float, float],
+    iou_threshold: float,
+    expand_ratio: float,
+) -> bool:
+    """两框重叠（IoU 达标），或彼此外扩 expand_ratio·自身长边后相交。"""
+    if _bbox_iou(a, b) >= iou_threshold:
+        return True
+
+    def _expand(box: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
+        pad = max(box[2] - box[0], box[3] - box[1]) * expand_ratio
+        return (box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad)
+
+    ea, eb = _expand(a), _expand(b)
+    return ea[0] <= eb[2] and eb[0] <= ea[2] and ea[1] <= eb[3] and eb[1] <= ea[3]
+
+
+def _merge_scene_candidates(
+    candidates: List[Dict[str, Any]], fps: float
+) -> List[Dict[str, Any]]:
+    """合并文本一致且空间相邻/重叠的场景候选（按 hit_count 降序贪心）。"""
+    merged: List[Dict[str, Any]] = []
+    for cand in candidates:
+        text = normalize_text(cand.get("text", ""))
+        target: Optional[Dict[str, Any]] = None
+        if text:
+            for kept in merged:
+                if normalize_text(kept.get("text", "")) != text:
+                    continue
+                if _bboxes_near(kept["bbox"], cand["bbox"], SCENE_MERGE_IOU, SCENE_MERGE_EXPAND_RATIO):
+                    target = kept
+                    break
+        if target is None:
+            merged.append(dict(cand))
+            continue
+
+        tx1, ty1, tx2, ty2 = target["bbox"]
+        cx1, cy1, cx2, cy2 = cand["bbox"]
+        target["bbox"] = (min(tx1, cx1), min(ty1, cy1), max(tx2, cx2), max(ty2, cy2))
+        target["hit_count"] = int(target.get("hit_count", 0)) + int(cand.get("hit_count", 0))
+        target["first_frame"] = min(int(target["first_frame"]), int(cand["first_frame"]))
+        target["last_frame"] = max(int(target["last_frame"]), int(cand["last_frame"]))
+        if len(str(cand.get("text", ""))) > len(str(target.get("text", ""))):
+            target["text"] = cand.get("text", "")
+
+        entry, other = target.get("roi_entry"), cand.get("roi_entry")
+        if entry is not None and other is not None:
+            ex, ey, ew, eh = (int(v) for v in entry["points"][:4])
+            ox, oy, ow, oh = (int(v) for v in other["points"][:4])
+            nx1, ny1 = min(ex, ox), min(ey, oy)
+            nx2, ny2 = max(ex + ew, ox + ow), max(ey + eh, oy + oh)
+            entry["points"] = [nx1, ny1, max(1, nx2 - nx1), max(1, ny2 - ny1)]
+            start_frame = min(int(entry.get("start_frame", 0)), int(other.get("start_frame", 0)))
+            end_frame = max(int(entry.get("end_frame", 0)), int(other.get("end_frame", 0)))
+            entry["start_frame"], entry["end_frame"] = start_frame, end_frame
+            if fps > 0:
+                entry["start_time"] = format_time(start_frame / fps)
+                entry["end_time"] = format_time(end_frame / fps)
+        elif entry is None and other is not None:
+            target["roi_entry"] = other
+    merged.sort(key=lambda c: c["hit_count"], reverse=True)
+    return merged
 
 
 # ---------------------------------------------------------------------------

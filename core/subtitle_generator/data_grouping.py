@@ -4,7 +4,7 @@ import math
 import re
 import Levenshtein
 from collections import defaultdict
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Optional
 
 from PySide6.QtCore import QCoreApplication
 
@@ -250,9 +250,11 @@ class _DataGroupingMixin:
     def _select_representative_lines(self, group: SubtitleGroup) -> List[TextLine]:
         """按组内全部帧投票选出代表性文本行，替代“首帧行”作为事件体来源。
 
-        首帧可能恰好读丢一行（双行字幕只剩单行）或混入幻影行；对组内帧按
-        行数取众数、再对每个行槽做多数投票（票数并列取更长者，保留省略号等
-        完整读法），得到稳定且完整的行集。行对象仍取自真实帧，保证坐标有效。
+        首帧可能恰好读丢一行（双行字幕只剩单行）或混入幻影行。先按行数
+        众数确定参考行集，再把每帧的行按 y 重叠对齐到参考行槽后逐槽多数
+        投票（票数并列取更长者，保留省略号等完整读法）。行数不足众数的
+        帧也能为它实际读到的行槽提供证据，而不会让后续行槽整体错位；没有
+        观测的行槽保留参考帧的行。行对象仍取自真实帧，保证坐标有效。
         """
         from collections import Counter
 
@@ -264,14 +266,52 @@ class _DataGroupingMixin:
             return group.lines
         count_votes = Counter(len(ls) for ls in per_frame)
         best_n = max(count_votes, key=lambda n: (count_votes[n], n))
-        cands = [ls for ls in per_frame if len(ls) == best_n]
+        # 参考行集：第一个达到众数行数的帧（行槽顺序 = y 顺序）。
+        reference = next(ls for ls in per_frame if len(ls) == best_n)
+        slot_votes: List[Counter] = [Counter() for _ in range(best_n)]
+        slot_sources: List[Dict[str, TextLine]] = [dict() for _ in range(best_n)]
+        for ls in per_frame:
+            for slot, line in enumerate(self._map_lines_to_reference(reference, ls)):
+                if line is None:
+                    continue
+                slot_votes[slot][line.text] += 1
+                slot_sources[slot].setdefault(line.text, line)
         out: List[TextLine] = []
         for slot in range(best_n):
-            votes = Counter(ls[slot].text for ls in cands)
+            votes = slot_votes[slot]
+            if not votes:
+                out.append(reference[slot])
+                continue
             best_text = sorted(votes.items(), key=lambda kv: (-kv[1], -len(kv[0])))[0][0]
-            src = next((ls[slot] for ls in cands if ls[slot].text == best_text), cands[0][slot])
-            out.append(src)
+            out.append(slot_sources[slot].get(best_text) or reference[slot])
         return out
+
+    def _map_lines_to_reference(
+        self, reference: List[TextLine], lines: List[TextLine]
+    ) -> List[Optional[TextLine]]:
+        """把一帧的行按 y 重叠对齐到参考行槽；对不上的行返回 None（不投票）。
+
+        与旧实现的按排序索引一一对应相比，某帧读丢/多读一行时其余行仍能
+        对到正确的行槽上，而不是整体错位后被整帧丢弃。
+        """
+        mapping: List[Optional[TextLine]] = [None] * len(reference)
+        if not lines:
+            return mapping
+        taken = [False] * len(reference)
+        for line in sorted(lines, key=lambda l: l.box[1]):
+            best_slot, best_overlap = None, 0.5
+            for slot, ref_line in enumerate(reference):
+                if taken[slot]:
+                    continue
+                inter = min(line.box[3], ref_line.box[3]) - max(line.box[1], ref_line.box[1])
+                min_h = max(1, min(line.box[3] - line.box[1], ref_line.box[3] - ref_line.box[1]))
+                overlap = inter / min_h
+                if overlap >= best_overlap:
+                    best_slot, best_overlap = slot, overlap
+            if best_slot is not None:
+                mapping[best_slot] = line
+                taken[best_slot] = True
+        return mapping
 
     def _are_frames_similar(self, group: SubtitleGroup, frame2: FrameData) -> bool:
         frame1_lines = group.lines; frame2_lines = frame2.lines
