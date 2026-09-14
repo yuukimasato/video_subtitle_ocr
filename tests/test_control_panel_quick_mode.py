@@ -118,6 +118,26 @@ def test_get_pipeline_options_keeps_all_fields(panel):
     assert not missing, f"get_pipeline_options() lost fields: {sorted(missing)}"
 
 
+def test_quick_mode_toggle_keeps_controls_and_values(panel):
+    """set_quick_mode 只切换可见性：不重建控件、不清空用户设置。"""
+    assert panel.quick_mode is True
+    assert not panel.source_filter_group.isVisibleTo(panel)
+    assert not panel.draw_mode_group.isVisibleTo(panel)
+
+    panel.set_quick_mode(False)
+    assert panel.quick_mode is False
+    assert panel.source_filter_group.isVisibleTo(panel)
+    assert panel.draw_mode_group.isVisibleTo(panel)
+    # 完整视图展开引擎详情容器。
+    assert panel.engine_group.isChecked() is True
+
+    panel.template_path_edit.setText("/tmp/demo.ass")
+    panel.set_quick_mode(True)
+    assert panel.template_path_edit.text() == "/tmp/demo.ass"
+    assert not panel.source_filter_group.isVisibleTo(panel)
+    assert panel.engine_group.isChecked() is False
+
+
 def test_default_options(panel):
     opts = panel.get_pipeline_options()
     # 自动引擎：默认不绑定具体引擎，由引擎管理器在运行时自动选择。

@@ -91,6 +91,7 @@ class ControlPanelWidget(QWidget):
         self._detection_result: Optional[object] = None  # DetectionResult
         self._user_overrode: bool = False
         self._suppress_preset_signal: bool = False
+        self._quick_mode: bool = True
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -108,18 +109,11 @@ class ControlPanelWidget(QWidget):
         template_layout.addWidget(self.browse_template_btn)
         main_layout.addWidget(template_group)
 
-        # ── OCR 引擎选择 ──
-        engine_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "OCR 引擎"))
-        engine_layout = QGridLayout(engine_group)
-        engine_layout.setContentsMargins(10, 10, 10, 10)
-        engine_layout.setSpacing(6)
-        self.ocr_engine_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "引擎选择："))
-        self.ocr_engine_combo = QComboBox()
-        self.ocr_engine_status = QLabel("")
-        self.ocr_engine_detect_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "检测可用引擎"))
-        engine_layout.addWidget(self.ocr_engine_label, 0, 0)
-        engine_layout.addWidget(self.ocr_engine_combo, 0, 1, 1, 2)
-        engine_layout.addWidget(self.ocr_engine_detect_btn, 0, 3)
+        # ── 识别设置（默认首屏：只保留语言等常用项）──
+        basic_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "识别设置"))
+        basic_layout = QGridLayout(basic_group)
+        basic_layout.setContentsMargins(10, 10, 10, 10)
+        basic_layout.setSpacing(6)
 
         # ── 识别语言（贯通到引擎 initialize(lang=...)）──
         self.ocr_lang_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "识别语言："))
@@ -148,8 +142,25 @@ class ControlPanelWidget(QWidget):
                 QCoreApplication.translate("ControlPanelWidget", _lang_label), _lang_value
             )
         self.ocr_lang_combo.setCurrentIndex(0)
-        engine_layout.addWidget(self.ocr_lang_label, 1, 0)
-        engine_layout.addWidget(self.ocr_lang_combo, 1, 1, 1, 2)
+        basic_layout.addWidget(self.ocr_lang_label, 0, 0)
+        basic_layout.addWidget(self.ocr_lang_combo, 0, 1)
+        basic_layout.setColumnStretch(2, 1)
+        main_layout.addWidget(basic_group)
+
+        # ── OCR 引擎详情（可折叠，默认收起；完整设置下展开）──
+        self.engine_group, _engine_content, engine_content = self._make_collapsible_group(
+            QCoreApplication.translate("ControlPanelWidget", "OCR 引擎（自动选择）")
+        )
+        engine_layout = QGridLayout()
+        engine_layout.setHorizontalSpacing(12)
+        engine_layout.setVerticalSpacing(6)
+        self.ocr_engine_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "引擎选择："))
+        self.ocr_engine_combo = QComboBox()
+        self.ocr_engine_status = QLabel("")
+        self.ocr_engine_detect_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "检测可用引擎"))
+        engine_layout.addWidget(self.ocr_engine_label, 0, 0)
+        engine_layout.addWidget(self.ocr_engine_combo, 0, 1, 1, 2)
+        engine_layout.addWidget(self.ocr_engine_detect_btn, 0, 3)
 
         # ── 模型档位（PaddleOCR PP-OCRv6 tiny/small/medium）──
         self.ocr_model_tier_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "模型档位："))
@@ -171,15 +182,16 @@ class ControlPanelWidget(QWidget):
                 QCoreApplication.translate("ControlPanelWidget", _tier_label), _tier_value
             )
         self.ocr_model_tier_combo.setCurrentIndex(0)
-        engine_layout.addWidget(self.ocr_model_tier_label, 2, 0)
-        engine_layout.addWidget(self.ocr_model_tier_combo, 2, 1, 1, 2)
+        engine_layout.addWidget(self.ocr_model_tier_label, 1, 0)
+        engine_layout.addWidget(self.ocr_model_tier_combo, 1, 1, 1, 2)
 
-        engine_layout.addWidget(self.ocr_engine_status, 3, 0, 1, 4)
-        main_layout.addWidget(engine_group)
+        engine_layout.addWidget(self.ocr_engine_status, 2, 0, 1, 4)
+        engine_content.addLayout(engine_layout)
+        main_layout.addWidget(self.engine_group)
 
-        # ── 文字来源过滤 ──
-        source_filter_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "文字来源过滤（上下文语义分析）"))
-        source_filter_layout = QVBoxLayout(source_filter_group)
+        # ── 文字来源过滤（完整设置；简洁模式隐藏）──
+        self.source_filter_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "文字来源过滤（上下文语义分析）"))
+        source_filter_layout = QVBoxLayout(self.source_filter_group)
         source_filter_layout.setContentsMargins(10, 10, 10, 10)
         source_filter_layout.setSpacing(6)
 
@@ -268,10 +280,10 @@ class ControlPanelWidget(QWidget):
         action_row.addStretch(1)
         source_filter_layout.addLayout(action_row)
 
-        main_layout.addWidget(source_filter_group)
+        main_layout.addWidget(self.source_filter_group)
 
-        draw_mode_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "绘制模式"))
-        draw_mode_layout = QHBoxLayout(draw_mode_group)
+        self.draw_mode_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "绘制模式"))
+        draw_mode_layout = QHBoxLayout(self.draw_mode_group)
         draw_mode_layout.setContentsMargins(10, 10, 10, 10)
         draw_mode_layout.setSpacing(12)
         self.rect_mode_radio = QRadioButton(QCoreApplication.translate("ControlPanelWidget", "矩形（拖动）"))
@@ -289,7 +301,7 @@ class ControlPanelWidget(QWidget):
         draw_mode_layout.addWidget(self.poly_mode_radio)
         draw_mode_layout.addWidget(self.edit_mode_radio)
         draw_mode_layout.addStretch(1)
-        main_layout.addWidget(draw_mode_group)
+        main_layout.addWidget(self.draw_mode_group)
 
         extract_group = QGroupBox(QCoreApplication.translate("ControlPanelWidget", "字幕生成"))
         extract_layout = QVBoxLayout(extract_group)
@@ -530,6 +542,28 @@ class ControlPanelWidget(QWidget):
 
         # Apply initial source filter enabled state (disabled by default)
         self._on_source_filter_enabled_toggled(False)
+
+        # 默认进入简洁模式：只保留模板/语言/主操作，其余入口折叠或隐藏。
+        self.set_quick_mode(True)
+
+    @property
+    def quick_mode(self) -> bool:
+        """Whether the panel currently shows the simplified one-click view."""
+        return self._quick_mode
+
+    def set_quick_mode(self, enabled: bool) -> None:
+        """Switch between the simplified view and the full settings view.
+
+        Only visibility changes: no widget is rebuilt and no user-set value
+        is touched, so get_pipeline_options() is stable across switches.
+        """
+        self._quick_mode = bool(enabled)
+        full = not self._quick_mode
+        # 简洁模式隐藏整组的高级入口；完整模式恢复显示（控件对象不变）。
+        self.source_filter_group.setVisible(full)
+        self.draw_mode_group.setVisible(full)
+        # 引擎详情保留为可折叠容器：简洁模式收起，完整模式展开。
+        self.engine_group.setChecked(full)
 
     def _on_source_filter_enabled_toggled(self, checked: bool) -> None:
         """Enable/disable source filter child controls when the master toggle changes."""
@@ -776,8 +810,11 @@ class ControlPanelWidget(QWidget):
     # ── OCR Engine ComboBox ─────────────────────────────────
 
     def _populate_engine_combo(self) -> None:
-        """Populate the engine combo with available engines."""
+        """Populate the engine combo; "auto" (runtime auto-selection) is the default."""
         self.ocr_engine_combo.clear()
+        self.ocr_engine_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "自动(Auto)"), "auto"
+        )
         try:
             from core.ocr_engine_base import OCREngineRegistry
             available = OCREngineRegistry.list_available()
@@ -788,23 +825,19 @@ class ControlPanelWidget(QWidget):
                 self.ocr_engine_status.setText(
                     QCoreApplication.translate("ControlPanelWidget", "⚠ 未检测到可用 OCR 引擎")
                 )
-                return
-            for info in available:
-                label = f"{info.name} ({info.engine_id})"
-                self.ocr_engine_combo.addItem(label, info.engine_id)
-            # Select default
-            default_id = OCREngineRegistry.get_default()
-            for i in range(self.ocr_engine_combo.count()):
-                if self.ocr_engine_combo.itemData(i) == default_id:
-                    self.ocr_engine_combo.setCurrentIndex(i)
-                    break
-            self.ocr_engine_status.setText(
-                QCoreApplication.translate("ControlPanelWidget", "✅ 已就绪")
-            )
+            else:
+                for info in available:
+                    label = f"{info.name} ({info.engine_id})"
+                    self.ocr_engine_combo.addItem(label, info.engine_id)
+                self.ocr_engine_status.setText(
+                    QCoreApplication.translate("ControlPanelWidget", "✅ 已就绪")
+                )
         except Exception:
             logger.warning("Engine list population failed", exc_info=True)
             self.ocr_engine_combo.addItem("PaddleOCR", "paddle")
             self.ocr_engine_status.setText("")
+        # 默认回到「自动」：由引擎管理器在运行时选择默认引擎。
+        self.ocr_engine_combo.setCurrentIndex(0)
 
     def _refresh_engine_list(self) -> None:
         """Re-detect available engines."""
