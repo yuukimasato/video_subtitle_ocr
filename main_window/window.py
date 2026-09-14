@@ -65,6 +65,7 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
         self.pipeline_worker: Optional["PipelineWorker"] = None
         self.progress_dialog: Optional[QProgressDialog] = None
         self._pipeline_llm_active: bool = False
+        self._panel_busy: bool = False
         self._detector_thread: Optional[QThread] = None
         self._scan_thread: Optional[ScanWorkerThread] = None
         self._auto_roi_mode_replace: bool = False
@@ -193,21 +194,42 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
 
         self.log_handler.new_record.connect(self.log_viewer_widget.append_log)
 
+    def _begin_scan_thread(self, scan_thread: "ScanWorkerThread") -> None:
+        # 扫描开始：锁定控制面板并在主按钮上显示当前阶段。
+        super()._begin_scan_thread(scan_thread)
+        if getattr(self, "_scan_mode", "quick") == "deep":
+            stage = QCoreApplication.translate("SubtitleOCRGUI", "正在深度扫描…")
+        else:
+            stage = QCoreApplication.translate("SubtitleOCRGUI", "正在检测字幕区域…")
+        self._set_panel_busy(True, stage)
+
+    def _on_scan_thread_finished(self) -> None:
+        # 扫描结束（完成/失败/取消的最终路径）：统一恢复控制面板。
+        super()._on_scan_thread_finished()
+        if self._scan_thread is None:
+            self._set_panel_busy(False)
+
     def update_ui_state(self):
         video_loaded = self.cap is not None and self.cap.isOpened()
         roi_drawn = self.video_display_widget.video_label.is_roi_ready()
         item_selected = self.roi_list_widget.roi_list_widget.currentItem() is not None
 
+        # 扫描或 OCR 运行期间统一锁定主按钮；结束（完成/失败/取消）后
+        # 由 _set_panel_busy(False) 恢复。
+        panel_busy = getattr(self, "_panel_busy", False)
+        if self.control_panel_widget.is_pipeline_running() != panel_busy:
+            self.control_panel_widget.set_pipeline_running(panel_busy)
+
         self.video_display_widget.timeline_slider.setEnabled(video_loaded)
         self.file_ops_widget.save_roi_btn.setEnabled(video_loaded and bool(self.roi_data))
         self.file_ops_widget.load_roi_btn.setEnabled(video_loaded)
-        self.file_ops_widget.auto_roi_btn.setEnabled(video_loaded)
-        self.file_ops_widget.deep_scan_btn.setEnabled(video_loaded)
-        
+        self.file_ops_widget.auto_roi_btn.setEnabled(video_loaded and not panel_busy)
+        self.file_ops_widget.deep_scan_btn.setEnabled(video_loaded and not panel_busy)
+
         self.roi_def_widget.add_roi_btn.setEnabled(video_loaded and roi_drawn)
         self.roi_def_widget.update_roi_btn.setEnabled(video_loaded and roi_drawn and item_selected)
         self.roi_def_widget.delete_roi_btn.setEnabled(video_loaded and item_selected)
-        
+
         for btn in [self.roi_def_widget.start_frame_backward, self.roi_def_widget.start_frame_forward,
                     self.roi_def_widget.end_frame_backward, self.roi_def_widget.end_frame_forward,
                     self.roi_def_widget.set_start_btn, self.roi_def_widget.set_end_btn]:
@@ -215,7 +237,8 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
 
         self.roi_def_widget.set_color_restrict_controls_enabled(video_loaded)
 
-        self.control_panel_widget.run_pipeline_btn.setEnabled(video_loaded and bool(self.roi_data))
+        self.control_panel_widget.run_pipeline_btn.setEnabled(
+            video_loaded and bool(self.roi_data) and not panel_busy)
         self.control_panel_widget.set_color_gate_preview_allowed(video_loaded and bool(self.roi_data))
 
     def dragEnterEvent(self, event):

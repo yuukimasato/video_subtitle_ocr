@@ -263,6 +263,105 @@ def test_color_gate_preview_button_conditional(panel):
     assert not panel.color_gate_preview_btn.isVisibleTo(panel)
 
 
+def test_mode_switch_entry_buttons(panel):
+    """「完整设置」进入完整视图，「简洁界面」返回，且入口互斥显示。"""
+    assert panel.full_settings_btn.isVisibleTo(panel)
+    assert not panel.simple_ui_btn.isVisibleTo(panel)
+
+    panel.full_settings_btn.click()
+    assert panel.quick_mode is False
+    assert not panel.full_settings_btn.isVisibleTo(panel)
+    assert panel.simple_ui_btn.isVisibleTo(panel)
+
+    panel.simple_ui_btn.click()
+    assert panel.quick_mode is True
+    assert panel.full_settings_btn.isVisibleTo(panel)
+    assert not panel.simple_ui_btn.isVisibleTo(panel)
+
+
+def test_pipeline_running_locks_and_restores_panel(panel):
+    """运行期间禁用主按钮与输入控件并显示阶段；结束后统一恢复。"""
+    assert panel.run_pipeline_btn.text() == "开始识别并导出"
+    assert panel.is_pipeline_running() is False
+
+    panel.set_pipeline_running(True, "正在检测字幕区域…")
+    assert panel.is_pipeline_running() is True
+    assert not panel.run_pipeline_btn.isEnabled()
+    assert "正在检测字幕区域" in panel.run_pipeline_btn.text()
+    # 输入控件一并禁用。
+    assert not panel.ocr_lang_combo.isEnabled()
+    assert not panel.adjust_roi_btn.isEnabled()
+    assert not panel.redetect_btn.isEnabled()
+    assert not panel.chunk_workers_combo.isEnabled()
+
+    # 运行中更新阶段文本。
+    panel.set_pipeline_stage("阶段 2/4：OCR 识别中（33%）")
+    assert "OCR 识别中" in panel.run_pipeline_btn.text()
+    # 未运行时阶段更新应被忽略。
+    panel.set_pipeline_running(False)
+    panel.set_pipeline_stage("不应生效")
+    assert panel.run_pipeline_btn.text() == "开始识别并导出"
+
+    # 恢复后输入控件重新可用，主按钮文案复位。
+    assert panel.ocr_lang_combo.isEnabled()
+    assert panel.adjust_roi_btn.isEnabled()
+    # chunk_workers 在可折叠的高级组内：展开后应可用（组未勾选时被 Qt 禁用）。
+    panel.advanced_group.setChecked(True)
+    assert panel.chunk_workers_combo.isEnabled()
+    assert panel.is_pipeline_running() is False
+
+
+def test_pipeline_restore_reapplies_conditional_states(panel):
+    """恢复时重新套用各条件化启用状态（颜色门控、来源过滤子项）。"""
+    panel.advanced_group.setChecked(True)
+    panel.color_gate_checkbox.setChecked(True)
+    panel.set_quick_mode(False)
+
+    panel.set_pipeline_running(True)
+    assert not panel.color_gate_preview_btn.isEnabled()
+    panel.set_pipeline_running(False)
+    # 颜色门控仍勾选：预览按钮可见且恢复「允许前禁用」状态。
+    assert panel.color_gate_preview_btn.isVisibleTo(panel)
+    assert not panel.color_gate_preview_btn.isEnabled()
+
+    # 来源过滤关闭时，其子控件恢复为禁用（由主开关决定）。
+    assert not panel.keep_overlay_checkbox.isEnabled()
+    assert not panel.reanalyze_btn.isEnabled()
+
+
+def test_window_panel_busy_lock_roundtrip():
+    """窗口级集成：_set_panel_busy 锁定/恢复面板；不加载视频时主按钮仍受业务门控。"""
+    from main_window.window import SubtitleOCRGUI
+
+    window = SubtitleOCRGUI()
+    try:
+        panel = window.control_panel_widget
+        assert window._panel_busy is False
+
+        window._set_panel_busy(True, "正在检测字幕区域…")
+        assert window._panel_busy is True
+        assert panel.is_pipeline_running() is True
+        assert not panel.run_pipeline_btn.isEnabled()
+        assert not window.file_ops_widget.auto_roi_btn.isEnabled()
+
+        window._set_panel_busy(False)
+        assert window._panel_busy is False
+        assert panel.is_pipeline_running() is False
+        # 未加载视频：主按钮仍按原业务规则禁用（视频 + ROI 才可用）。
+        assert not panel.run_pipeline_btn.isEnabled()
+
+        # 扫描线程收尾路径统一恢复（模拟线程结束后回调触发）。
+        window._panel_busy = True
+        panel.set_pipeline_running(True, "测试阶段")
+        window._scan_thread = None
+        window._on_scan_thread_finished()
+        assert window._panel_busy is False
+        assert panel.is_pipeline_running() is False
+    finally:
+        window.close()
+        window.deleteLater()
+
+
 def test_default_options(panel):
     opts = panel.get_pipeline_options()
     # 自动引擎：默认不绑定具体引擎，由引擎管理器在运行时自动选择。

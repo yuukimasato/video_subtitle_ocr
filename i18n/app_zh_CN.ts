@@ -294,7 +294,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+5"/>
         <source>调整字幕区域</source>
         <translation type="unfinished"></translation>
     </message>
@@ -451,12 +451,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+350"/>
+        <location line="+459"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-348"/>
+        <location line="-457"/>
         <source>清除已存密钥</source>
         <translation type="unfinished"></translation>
     </message>
@@ -471,7 +471,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+135"/>
+        <location line="+55"/>
+        <source>完整设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>显示全部设置（文字来源过滤、绘制模式、引擎详情）。已调整的选项保持不变。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>简洁界面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>返回一键简洁视图，隐藏高级设置。所有选项保持不变。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+178"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -588,7 +608,7 @@
         <translation type="vanished">Medium(最准)</translation>
     </message>
     <message>
-        <location line="-610"/>
+        <location line="-719"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大模型润色（DeepSeek / OpenAI，可选）</translation>
     </message>
@@ -1174,12 +1194,22 @@
         <translation>请先加载视频文件。</translation>
     </message>
     <message>
-        <location filename="../main_window/window.py" line="+94"/>
+        <location filename="../main_window/window.py" line="+95"/>
         <source>视频字幕 OCR 工具</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+143"/>
+        <location line="+106"/>
+        <source>正在深度扫描…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>正在检测字幕区域…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+57"/>
         <source>已通过拖放加载 ASS 模板：{}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1264,7 +1294,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+17"/>
+        <location filename="../main_window/pipeline_control.py" line="+31"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
@@ -1445,7 +1475,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+91"/>
+        <location line="+49"/>
+        <source>正在识别…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+51"/>
         <source>[LLM] 完成 —— 已写入 ASS 文件。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1470,7 +1505,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+11"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
         <translation type="unfinished"></translation>
     </message>

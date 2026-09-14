@@ -8,6 +8,20 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
 class PipelineControlMixin:
     """OCR 流水线启动与进度/完成/错误回调（原 main_window.py SubtitleOCRGUI L841-1022）。"""
 
+    def _set_panel_busy(self, busy: bool, stage: str = "") -> None:
+        """统一锁定/恢复控制面板（扫描与 OCR 运行共用）。
+
+        getattr 防御：轻量宿主（如 dismiss-race 回归测试的 _Host 桩）没有
+        控制面板或 update_ui_state 时安全跳过。
+        """
+        self._panel_busy = bool(busy)
+        panel = getattr(self, "control_panel_widget", None)
+        if panel is not None:
+            panel.set_pipeline_running(self._panel_busy, stage)
+        update_ui_state = getattr(self, "update_ui_state", None)
+        if callable(update_ui_state):
+            update_ui_state()
+
     def run_ocr_pipeline(self):
         # Lazy import to keep UI startup lightweight and allow opening the GUI
         # without OCR dependencies installed yet.
@@ -148,12 +162,20 @@ class PipelineControlMixin:
         self.pipeline_worker.finished.connect(self._on_pipeline_worker_thread_done)
 
         self.pipeline_worker.start()
+        # 运行期间锁定控制面板，主按钮显示当前阶段；完成/失败/取消时恢复。
+        self._set_panel_busy(True, QCoreApplication.translate("SubtitleOCRGUI", "正在识别…"))
 
     def _on_pipeline_worker_thread_done(self):
         if self.sender() is self.pipeline_worker:
             self.pipeline_worker = None
+            # 兜底恢复：finished/error 回调解锁时 worker 线程可能尚未退出，
+            # update_ui_state 会按 _panel_busy 维持锁定；线程真正结束后统一恢复。
+            self._set_panel_busy(False)
 
     def _on_pipeline_progress(self, value: int, message: str):
+        panel = getattr(self, "control_panel_widget", None)
+        if panel is not None:
+            panel.set_pipeline_stage(message)
         dlg = self.progress_dialog
         if dlg is not None:
             # 模态 QProgressDialog 的 setValue() 会抽取事件队列（Qt6
@@ -184,6 +206,7 @@ class PipelineControlMixin:
                 self.deepseek_progress_panel.append_line(f"[{int(value)}%] {m}")
 
     def _on_pipeline_finished(self, output_path: str):
+        self._set_panel_busy(False)
         if self.progress_dialog:
             self.progress_dialog.setValue(100)
         # 在弹模态框之前就销毁进度对话框：后续进来的进度回调会因判空跳过，
@@ -207,6 +230,7 @@ class PipelineControlMixin:
 
     def _on_pipeline_error(self, error_message: str):
         # 同 _on_pipeline_finished：先销毁进度对话框再弹模态错误框。
+        self._set_panel_busy(False)
         self._dismiss_progress_dialog()
         if getattr(self, "_pipeline_llm_active", False):
             self.deepseek_progress_panel.append_line(

@@ -331,6 +331,9 @@ class ControlPanelWidget(QWidget):
         extract_layout.setSpacing(8)
         self.run_pipeline_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "开始识别并导出"))
         self.run_pipeline_btn.setMinimumHeight(34)
+        self._run_btn_default_text = self.run_pipeline_btn.text()
+        self._pipeline_running = False
+        self._pipeline_stage = ""
         self.adjust_roi_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "调整字幕区域"))
         self.adjust_roi_btn.setToolTip(
             QCoreApplication.translate(
@@ -569,6 +572,28 @@ class ControlPanelWidget(QWidget):
         extract_layout.addWidget(self.source_status_label)
         extract_layout.addWidget(self.llm_group)
         extract_layout.addWidget(self.advanced_group)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
+        self.full_settings_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "完整设置"))
+        self.full_settings_btn.setFlat(True)
+        self.full_settings_btn.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "显示全部设置（文字来源过滤、绘制模式、引擎详情）。已调整的选项保持不变。",
+            )
+        )
+        self.simple_ui_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "简洁界面"))
+        self.simple_ui_btn.setFlat(True)
+        self.simple_ui_btn.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "返回一键简洁视图，隐藏高级设置。所有选项保持不变。",
+            )
+        )
+        mode_row.addWidget(self.full_settings_btn)
+        mode_row.addWidget(self.simple_ui_btn)
+        mode_row.addStretch(1)
+        extract_layout.addLayout(mode_row)
         main_layout.addWidget(extract_group)
 
         self.browse_template_btn.clicked.connect(self.browse_template_requested)
@@ -601,6 +626,8 @@ class ControlPanelWidget(QWidget):
         self.adjust_roi_btn.clicked.connect(self._on_adjust_roi_clicked)
         self.redetect_btn.clicked.connect(self.auto_detection_requested)
         self.source_filter_combo.currentIndexChanged.connect(self._on_source_filter_combo_changed)
+        self.full_settings_btn.clicked.connect(lambda: self.set_quick_mode(False))
+        self.simple_ui_btn.clicked.connect(lambda: self.set_quick_mode(True))
 
         # LLM 凭据区/刷新按钮按需显示
         self.deepseek_polish_checkbox.toggled.connect(self._update_llm_ui_visibility)
@@ -637,10 +664,90 @@ class ControlPanelWidget(QWidget):
         self.draw_mode_group.setVisible(full)
         # 引擎详情保留为可折叠容器：简洁模式收起，完整模式展开。
         self.engine_group.setChecked(full)
+        # 视图切换入口互斥显示。
+        self.full_settings_btn.setVisible(self._quick_mode)
+        self.simple_ui_btn.setVisible(full)
 
-    def _on_source_filter_enabled_toggled(self, checked: bool) -> None:
-        """Enable/disable source filter child controls when the master toggle changes."""
-        enabled = bool(checked)
+    # ── 执行状态（扫描与 OCR 运行共用；由主窗口驱动）──
+
+    def is_pipeline_running(self) -> bool:
+        """Whether the panel is currently locked by a running scan/pipeline."""
+        return self._pipeline_running
+
+    def _pipeline_input_controls(self) -> list:
+        """Controls that change pipeline inputs; disabled while running."""
+        return [
+            self.run_pipeline_btn,
+            self.adjust_roi_btn,
+            self.redetect_btn,
+            self.template_path_edit,
+            self.browse_template_btn,
+            self.ocr_engine_combo,
+            self.ocr_lang_combo,
+            self.ocr_model_tier_combo,
+            self.ocr_engine_detect_btn,
+            self.source_filter_combo,
+            self.source_filter_enabled_checkbox,
+            self.scene_preset_combo,
+            self.keep_overlay_checkbox,
+            self.keep_scene_checkbox,
+            self.keep_unknown_checkbox,
+            self.reanalyze_btn,
+            self.source_filter_reset_btn,
+            self.debug_mode_checkbox,
+            self.visualize_checkbox,
+            self.in_memory_mode_checkbox,
+            self.save_intermediate_checkbox,
+            self.time_slice_checkbox,
+            self.merge_roi_checkbox,
+            self.time_slice_seconds_edit,
+            self.chunk_workers_combo,
+            self.auto_roi_on_load_checkbox,
+            self.color_gate_checkbox,
+            self.color_gate_preview_btn,
+        ]
+
+    def set_pipeline_running(self, running: bool, stage: str = "") -> None:
+        """Lock/unlock the panel while a scan or OCR pipeline is running.
+
+        The main button is disabled and shows the current stage; on restore
+        every conditional enable state is re-applied (source filter children,
+        color-gate preview, LLM credential rows).
+        """
+        self._pipeline_running = bool(running)
+        controls = self._pipeline_input_controls()
+        if self._pipeline_running:
+            if stage:
+                self._pipeline_stage = stage
+            self.run_pipeline_btn.setText(self._pipeline_stage or self._run_btn_default_text)
+            for widget in controls:
+                widget.setEnabled(False)
+        else:
+            self._pipeline_stage = ""
+            self.run_pipeline_btn.setText(self._run_btn_default_text)
+            for widget in controls:
+                widget.setEnabled(True)
+            # 恢复各条件化启用状态（运行期间被统一禁用）。
+            self._set_source_filter_children_enabled(
+                self.source_filter_enabled_checkbox.isChecked()
+            )
+            self.set_color_gate_preview_allowed(self._gate_preview_allowed)
+            self._update_llm_ui_visibility()
+
+    def set_pipeline_stage(self, stage: str) -> None:
+        """Update the stage text shown on the main button while running."""
+        if not self._pipeline_running:
+            return
+        text = (stage or "").strip()
+        if not text:
+            return
+        if len(text) > 24:
+            text = text[:23] + "…"
+        self._pipeline_stage = text
+        self.run_pipeline_btn.setText(text)
+
+    def _set_source_filter_children_enabled(self, enabled: bool) -> None:
+        """Enable/disable the source filter child controls (no text side effects)."""
         self.scene_preset_label.setEnabled(enabled)
         self.scene_preset_combo.setEnabled(enabled)
         self.keep_overlay_checkbox.setEnabled(enabled)
@@ -649,6 +756,11 @@ class ControlPanelWidget(QWidget):
         self.reanalyze_btn.setEnabled(enabled)
         self.source_filter_reset_btn.setEnabled(enabled)
         self.source_status_label.setEnabled(enabled)
+
+    def _on_source_filter_enabled_toggled(self, checked: bool) -> None:
+        """Enable/disable source filter child controls when the master toggle changes."""
+        enabled = bool(checked)
+        self._set_source_filter_children_enabled(enabled)
         if not enabled:
             self.source_status_label.setText(
                 QCoreApplication.translate("ControlPanelWidget", "🔒 文字来源过滤已关闭，将保留所有识别到的文字。")
