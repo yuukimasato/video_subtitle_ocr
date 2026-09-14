@@ -145,6 +145,29 @@ class ControlPanelWidget(QWidget):
         basic_layout.addWidget(self.ocr_lang_label, 0, 0)
         basic_layout.addWidget(self.ocr_lang_combo, 0, 1)
         basic_layout.setColumnStretch(2, 1)
+
+        # ── 文字保留（用户向三选一；映射到既有来源过滤字段）──
+        self.source_filter_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "文字保留："))
+        self.source_filter_combo = QComboBox()
+        self.source_filter_combo.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "控制识别结果保留哪些文字。「保留全部文字」不做任何过滤；"
+                "更精细的规则可在完整设置中调整。",
+            )
+        )
+        # 逐项字面量添加，保证 lupdate 能提取翻译源。
+        self.source_filter_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "保留全部文字"))
+        self.source_filter_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "只保留字幕"))
+        self.source_filter_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "字幕和画面文字"))
+        self.source_filter_combo.addItem(
+            QCoreApplication.translate("ControlPanelWidget", "自定义（在完整设置中调整）"))
+        self._suppress_source_filter_combo = False
+        basic_layout.addWidget(self.source_filter_label, 1, 0)
+        basic_layout.addWidget(self.source_filter_combo, 1, 1, 1, 2)
         main_layout.addWidget(basic_group)
 
         # ── OCR 引擎详情（可折叠，默认收起；完整设置下展开）──
@@ -159,8 +182,7 @@ class ControlPanelWidget(QWidget):
         self.ocr_engine_status = QLabel("")
         self.ocr_engine_detect_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "检测可用引擎"))
         engine_layout.addWidget(self.ocr_engine_label, 0, 0)
-        engine_layout.addWidget(self.ocr_engine_combo, 0, 1, 1, 2)
-        engine_layout.addWidget(self.ocr_engine_detect_btn, 0, 3)
+        engine_layout.addWidget(self.ocr_engine_combo, 0, 1, 1, 3)
 
         # ── 模型档位（PaddleOCR PP-OCRv6 tiny/small/medium）──
         self.ocr_model_tier_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "模型档位："))
@@ -212,13 +234,13 @@ class ControlPanelWidget(QWidget):
         self.source_filter_enabled_checkbox.setChecked(False)
         source_filter_layout.addWidget(self.source_filter_enabled_checkbox)
 
-        # Status label (shows auto-detection result)
+        # Status label (shows auto-detection result); lives in the action area
+        # of extract_group so it stays visible in the simplified view too.
         self.source_status_label = QLabel(QCoreApplication.translate("ControlPanelWidget", "🔄 加载视频后将自动分析..."))
         self.source_status_label.setWordWrap(True)
         self.source_status_label.setTextFormat(Qt.TextFormat.RichText)
         self.source_status_label.setOpenExternalLinks(False)
         self.source_status_label.linkActivated.connect(self._on_status_edit_clicked)
-        source_filter_layout.addWidget(self.source_status_label)
 
         # Scene preset combo
         preset_row = QHBoxLayout()
@@ -307,8 +329,22 @@ class ControlPanelWidget(QWidget):
         extract_layout = QVBoxLayout(extract_group)
         extract_layout.setContentsMargins(10, 10, 10, 10)
         extract_layout.setSpacing(8)
-        self.run_pipeline_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "字幕 OCR 识别并导出"))
+        self.run_pipeline_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "开始识别并导出"))
         self.run_pipeline_btn.setMinimumHeight(34)
+        self.adjust_roi_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "调整字幕区域"))
+        self.adjust_roi_btn.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "进入 ROI 编辑状态：在画面上拖动、缩放或微调已检测到的字幕区域。",
+            )
+        )
+        self.redetect_btn = QPushButton(QCoreApplication.translate("ControlPanelWidget", "重新检测"))
+        self.redetect_btn.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "对当前视频重新执行自动分析（场景类型判定）。",
+            )
+        )
 
         # Collapsible sub-groups keep the default view short: power-user options
         # stay available but hidden until the group title is ticked.
@@ -410,6 +446,8 @@ class ControlPanelWidget(QWidget):
             QCoreApplication.translate("ControlPanelWidget", "预览检测效果…")
         )
         self.color_gate_preview_btn.setEnabled(False)
+        # 条件显示：仅在勾选颜色门控后出现（而非一直占据布局空间）。
+        self.color_gate_preview_btn.setVisible(False)
         self.color_gate_status_label = QLabel(self._color_gate_status_text())
         self.color_gate_status_label.setWordWrap(True)
         gate_row = QHBoxLayout()
@@ -488,24 +526,47 @@ class ControlPanelWidget(QWidget):
         self.deepseek_strategy_checkbox.setChecked(False)
         llm_polish_grid.addWidget(self.deepseek_polish_checkbox, 0, 0, 1, 4)
         llm_polish_grid.addWidget(self.deepseek_fragment_merge_checkbox, 1, 0, 1, 4)
-        llm_polish_grid.addWidget(self.llm_provider_label, 2, 0, 1, 1)
-        llm_polish_grid.addWidget(self.llm_provider_combo, 2, 1, 1, 3)
+        llm_polish_grid.addWidget(self.deepseek_strategy_checkbox, 2, 0, 1, 4)
+
+        # 凭据区（provider/API Key/Base URL/模型/刷新）按需显示：
+        # 仅当任一 LLM 功能启用时出现，「刷新模型列表」还需已填写 API Key。
+        self.llm_credentials_container = QWidget()
+        llm_credentials_grid = QGridLayout(self.llm_credentials_container)
+        llm_credentials_grid.setContentsMargins(0, 0, 0, 0)
+        llm_credentials_grid.setHorizontalSpacing(12)
+        llm_credentials_grid.setVerticalSpacing(6)
+        llm_credentials_grid.addWidget(self.llm_provider_label, 0, 0, 1, 1)
+        llm_credentials_grid.addWidget(self.llm_provider_combo, 0, 1, 1, 3)
         deepseek_key_row = QHBoxLayout()
         deepseek_key_row.setSpacing(8)
         deepseek_key_row.addWidget(self.deepseek_api_key_edit, 1)
         deepseek_key_row.addWidget(self.clear_saved_key_btn)
-        llm_polish_grid.addLayout(deepseek_key_row, 3, 0, 1, 3)
-        llm_polish_grid.addWidget(self.refresh_models_btn, 3, 3, 1, 1)
-        llm_polish_grid.addWidget(self.deepseek_api_base_edit, 4, 0, 1, 2)
-        llm_polish_grid.addWidget(self.deepseek_model_combo, 4, 2, 1, 2)
-        llm_polish_grid.addWidget(self.deepseek_strategy_checkbox, 5, 0, 1, 4)
+        llm_credentials_grid.addLayout(deepseek_key_row, 1, 0, 1, 3)
+        llm_credentials_grid.addWidget(self.refresh_models_btn, 1, 3, 1, 1)
+        llm_credentials_grid.addWidget(self.deepseek_api_base_edit, 2, 0, 1, 2)
+        llm_credentials_grid.addWidget(self.deepseek_model_combo, 2, 2, 1, 2)
+        llm_polish_grid.addWidget(self.llm_credentials_container, 3, 0, 1, 4)
 
+        # 「检测可用引擎」移入高级区，不再占据引擎详情首行。
+        engine_detect_row = QHBoxLayout()
+        engine_detect_row.setSpacing(8)
+        engine_detect_row.addWidget(self.ocr_engine_detect_btn)
+        engine_detect_row.addStretch(1)
+        advanced_content.addLayout(engine_detect_row)
         advanced_content.addLayout(options_layout)
         advanced_content.addLayout(gate_row)
         advanced_content.addWidget(self.color_gate_status_label)
         llm_content.addLayout(llm_polish_grid)
 
+        secondary_row = QHBoxLayout()
+        secondary_row.setSpacing(8)
+        secondary_row.addWidget(self.adjust_roi_btn)
+        secondary_row.addWidget(self.redetect_btn)
+        secondary_row.addStretch(1)
         extract_layout.addWidget(self.run_pipeline_btn)
+        extract_layout.addLayout(secondary_row)
+        # 检测状态行：加载视频后的自动分析进度/结果，两种视图下都可见。
+        extract_layout.addWidget(self.source_status_label)
         extract_layout.addWidget(self.llm_group)
         extract_layout.addWidget(self.advanced_group)
         main_layout.addWidget(extract_group)
@@ -536,6 +597,17 @@ class ControlPanelWidget(QWidget):
         self.reanalyze_btn.clicked.connect(self.auto_detection_requested)
         self.source_filter_reset_btn.clicked.connect(self._on_preset_reset)
 
+        # Quick mode action row & user-facing source filter combo
+        self.adjust_roi_btn.clicked.connect(self._on_adjust_roi_clicked)
+        self.redetect_btn.clicked.connect(self.auto_detection_requested)
+        self.source_filter_combo.currentIndexChanged.connect(self._on_source_filter_combo_changed)
+
+        # LLM 凭据区/刷新按钮按需显示
+        self.deepseek_polish_checkbox.toggled.connect(self._update_llm_ui_visibility)
+        self.deepseek_fragment_merge_checkbox.toggled.connect(self._update_llm_ui_visibility)
+        self.deepseek_strategy_checkbox.toggled.connect(self._update_llm_ui_visibility)
+        self.deepseek_api_key_edit.textChanged.connect(self._update_llm_ui_visibility)
+
         self._load_llm_from_settings()
         self._populate_engine_combo()
         self._populate_preset_combo()
@@ -545,6 +617,7 @@ class ControlPanelWidget(QWidget):
 
         # 默认进入简洁模式：只保留模板/语言/主操作，其余入口折叠或隐藏。
         self.set_quick_mode(True)
+        self._update_llm_ui_visibility()
 
     @property
     def quick_mode(self) -> bool:
@@ -584,6 +657,77 @@ class ControlPanelWidget(QWidget):
             self.source_status_label.setText(
                 QCoreApplication.translate("ControlPanelWidget", "🔄 文字来源过滤已启用，加载视频后将自动分析...")
             )
+        self._sync_source_filter_combo()
+
+    # ── 用户向「文字保留」组合框（映射到既有来源过滤字段）──
+
+    def _on_source_filter_combo_changed(self, index: int) -> None:
+        """Map the user-facing combo onto the existing source-filter fields."""
+        if self._suppress_source_filter_combo:
+            return
+        self._suppress_source_filter_combo = True
+        try:
+            if index == 0:  # 保留全部文字：不过滤
+                self.source_filter_enabled_checkbox.setChecked(False)
+            elif index == 1:  # 只保留字幕
+                self.source_filter_enabled_checkbox.setChecked(True)
+                self.keep_overlay_checkbox.setChecked(True)
+                self.keep_scene_checkbox.setChecked(False)
+                self.keep_unknown_checkbox.setChecked(False)
+            elif index == 2:  # 字幕和画面文字
+                self.source_filter_enabled_checkbox.setChecked(True)
+                self.keep_overlay_checkbox.setChecked(True)
+                self.keep_scene_checkbox.setChecked(True)
+                self.keep_unknown_checkbox.setChecked(False)
+            # index == 3（自定义）：不改动状态，仅作展示
+        finally:
+            self._suppress_source_filter_combo = False
+
+    def _sync_source_filter_combo(self) -> None:
+        """Reflect checkbox state back into the user-facing combo."""
+        if self._suppress_source_filter_combo:
+            return
+        self._suppress_source_filter_combo = True
+        try:
+            if not self.source_filter_enabled_checkbox.isChecked():
+                self.source_filter_combo.setCurrentIndex(0)
+            else:
+                keep_o = self.keep_overlay_checkbox.isChecked()
+                keep_s = self.keep_scene_checkbox.isChecked()
+                keep_u = self.keep_unknown_checkbox.isChecked()
+                if keep_o and not keep_s and not keep_u:
+                    self.source_filter_combo.setCurrentIndex(1)
+                elif keep_o and keep_s and not keep_u:
+                    self.source_filter_combo.setCurrentIndex(2)
+                else:
+                    self.source_filter_combo.setCurrentIndex(3)
+        finally:
+            self._suppress_source_filter_combo = False
+
+    def _on_adjust_roi_clicked(self) -> None:
+        """进入 ROI 编辑状态：复用绘制模式单选钮，保证两种视图状态一致。
+
+        单选钮切换会让新旧两个 radio 各发一次 toggled（即
+        _on_draw_mode_toggled 执行两次），这里屏蔽信号后只发一次。
+        """
+        for _radio in (self.rect_mode_radio, self.poly_mode_radio, self.edit_mode_radio):
+            _radio.blockSignals(True)
+        try:
+            self.edit_mode_radio.setChecked(True)
+        finally:
+            for _radio in (self.rect_mode_radio, self.poly_mode_radio, self.edit_mode_radio):
+                _radio.blockSignals(False)
+        self.draw_mode_changed.emit("edit")
+
+    def _update_llm_ui_visibility(self) -> None:
+        """凭据区按需显示：任一 LLM 功能启用才显示；刷新按钮还需 API Key。"""
+        llm_on = (
+            self.deepseek_polish_checkbox.isChecked()
+            or self.deepseek_fragment_merge_checkbox.isChecked()
+            or self.deepseek_strategy_checkbox.isChecked()
+        )
+        self.llm_credentials_container.setVisible(llm_on)
+        self.refresh_models_btn.setVisible(llm_on and bool(self.deepseek_api_key_edit.text().strip()))
 
     def _color_gate_status_text(self) -> str:
         if not self.color_gate_checkbox.isChecked():
@@ -604,6 +748,8 @@ class ControlPanelWidget(QWidget):
     def _on_color_gate_toggled(self, checked: bool) -> None:
         if not checked:
             self._color_gate_spec = None
+        # 条件显示：预览按钮只在勾选颜色门控后出现。
+        self.color_gate_preview_btn.setVisible(checked)
         self.set_color_gate_preview_allowed(self._gate_preview_allowed)
         self._refresh_color_gate_status_label()
 
@@ -1027,6 +1173,7 @@ class ControlPanelWidget(QWidget):
                 self.scene_preset_combo.setCurrentIndex(i)
                 break
         self._suppress_preset_signal = False
+        self._sync_source_filter_combo()
 
     def _on_status_edit_clicked(self, link: str) -> None:
         """User clicked the edit link on the status label."""
@@ -1113,3 +1260,4 @@ class ControlPanelWidget(QWidget):
                 + QCoreApplication.translate("ControlPanelWidget", "已恢复上次保存的手动设置")
                 + '</span>'
             )
+        self._sync_source_filter_combo()

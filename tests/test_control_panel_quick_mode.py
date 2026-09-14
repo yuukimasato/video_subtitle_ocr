@@ -79,12 +79,15 @@ def _visible_texts(widget) -> set:
     visible within the panel (no show() needed)."""
     texts = set()
     for child in widget.findChildren(QAbstractButton):
-        texts.add(child.text())
+        if child.isVisibleTo(widget):
+            texts.add(child.text())
     for child in widget.findChildren(QLabel):
-        texts.add(child.text())
+        if child.isVisibleTo(widget):
+            texts.add(child.text())
     for combo in widget.findChildren(QComboBox):
-        for i in range(combo.count()):
-            texts.add(combo.itemText(i))
+        if combo.isVisibleTo(widget):
+            for i in range(combo.count()):
+                texts.add(combo.itemText(i))
     return {t for t in texts if t}
 
 
@@ -136,6 +139,128 @@ def test_quick_mode_toggle_keeps_controls_and_values(panel):
     assert panel.template_path_edit.text() == "/tmp/demo.ass"
     assert not panel.source_filter_group.isVisibleTo(panel)
     assert panel.engine_group.isChecked() is False
+
+
+def test_action_wording(panel):
+    """主/次操作按钮使用用户任务文案（测试进程未装载翻译器，即源文案）。"""
+    assert panel.run_pipeline_btn.text() == "开始识别并导出"
+    assert panel.adjust_roi_btn.text() == "调整字幕区域"
+    assert panel.redetect_btn.text() == "重新检测"
+
+
+def test_secondary_actions_trigger_existing_signals(panel):
+    """次操作复用既有信号：调整字幕区域→编辑模式；重新检测→auto_detection_requested。"""
+    modes = []
+    panel.draw_mode_changed.connect(modes.append)
+    panel.adjust_roi_btn.click()
+    assert modes == ["edit"]
+
+    detections = []
+    panel.auto_detection_requested.connect(lambda: detections.append(1))
+    panel.redetect_btn.click()
+    assert detections == [1]
+
+
+def test_default_view_hides_implementation_terms(panel):
+    """默认界面不出现实现术语（进程分片、颜色门控等）。"""
+    terms = (
+        "进程分片",
+        "颜色门控",
+        "内存模式",
+        "按时间分片并行",
+        "场景预设",
+        "OVERLAY",
+        "SCENE",
+        "UNKNOWN",
+        "检测可用引擎",
+        "刷新模型列表",
+        "预览检测效果",
+    )
+    texts = _visible_texts(panel)
+    for term in terms:
+        assert not any(term in t for t in texts), f"实现术语泄漏到默认界面: {term}"
+
+
+def test_full_mode_still_exposes_advanced_controls(panel):
+    """完整设置（含展开高级组）下仍能找到全部高级控件。"""
+    panel.set_quick_mode(False)
+    panel.advanced_group.setChecked(True)
+    panel.llm_group.setChecked(True)
+    texts = _visible_texts(panel)
+    joined = " ".join(texts)
+    for term in ("进程分片", "颜色门控", "检测可用引擎", "内存模式"):
+        assert term in joined, f"完整设置缺少: {term}"
+    assert panel.chunk_workers_combo.isVisibleTo(panel)
+    assert panel.chunk_workers_combo.isEnabled()
+    assert panel.ocr_engine_detect_btn.isVisibleTo(panel)
+
+
+def test_source_filter_combo_maps_to_existing_fields(panel):
+    """文字保留三选一映射到 keep_overlay/keep_scene/keep_unknown 与 enabled。"""
+    combo = panel.source_filter_combo
+    assert combo.currentIndex() == 0  # 默认：保留全部文字（过滤关闭）
+
+    combo.setCurrentIndex(1)  # 只保留字幕
+    cfg = panel.get_pipeline_options()["source_filter_config"]
+    assert cfg["enabled"] is True
+    assert cfg["keep_overlay"] is True
+    assert cfg["keep_scene"] is False
+    assert cfg["keep_unknown"] is False
+
+    combo.setCurrentIndex(2)  # 字幕和画面文字
+    cfg = panel.get_pipeline_options()["source_filter_config"]
+    assert cfg["enabled"] is True
+    assert cfg["keep_overlay"] is True
+    assert cfg["keep_scene"] is True
+    assert cfg["keep_unknown"] is False
+
+    combo.setCurrentIndex(0)  # 保留全部文字
+    assert panel.get_pipeline_options()["source_filter_config"]["enabled"] is False
+
+
+def test_source_filter_combo_reflects_manual_state(panel):
+    """高级设置中的手动组合反馈为「自定义」。"""
+    panel.set_quick_mode(False)
+    panel.source_filter_enabled_checkbox.setChecked(True)
+    # 构造时默认应用第一个预设（keep_overlay 勾选）→「只保留字幕」。
+    assert panel.source_filter_combo.currentIndex() == 1
+    panel.keep_unknown_checkbox.setChecked(True)
+    assert panel.source_filter_combo.currentIndex() == 3  # 未匹配预设组合
+    panel.keep_unknown_checkbox.setChecked(False)
+    assert panel.source_filter_combo.currentIndex() == 1
+    panel.keep_scene_checkbox.setChecked(True)
+    assert panel.source_filter_combo.currentIndex() == 2  # 字幕和画面文字
+
+
+def test_refresh_models_button_conditional(panel):
+    """「刷新模型列表」仅在启用 LLM 且填写 API Key 后显示。"""
+    panel.deepseek_api_key_edit.clear()
+    panel.llm_group.setChecked(True)  # 展开 LLM 组
+    assert not panel.refresh_models_btn.isVisibleTo(panel)
+    assert not panel.llm_credentials_container.isVisibleTo(panel)
+
+    panel.deepseek_polish_checkbox.setChecked(True)
+    assert panel.llm_credentials_container.isVisibleTo(panel)
+    assert not panel.refresh_models_btn.isVisibleTo(panel)  # 尚无 API Key
+
+    panel.deepseek_api_key_edit.setText("sk-test")
+    assert panel.refresh_models_btn.isVisibleTo(panel)
+
+    panel.deepseek_polish_checkbox.setChecked(False)
+    assert not panel.llm_credentials_container.isVisibleTo(panel)
+    assert not panel.refresh_models_btn.isVisibleTo(panel)
+
+
+def test_color_gate_preview_button_conditional(panel):
+    """「预览检测效果」仅在启用颜色门控后显示（需先展开高级组）。"""
+    panel.advanced_group.setChecked(True)
+    assert not panel.color_gate_preview_btn.isVisibleTo(panel)
+    panel.color_gate_checkbox.setChecked(True)
+    assert panel.color_gate_preview_btn.isVisibleTo(panel)
+    # 未经过「允许预览」确认前仍不可点击。
+    assert not panel.color_gate_preview_btn.isEnabled()
+    panel.color_gate_checkbox.setChecked(False)
+    assert not panel.color_gate_preview_btn.isVisibleTo(panel)
 
 
 def test_default_options(panel):
