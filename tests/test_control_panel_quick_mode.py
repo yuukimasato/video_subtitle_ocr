@@ -125,7 +125,6 @@ def test_quick_mode_toggle_keeps_controls_and_values(panel):
     """set_quick_mode 只切换可见性：不重建控件、不清空用户设置。"""
     assert panel.quick_mode is True
     assert not panel.source_filter_group.isVisibleTo(panel)
-    assert not panel.draw_mode_group.isVisibleTo(panel)
 
     panel.set_quick_mode(False)
     assert panel.quick_mode is False
@@ -139,6 +138,14 @@ def test_quick_mode_toggle_keeps_controls_and_values(panel):
     assert panel.template_path_edit.text() == "/tmp/demo.ass"
     assert not panel.source_filter_group.isVisibleTo(panel)
     assert panel.engine_group.isChecked() is False
+
+
+def test_quick_mode_keeps_roi_drawing_modes_visible(panel):
+    assert panel.quick_mode is True
+    assert panel.draw_mode_group.isVisibleTo(panel)
+    assert panel.rect_mode_radio.isVisibleTo(panel)
+    assert panel.poly_mode_radio.isVisibleTo(panel)
+    assert panel.edit_mode_radio.isVisibleTo(panel)
 
 
 def test_action_wording(panel):

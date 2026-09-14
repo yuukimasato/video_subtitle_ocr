@@ -661,7 +661,8 @@ class ControlPanelWidget(QWidget):
         full = not self._quick_mode
         # 简洁模式隐藏整组的高级入口；完整模式恢复显示（控件对象不变）。
         self.source_filter_group.setVisible(full)
-        self.draw_mode_group.setVisible(full)
+        # ROI 绘制是核心工作流入口，简洁模式也必须可见。
+        self.draw_mode_group.setVisible(True)
         # 引擎详情保留为可折叠容器：简洁模式收起，完整模式展开。
         self.engine_group.setChecked(full)
         # 视图切换入口互斥显示。
