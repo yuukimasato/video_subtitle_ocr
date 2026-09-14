@@ -476,3 +476,69 @@ def test_segment_to_roi_entry_poly_for_tilted_hits():
     assert len(entry["points"]) == 4
     assert abs(_poly_long_edge_tilt_deg(entry["points"]) - 12.0) < 1.5
     assert entry["start_frame"] == 0 and entry["end_frame"] == 10
+
+
+# ---------------------------------------------------------------------------
+# 倾斜判定回归：点云整体倾斜 ≠ 倾斜字幕带（真实 1080p 样本复现）
+# ---------------------------------------------------------------------------
+
+def _hquad(cx: float, cy: float, length: float, height: float):
+    """水平文本行四边形顶点（与 _tilted_quad 的 0° 输出一致，显式写出）。"""
+    hl, hh = length / 2.0, height / 2.0
+    return [
+        [cx - hl, cy - hh],
+        [cx + hl, cy - hh],
+        [cx + hl, cy + hh],
+        [cx - hl, cy + hh],
+    ]
+
+
+def test_horizontal_lines_drift_positions_return_none():
+    """水平字幕带（各行倾角 0°）即使点云整体呈对角分布也不得判为倾斜带。
+
+    回归用例：1080p 对白字幕逐句位置/宽度漂移，全部点的外接矩形偏角
+    ≈11°，旧实现据此输出对角多边形 ROI，OCR 截断宽字幕文本。
+    """
+    quads = (
+        _hquad(200, 700, 300, 40)
+        + _hquad(960, 950, 1100, 40)
+        + _hquad(1700, 1000, 300, 40)
+    )
+    # 前置：该点云的最小外接矩形确实倾斜超过阈值（旧实现会误判）
+    rect = cv2.minAreaRect(np.array(quads, dtype=np.float32))
+    angle_dev = min(rect[2], 90.0 - rect[2])
+    assert angle_dev > POLY_TILT_THRESHOLD_DEG
+    assert cluster_poly_points_if_tilted(quads, 1920, 1080, 40.0) is None
+
+
+def test_tilt_minority_among_horizontal_returns_none():
+    """倾斜行占比不足（< POLY_TILT_MAJORITY_RATIO）时退回矩形路径。"""
+    quads = (
+        _hquad(400, 700, 900, 40)
+        + _hquad(960, 800, 900, 40)
+        + _tilted_quad(600, 900, 900, 40, 12.0)
+    )
+    assert cluster_poly_points_if_tilted(quads, 1920, 1080, 40.0) is None
+
+
+def test_inconsistent_tilt_directions_return_none():
+    """倾斜行方向不一致（+10° 与 -10°）时单一旋转矩形无法覆盖，退回矩形。"""
+    quads = (
+        _tilted_quad(400, 700, 900, 40, 10.0)
+        + _tilted_quad(960, 800, 900, 40, -10.0)
+    )
+    assert cluster_poly_points_if_tilted(quads, 1920, 1080, 40.0) is None
+
+
+def test_majority_tilted_ignores_horizontal_outlier():
+    """多数行倾斜且方向一致时仍输出多边形，倾角取自倾斜行自身。"""
+    quads = (
+        _tilted_quad(400, 700, 900, 40, 12.0)
+        + _tilted_quad(500, 760, 900, 40, 12.0)
+        + _hquad(960, 1050, 900, 40)
+    )
+    poly = cluster_poly_points_if_tilted(quads, 1920, 1080, 40.0)
+    assert poly is not None
+    assert abs(_poly_long_edge_tilt_deg(poly) - 12.0) < 1.5
+    # 多边形覆盖倾斜行，而不是被水平离群行拉成轴对齐
+    assert abs(_poly_long_edge_tilt_deg(poly)) > POLY_TILT_THRESHOLD_DEG
