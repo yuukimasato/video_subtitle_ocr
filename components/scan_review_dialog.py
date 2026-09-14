@@ -31,10 +31,6 @@ from PySide6.QtWidgets import (
 )
 
 
-def _tr(text: str) -> str:
-    return QCoreApplication.translate("ScanReviewDialog", text)
-
-
 class _CheckRow(QCheckBox):
     """带快照缩略图与说明文本的勾选行。"""
 
@@ -62,7 +58,7 @@ class ScanReviewDialog(QDialog):
 
     def __init__(self, report, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(_tr("深度扫描复核"))
+        self.setWindowTitle(QCoreApplication.translate("ScanReviewDialog", "深度扫描复核"))
         self.resize(720, 640)
         self.setModal(True)
 
@@ -85,38 +81,38 @@ class ScanReviewDialog(QDialog):
         content_layout.setSpacing(10)
 
         # ── 字幕带 ───────────────────────────────────────────
-        band_group = QGroupBox(_tr("字幕带 ROI（自动检测的主字幕区）"))
+        band_group = QGroupBox(QCoreApplication.translate("ScanReviewDialog", "字幕带 ROI（自动检测的主字幕区）"))
         band_layout = QVBoxLayout(band_group)
         if band_rois:
             for roi in band_rois:
                 region = str(roi.get("band_region", ""))
                 region_text = (
-                    _tr("底部") if region == "bottom"
-                    else _tr("顶部") if region == "top" else _tr("中部")
+                    QCoreApplication.translate("ScanReviewDialog", "底部") if region == "bottom"
+                    else QCoreApplication.translate("ScanReviewDialog", "顶部") if region == "top" else QCoreApplication.translate("ScanReviewDialog", "中部")
                 )
                 row = _CheckRow(
-                    _tr("{0}  帧 [{1}-{2}]").format(
+                    QCoreApplication.translate("ScanReviewDialog", "{0}  帧 [{1}-{2}]").format(
                         region_text, roi.get("start_frame"), roi.get("end_frame")
                     )
                 )
                 row.setChecked(True)
                 row.attach_to_layout(band_layout)
                 self._band_checks.append(row)
-            self._replace_checkbox = QCheckBox(_tr("用所选字幕带替换现有 ROI 列表（否则追加）"))
+            self._replace_checkbox = QCheckBox(QCoreApplication.translate("ScanReviewDialog", "用所选字幕带替换现有 ROI 列表（否则追加）"))
             self._replace_checkbox.setChecked(True)
             band_layout.addWidget(self._replace_checkbox)
         else:
-            band_layout.addWidget(QLabel(_tr("未检测到字幕带。")))
+            band_layout.addWidget(QLabel(QCoreApplication.translate("ScanReviewDialog", "未检测到字幕带。")))
         content_layout.addWidget(band_group)
 
         # ── 水印 ─────────────────────────────────────────────
-        watermark_group = QGroupBox(_tr("疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）"))
+        watermark_group = QGroupBox(QCoreApplication.translate("ScanReviewDialog", "疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）"))
         watermark_layout = QVBoxLayout(watermark_group)
         if watermarks:
             for candidate in watermarks:
                 presence = float(candidate.get("presence", 0.0))
                 row = _CheckRow(
-                    _tr("「{0}」 出现率 {1:.0%}").format(
+                    QCoreApplication.translate("ScanReviewDialog", "「{0}」 出现率 {1:.0%}").format(
                         str(candidate.get("text", ""))[:40], presence
                     ),
                     bytes(candidate.get("snapshot_jpeg") or b""),
@@ -126,16 +122,16 @@ class ScanReviewDialog(QDialog):
                 self._watermark_checks.append(row)
                 self._watermark_entries.append(candidate)
         else:
-            watermark_layout.addWidget(QLabel(_tr("未检测到疑似水印。")))
+            watermark_layout.addWidget(QLabel(QCoreApplication.translate("ScanReviewDialog", "未检测到疑似水印。")))
         content_layout.addWidget(watermark_group)
 
         # ── 场景文字 ─────────────────────────────────────────
-        scene_group = QGroupBox(_tr("画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）"))
+        scene_group = QGroupBox(QCoreApplication.translate("ScanReviewDialog", "画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）"))
         scene_layout = QVBoxLayout(scene_group)
         if scene_candidates:
             for candidate in scene_candidates[:50]:  # 防止极端视频条目爆炸
                 row = _CheckRow(
-                    _tr("「{0}」 出现 {1} 次（帧 {2}-{3}）").format(
+                    QCoreApplication.translate("ScanReviewDialog", "「{0}」 出现 {1} 次（帧 {2}-{3}）").format(
                         str(candidate.get("text", ""))[:40],
                         candidate.get("hit_count", 0),
                         candidate.get("first_frame"),
@@ -149,12 +145,12 @@ class ScanReviewDialog(QDialog):
                 self._scene_entries.append(candidate)
             if len(scene_candidates) > len(self._scene_checks):
                 scene_layout.addWidget(
-                    QLabel(_tr("（其余 {} 处低频文字未列出）").format(
+                    QLabel(QCoreApplication.translate("ScanReviewDialog", "（其余 {} 处低频文字未列出）").format(
                         len(scene_candidates) - len(self._scene_checks)
                     ))
                 )
         else:
-            scene_layout.addWidget(QLabel(_tr("未检测到画面中部文字。")))
+            scene_layout.addWidget(QLabel(QCoreApplication.translate("ScanReviewDialog", "未检测到画面中部文字。")))
         content_layout.addWidget(scene_group)
 
         content_layout.addStretch(1)
@@ -166,8 +162,8 @@ class ScanReviewDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self
         )
-        buttons.button(QDialogButtonBox.Ok).setText(_tr("应用"))
-        buttons.button(QDialogButtonBox.Cancel).setText(_tr("取消"))
+        buttons.button(QDialogButtonBox.Ok).setText(QCoreApplication.translate("ScanReviewDialog", "应用"))
+        buttons.button(QDialogButtonBox.Cancel).setText(QCoreApplication.translate("ScanReviewDialog", "取消"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 

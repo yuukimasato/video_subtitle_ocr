@@ -744,6 +744,174 @@
     </message>
 </context>
 <context>
+    <name>OCRToASSOptimizer</name>
+    <message>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="+47"/>
+        <source>Frame {} (ROI: {}) data list length mismatch, skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Error processing in-memory data for frame {} (ROI: {}): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Successfully loaded and organized OCR data by {} ROIs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+118"/>
+        <source>Merged into {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+192"/>
+        <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/generator.py" line="+109"/>
+        <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Using style template: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>No style template used, generating a rich set of default styles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>No valid OCR data found, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Processing ROI: {}, containing {} valid frames.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>ROI: {} generated {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>Step 4/4: DeepSeek reviewing merge strategy (round {}/{})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DeepSeek strategy review skipped or failed; keeping merge parameters unchanged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>DeepSeek strategy note: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>DeepSeek merge parameters converged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Re-merged subtitles with tuned parameters (gap {:.2f}s ratio {:.3f} overlap {}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Polish output length mismatch, using original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>DeepSeek subtitle polishing applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>--- Conversion successful ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>ASS subtitle file saved to: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>--- Conversion failed ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Error: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+59"/>
+        <source>DeepSeek merged fragmented events: {} -&gt; {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/roi_filters.py" line="+150"/>
+        <source>Watermark filter removed {} text line(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Text source filter skipped keep-all ROIs: {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/styling.py" line="+121"/>
+        <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Failed to read template file {}: {}. Using default styles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RoiDefinitionWidget</name>
     <message>
         <source>ROI Definition</source>
@@ -1045,6 +1213,94 @@
     <message>
         <location line="+1"/>
         <source>确定要删除 ROI {} 吗？</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ScanReviewDialog</name>
+    <message>
+        <location filename="../components/scan_review_dialog.py" line="+61"/>
+        <source>深度扫描复核</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>字幕带 ROI（自动检测的主字幕区）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>底部</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>顶部</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>中部</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>{0}  帧 [{1}-{2}]</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>用所选字幕带替换现有 ROI 列表（否则追加）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>未检测到字幕带。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>「{0}」 出现率 {1:.0%}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>未检测到疑似水印。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>「{0}」 出现 {1} 次（帧 {2}-{3}）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>（其余 {} 处低频文字未列出）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>未检测到画面中部文字。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>应用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>取消</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

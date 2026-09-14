@@ -236,3 +236,24 @@ python scripts/benchmark_regression.py \
 | 回归基准 vs `ppocrv6_run2` | 行准确率 100%（5/5，持平）；头尾误差 avg 0.007/0.027 s、max 0.033 s（≤1 帧@30fps，达标）；ocr_calls 133、frames_filled 475（与 2.4.0 持平，基准用固定 ROI 不受默认条带影响）；总耗时 15.9 s（噪声范围） |
 | deb 构建 | `video-subtitle-ocr_2.4.2_all.deb` 构建成功（5.4 MB，145 项），`dpkg-deb -I/-c` 校验通过，无 tests/.venv/__pycache__ 泄漏；包内 cli.py 已含新默认条带与 2.4.2 版本号 |
 | deb 安装测试 | rootless 安装（**全新 venv + 全量 pip 联网安装路径实测**）→ CLI `--version`（2.4.2）/真实视频 OCR（5 条）→ GUI 离屏冒烟 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
+
+### 2026-09-15 · v2.6.0 · Linux 7.2.4-070204-generic x86_64 · Python 3.12.3 · 32 核 / 91GB
+
+> 本版主要变化：一键控制面板（简洁视图）+ 界面语言切换（简中/繁中/英/日 +
+> 跟随系统），新增英语与繁体中文全量界面翻译并补齐日文历史缺口。测试数量
+> 288 → **326**（新增 quick mode 17 项、i18n 22 项；`get_pipeline_options()`
+> 字段与全部既有信号零删改）。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **326 passed, 1 skipped**（新增 `test_control_panel_quick_mode.py` 17 项：默认首屏/兼容性/条件显示/执行状态；`test_i18n_language.py` 22 项：locale 解析、qm 加载、三语内容、选择器持久化） |
+| 一键面板（专项） | 默认 quick mode 首屏仅模板/语言/文字保留/主操作；高级组、LLM 组默认折叠；「完整设置 ↔ 简洁界面」互切不重建控件、不清空用户设置；进程分片、颜色门控等实现术语不出现在默认界面，完整模式下全部可达 |
+| 条件显示（专项） | LLM 凭据区仅在任一 LLM 功能启用后显示，「刷新模型列表」还需已填 API Key；「预览检测效果」仅在颜色门控启用后显示（未确认前保持禁用） |
+| 执行状态（专项） | 扫描/OCR 运行期间主按钮禁用并显示阶段文本，输入控件统一锁定；完成、失败、取消（含线程收尾兜底路径）统一恢复，条件化启用状态重新套用 |
+| i18n · 机制 | 启动语言持久化于 QSettings `ui/language`（默认 auto 跟随系统 locale，zh_HK/MO/TW→繁中、ja→日文、en*→英文、其他→中文源文案）；「文件操作」组语言选择器切换后经确认自动重启生效 |
+| i18n · 覆盖 | app_en.qm / app_zh_TW.qm 各 265 条有效翻译（英文自然表述、繁体台湾用语）；**补齐日文历史缺口 166 条**（327 条有效）；lupdate 同文本启发式恢复 ScanReviewDialog 旧译 1 条 |
+| i18n · 修复 | `scan_review_dialog.py` 的 `_tr()` 包装因 lupdate 静态解析无法提取（变量实参，`-tr-function-alias` 对 Python 无效），ScanReviewDialog 上下文自 2.4.x 起从翻译目录丢失；改为字面量 `translate()` 调用后四种语言全部恢复 |
+| 真实 GUI 冒烟 | 离屏 + `benchmarks/test_video_subtitle.mp4`：加载视频后自动检测 ROI（1 个字幕带）、检测后主按钮可用、运行锁定/取消恢复、语言切换与持久化等 **20/20 通过**；源码目录英语启动实测：主按钮/窗口标题全英文 |
+| 回归基准 | 行准确率 100%（5/5）；`get_pipeline_options()` 19 字段完整、默认引擎 auto |
+| deb 构建 | `video-subtitle-ocr_2.6.0_all.deb` 构建成功（5.4MB，152 项），`dpkg-deb -I/-c` 校验通过：含 4 语言 .qm（en 48KB / zh_TW 33KB 新增），无 tests/.venv/__pycache__ 泄漏 |
+| deb 安装测试 | rootless 全新 venv + 全量 pip 依赖安装（wheel 命中本机缓存）→ CLI `--version`（2.6.0）→ 真实视频 OCR（5/5 条，8.33s）→ 安装目录 GUI 三语言冒烟（en/zh_TW/ja_JP 界面文案与窗口标题逐项断言）→ remove（启动器删除、venv 保留）→ purge（应用目录全清、数据库无记录）全流程通过 |

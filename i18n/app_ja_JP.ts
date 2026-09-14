@@ -6,57 +6,57 @@
     <message>
         <location filename="../components/color_gate_preview_dialog.py" line="+43"/>
         <source>颜色门控：预览</source>
-        <translation type="unfinished"></translation>
+        <translation>カラーゲート：プレビュー</translation>
     </message>
     <message>
         <location line="+18"/>
         <source>以下缩略来自 ROI 区间内均匀采样。请确认「判定为保留」与您期望一致。若不满意，请选择「取消」或直接关闭对话框，并保持主界面选项关闭或未确认。</source>
-        <translation type="unfinished"></translation>
+        <translation>以下のサムネイルは ROI 区間から均等にサンプリングしたものです。「保持」と判定されたフレームが期待どおりかご確認ください。満足できない場合は「キャンセル」を選ぶかダイアログを閉じ、メイン画面のオプションをオフまたは未確認のままにしてください。</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>阈值与预估</source>
-        <translation type="unfinished"></translation>
+        <translation>しきい値と推定</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>命中面积占比下限：</source>
-        <translation type="unfinished"></translation>
+        <translation>ヒット面積比率の下限：</translation>
     </message>
     <message>
         <location line="+21"/>
         <source>采用（用于本次识别）</source>
-        <translation type="unfinished"></translation>
+        <translation>採用（今回の認識で使用）</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>不采用</source>
-        <translation type="unfinished"></translation>
+        <translation>不採用</translation>
     </message>
     <message>
         <location line="+25"/>
         <source>采样帧数：{}；在当前阈值下「保留」帧数：{}（约 {:.1f}%）；按此比例粗略估计全流程 ROI 图数量约：{} / {}（原计划）。</source>
-        <translation type="unfinished"></translation>
+        <translation>サンプリング枚数：{}。現在のしきい値で「保持」されたフレーム：{}（約 {:.1f}%）。この比率から全工程の ROI 画像数を概算すると 約 {} / {}（当初予定）。</translation>
     </message>
     <message>
         <location line="+12"/>
         <source>保留</source>
-        <translation type="unfinished"></translation>
+        <translation>保持</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>跳过</source>
-        <translation type="unfinished"></translation>
+        <translation>スキップ</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>帧 {} · {}</source>
-        <translation type="unfinished"></translation>
+        <translation>フレーム {} · {}</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>max 占比：{ratio:.4f}</source>
-        <translation type="unfinished"></translation>
+        <translation>max 比率：{ratio:.4f}</translation>
     </message>
 </context>
 <context>
@@ -123,27 +123,27 @@
     <message>
         <location line="-22"/>
         <source>样式模板（可选）</source>
-        <translation type="unfinished"></translation>
+        <translation>スタイルテンプレート（任意）</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>点击“浏览”选择 .ass 模板文件</source>
-        <translation type="unfinished"></translation>
+        <translation>「参照」をクリックして .ass テンプレートファイルを選択</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>浏览…</source>
-        <translation type="unfinished"></translation>
+        <translation>参照…</translation>
     </message>
     <message>
         <location line="+74"/>
         <source>引擎选择：</source>
-        <translation type="unfinished"></translation>
+        <translation>エンジン選択：</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>检测可用引擎</source>
-        <translation type="unfinished"></translation>
+        <translation>利用可能なエンジンを検出</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -153,70 +153,73 @@
     <message>
         <location line="+24"/>
         <source>文字来源过滤（上下文语义分析）</source>
-        <translation type="unfinished"></translation>
+        <translation>テキストソースフィルタ（文脈意味解析）</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>启用文字来源过滤（实验性）</source>
-        <translation type="unfinished"></translation>
+        <translation>テキストソースフィルタを有効化（実験的）</translation>
     </message>
     <message>
         <location line="+6"/>
         <source>勾选后，OCR 识别结果将经过上下文语义分析，自动区分后期叠加字幕与实拍场景文字。未勾选时保留所有识别到的文字。</source>
-        <translation type="unfinished"></translation>
+        <translation>チェックすると、OCR 結果を文脈意味解析で処理し、後付けの字幕と実写シーン内のテキストを自動的に区別します。未チェックの場合は認識したすべてのテキストを保持します。</translation>
     </message>
     <message>
         <location line="+11"/>
         <source>🔄 加载视频后将自动分析...</source>
-        <translation type="unfinished"></translation>
+        <translation>🔄 動画を読み込むと自動解析を開始します...</translation>
     </message>
     <message>
         <location line="+9"/>
         <source>场景预设：</source>
-        <translation type="unfinished"></translation>
+        <translation>シーンプリセット：</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>选择适合当前视频的场景类型，自动配置文字来源过滤规则</source>
-        <translation type="unfinished"></translation>
+        <translation>この動画に合ったシーンタイプを選ぶと、テキストソースフィルタのルールを自動設定します</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>保留后期叠加文字 (OVERLAY)
     字幕、标题、水印、UI 按钮、弹幕、特效文字</source>
-        <translation type="unfinished"></translation>
+        <translation>後付けの重ね文字を保持 (OVERLAY)
+    字幕、タイトル、ウォーターマーク、UI ボタン、弾幕、演出テキスト</translation>
     </message>
     <message>
         <location line="+6"/>
         <source>保留实拍场景文字 (SCENE)
     店铺招牌、路牌、宣传海报、书本、屏幕、标牌</source>
-        <translation type="unfinished"></translation>
+        <translation>実写シーン内のテキストを保持 (SCENE)
+    店の看板、道路標識、ポスター、本、スクリーン、プレート</translation>
     </message>
     <message>
         <location line="+6"/>
         <source>保留无法判定文字 (UNKNOWN)
     分类器置信度不足的边界情况</source>
-        <translation type="unfinished"></translation>
+        <translation>判定不能のテキストを保持 (UNKNOWN)
+    分類器の信頼度が不足している境界ケース</translation>
     </message>
     <message>
         <location line="+12"/>
         <source>💡 备选方案:</source>
-        <translation type="unfinished"></translation>
+        <translation>💡 代替案:</translation>
     </message>
     <message>
         <location line="+16"/>
         <source>🔄 重新自动检测</source>
-        <translation type="unfinished"></translation>
+        <translation>🔄 自動検出をやり直す</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>重新采样分析当前视频并更新类型判定</source>
-        <translation type="unfinished"></translation>
+        <translation>この動画を再サンプリングして解析し、タイプ判定を更新します</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>重置为预设默认值</source>
-        <translation type="unfinished"></translation>
+        <translation>プリセットの既定値にリセット</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -246,7 +249,7 @@
     <message>
         <location line="+13"/>
         <source>字幕生成</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕生成</translation>
     </message>
     <message>
         <location line="-215"/>
@@ -316,38 +319,38 @@
     <message>
         <location line="+18"/>
         <source>调试模式</source>
-        <translation type="unfinished"></translation>
+        <translation>デバッグモード</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>可视化输出</source>
-        <translation type="unfinished"></translation>
+        <translation>可視化出力</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>内存模式（实验性）</source>
-        <translation type="unfinished"></translation>
+        <translation>メモリモード（実験的）</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>保存中间 JSON</source>
-        <translation type="unfinished"></translation>
+        <translation>中間 JSON を保存</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>按时间分片并行（可选）</source>
-        <translation type="unfinished"></translation>
+        <translation>時間分割並列（任意）</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>合并 ROI（每帧只 OCR 一次）</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI を統合（フレームごとに OCR 1 回）</translation>
     </message>
     <message>
         <location line="+2"/>
         <location line="+3"/>
         <source>秒</source>
-        <translation type="unfinished"></translation>
+        <translation>秒</translation>
     </message>
     <message>
         <location line="+16"/>
@@ -367,7 +370,7 @@
     <message>
         <location line="+4"/>
         <source>自动</source>
-        <translation type="unfinished"></translation>
+        <translation>自動</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -377,22 +380,22 @@
     <message>
         <location line="+25"/>
         <source>半自动：按字幕颜色跳过疑似无字帧（默认关，需预览并确认后才生效）</source>
-        <translation type="unfinished"></translation>
+        <translation>半自動：字幕の色で無文字と思われるフレームをスキップ（既定オフ。プレビューして確認した後に有効）</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>在阶段一抽样 ROI 区间内若干帧并在当前画面上自动标定 HSV。仅当预览结果满意并在对话框中点击「采用」后，才会在本轮 OCR 启用；可随时关闭恢复默认逻辑。若预览不满意或选择「不采用」，请保持勾选关闭或未确认——程序将按原版流程输出全部 ROI 帧。</source>
-        <translation type="unfinished"></translation>
+        <translation>ステージ 1 で ROI 区間内のいくつかのフレームをサンプリングし、現在の画面上で HSV を自動較正します。プレビュー結果に満足してダイアログで「採用」をクリックした場合にのみ、今回の OCR で有効になります。いつでもオフにして既定のロジックに戻せます。プレビューに不満がある場合や「不採用」を選んだ場合は、チェックを外すか未確認のままにしてください——プログラムは通常どおりすべての ROI フレームを出力します。</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>预览检测效果…</source>
-        <translation type="unfinished"></translation>
+        <translation>検出結果をプレビュー…</translation>
     </message>
     <message>
         <location line="+16"/>
         <source>DeepSeek 字幕润色</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek 字幕ポリッシュ</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -402,7 +405,7 @@
     <message>
         <location line="+7"/>
         <source>DeepSeek 合并碎片字幕（选择最完整文本并合并时间范围）</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek 断片字幕のマージ（最も完全なテキストを選択し時間範囲を統合）</translation>
     </message>
     <message>
         <location line="+6"/>
@@ -422,7 +425,7 @@
     <message>
         <location line="+3"/>
         <source>大模型提供方</source>
-        <translation type="unfinished"></translation>
+        <translation>LLM プロバイダー</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -437,38 +440,38 @@
     <message>
         <location line="+1"/>
         <source>自定义（手动 Base URL）</source>
-        <translation type="unfinished"></translation>
+        <translation>カスタム（Base URL を手動入力）</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>模型 ID（可从 API 自动拉取）</source>
-        <translation type="unfinished"></translation>
+        <translation>モデル ID（API から自動取得できます）</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>刷新模型列表</source>
-        <translation type="unfinished"></translation>
+        <translation>モデル一覧を更新</translation>
     </message>
     <message>
         <location line="+1"/>
         <location line="+459"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
-        <translation type="unfinished"></translation>
+        <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
         <location line="-457"/>
         <source>清除已存密钥</source>
-        <translation type="unfinished"></translation>
+        <translation>保存済みキーを削除</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>从本机配置中删除已保存的 API Key（输入框会清空）。Base URL 与模型仍会保留。</source>
-        <translation type="unfinished"></translation>
+        <translation>このマシンの設定から保存済みの API Key を削除します（入力欄はクリアされます）。Base URL とモデルは保持されます。</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>DeepSeek 合并策略复核（按更合适的阈值重新合并）</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek マージ戦略レビュー（より適切なしきい値で再マージ）</translation>
     </message>
     <message>
         <location line="+55"/>
@@ -493,58 +496,58 @@
     <message>
         <location line="+178"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
-        <translation type="unfinished"></translation>
+        <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>🔄 文字来源过滤已启用，加载视频后将自动分析...</source>
-        <translation type="unfinished"></translation>
+        <translation>🔄 テキストソースフィルタはオンです。動画を読み込むと自動解析を開始します...</translation>
     </message>
     <message>
         <location line="+76"/>
         <source>颜色门控：已关闭（默认）。</source>
-        <translation type="unfinished"></translation>
+        <translation>カラーゲート：オフ（既定）。</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>颜色门控：已勾选，尚未确认。请点击「预览检测效果」并在满意时选择「采用」。</source>
-        <translation type="unfinished"></translation>
+        <translation>カラーゲート：チェック済み、未確認。「検出結果をプレビュー」をクリックし、満足できたら「採用」を選んでください。</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>颜色门控：已确认，将用于下一轮「字幕 OCR 识别」阶段一截取。</source>
-        <translation type="unfinished"></translation>
+        <translation>カラーゲート：確認済み。次の「字幕 OCR 認識」のステージ 1 で使用されます。</translation>
     </message>
     <message>
         <location line="+229"/>
         <source>（无可用引擎）</source>
-        <translation type="unfinished"></translation>
+        <translation>（利用可能なエンジンなし）</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>⚠ 未检测到可用 OCR 引擎</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ 使用可能な OCR エンジンが検出されません</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>✅ 已就绪</source>
-        <translation type="unfinished"></translation>
+        <translation>✅ 準備完了</translation>
     </message>
     <message>
         <location line="+89"/>
         <source>🔄 正在分析视频类型...</source>
-        <translation type="unfinished"></translation>
+        <translation>🔄 動画タイプを解析中...</translation>
     </message>
     <message>
         <location line="+98"/>
         <location line="+18"/>
         <source>手动模式（已自定义）</source>
-        <translation type="unfinished"></translation>
+        <translation>手動モード（カスタマイズ済み）</translation>
     </message>
     <message>
         <location line="+76"/>
         <source>已恢复上次保存的手动设置</source>
-        <translation type="unfinished"></translation>
+        <translation>前回保存した手動設定を復元しました</translation>
     </message>
     <message>
         <source>中文简体</source>
@@ -623,17 +626,17 @@
     <message>
         <location filename="../components/deepseek_progress_panel.py" line="+13"/>
         <source>DeepSeek / 大模型处理进度</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek / LLM 処理の進行状況</translation>
     </message>
     <message>
         <location line="+12"/>
         <source>启用 DeepSeek 后，此处显示处理进度，以及各批次润色前后的字幕对比、碎片合并候选与结果、策略复核说明等，便于核对模型具体改动了哪些字。</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek を有効にすると、ここに処理の進行状況、バッチごとのポリッシュ前後の字幕比較、断片マージの候補と結果、戦略レビューの説明などが表示され、モデルがどの文字をどう変更したかを確認できます。</translation>
     </message>
     <message>
         <location line="+9"/>
         <source>清空日志</source>
-        <translation type="unfinished"></translation>
+        <translation>ログをクリア</translation>
     </message>
 </context>
 <context>
@@ -657,22 +660,22 @@
     <message>
         <location filename="../components/file_operations.py" line="+25"/>
         <source>文件操作（支持拖放）</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイル操作（ドラッグ＆ドロップ対応）</translation>
     </message>
     <message>
         <location line="+6"/>
         <source>加载视频</source>
-        <translation type="unfinished"></translation>
+        <translation>動画を読み込む</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>保存 ROI 配置</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を保存</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>加载 ROI 配置</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を読み込む</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -740,6 +743,174 @@
     <message>
         <location filename="../components/log_viewer.py" line="+10"/>
         <source>日志与进度</source>
+        <translation>ログと進行状況</translation>
+    </message>
+</context>
+<context>
+    <name>OCRToASSOptimizer</name>
+    <message>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="+47"/>
+        <source>Frame {} (ROI: {}) data list length mismatch, skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Error processing in-memory data for frame {} (ROI: {}): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Successfully loaded and organized OCR data by {} ROIs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+118"/>
+        <source>Merged into {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+192"/>
+        <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/generator.py" line="+109"/>
+        <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Using style template: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>No style template used, generating a rich set of default styles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>No valid OCR data found, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Processing ROI: {}, containing {} valid frames.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>ROI: {} generated {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>Step 4/4: DeepSeek reviewing merge strategy (round {}/{})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DeepSeek strategy review skipped or failed; keeping merge parameters unchanged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>DeepSeek strategy note: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>DeepSeek merge parameters converged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Re-merged subtitles with tuned parameters (gap {:.2f}s ratio {:.3f} overlap {}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Polish output length mismatch, using original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>DeepSeek subtitle polishing applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>--- Conversion successful ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>ASS subtitle file saved to: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>--- Conversion failed ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Error: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+59"/>
+        <source>DeepSeek merged fragmented events: {} -&gt; {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/roi_filters.py" line="+150"/>
+        <source>Watermark filter removed {} text line(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Text source filter skipped keep-all ROIs: {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/styling.py" line="+121"/>
+        <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -792,75 +963,75 @@
     <message>
         <location filename="../components/roi_definition.py" line="+31"/>
         <source>ROI 定义</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 定義</translation>
     </message>
     <message>
         <location line="+16"/>
         <location line="+23"/>
         <source>后退 1 帧（短按）/ 连续（长按）</source>
-        <translation type="unfinished"></translation>
+        <translation>1 フレーム戻る（短押し）／連続（長押し）</translation>
     </message>
     <message>
         <location line="-18"/>
         <location line="+23"/>
         <source>前进 1 帧（短按）/ 连续（长按）</source>
-        <translation type="unfinished"></translation>
+        <translation>1 フレーム進む（短押し）／連続（長押し）</translation>
     </message>
     <message>
         <location line="-20"/>
         <location line="+23"/>
         <source>输入时间（时:分:秒.毫秒）或帧号</source>
-        <translation type="unfinished"></translation>
+        <translation>時刻（時:分:秒.ミリ秒）またはフレーム番号を入力</translation>
     </message>
     <message>
         <location line="-19"/>
         <source>开始时间：</source>
-        <translation type="unfinished"></translation>
+        <translation>開始時刻：</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>设为开始时间</source>
-        <translation type="unfinished"></translation>
+        <translation>開始時刻に設定</translation>
     </message>
     <message>
         <location line="+21"/>
         <source>结束时间：</source>
-        <translation type="unfinished"></translation>
+        <translation>終了時刻：</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>设为结束时间</source>
-        <translation type="unfinished"></translation>
+        <translation>終了時刻に設定</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>按文字/描边/阴影颜色限制 OCR（不匹配像素将被遮罩）</source>
-        <translation type="unfinished"></translation>
+        <translation>文字／縁取り／影の色で OCR を制限（一致しないピクセルをマスク）</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>将与所选颜色不接近的像素在 OCR 前置为白色，减少字幕笔画之外的误检。</source>
-        <translation type="unfinished"></translation>
+        <translation>選択した色に近くないピクセルを OCR 前に白へ置き換え、字幕の線以外の誤検出を減らします。</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>OCR 前对 ROI 轻微模糊（降低锯齿/噪声）</source>
-        <translation type="unfinished"></translation>
+        <translation>OCR 前に ROI を軽くぼかす（ギザつき／ノイズを低減）</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>在 OCR 前对 ROI 裁剪图应用轻微高斯模糊。对噪声大/压缩重的字幕更有帮助。</source>
-        <translation type="unfinished"></translation>
+        <translation>OCR 前に ROI の切り抜き画像に軽いガウシアンぼかしを適用します。ノイズが多い・圧縮劣化が激しい字幕に効果的です。</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>淡入/淡出微调（在检测到文字边界附近逐帧 OCR，找更精确的起止时间）</source>
-        <translation type="unfinished"></translation>
+        <translation>フェードイン／アウトの微調整（文字の境界付近をフレーム単位で OCR し、より正確な開始・終了時刻を特定）</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>开启后，会只在文字出现/消失的边界附近逐帧 OCR 用于校准时间；ROI 其余部分仍可使用跳帧优化。</source>
-        <translation type="unfinished"></translation>
+        <translation>オンにすると、文字の出現／消失境界付近のみフレーム単位で OCR して時刻を較正します。ROI のそれ以外はフレームスキップ最適化を引き続き利用できます。</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -875,67 +1046,67 @@
     <message>
         <location line="+17"/>
         <source>文字颜色…</source>
-        <translation type="unfinished"></translation>
+        <translation>文字色…</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>描边颜色…</source>
-        <translation type="unfinished"></translation>
+        <translation>縁取り色…</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>阴影颜色…</source>
-        <translation type="unfinished"></translation>
+        <translation>影の色…</translation>
     </message>
     <message>
         <location line="+11"/>
         <source>RGB 容差：</source>
-        <translation type="unfinished"></translation>
+        <translation>RGB 許容差：</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>单通道距离 0–255；数值越大，包含越多相近色阶（抗锯齿/渐变更稳）。</source>
-        <translation type="unfinished"></translation>
+        <translation>チャネルごとの距離 0–255。大きいほど近い階調を広く含みます（アンチエイリアス／グラデーションに安定）。</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>形态学：</source>
-        <translation type="unfinished"></translation>
+        <translation>モルフォロジー：</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>闭运算核大小（奇数）；可在遮罩后连接断裂笔画。</source>
-        <translation type="unfinished"></translation>
+        <translation>クロージングカーネルサイズ（奇数）。マスク後に切れた線をつなぎます。</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>添加新 ROI</source>
-        <translation type="unfinished"></translation>
+        <translation>新しい ROI を追加</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>更新选中 ROI</source>
-        <translation type="unfinished"></translation>
+        <translation>選択中の ROI を更新</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>删除选中 ROI</source>
-        <translation type="unfinished"></translation>
+        <translation>選択中の ROI を削除</translation>
     </message>
     <message>
         <location line="+70"/>
         <source>字幕文字颜色</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕の文字色</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>字幕描边颜色</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕の縁取り色</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>字幕阴影颜色</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕の影の色</translation>
     </message>
 </context>
 <context>
@@ -975,27 +1146,27 @@
     <message>
         <location filename="../components/roi_list.py" line="+18"/>
         <source>ROI 列表</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI リスト</translation>
     </message>
     <message>
         <location line="+33"/>
         <source>ROI {}：帧[{}-{}] 时间[{} - {}]</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {}：フレーム[{}-{}] 時間[{} - {}]</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>[颜色掩膜]</source>
-        <translation type="unfinished"></translation>
+        <translation>[カラーマスク]</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>[模糊]</source>
-        <translation type="unfinished"></translation>
+        <translation>[ぼかし]</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>[淡入淡出微调]</source>
-        <translation type="unfinished"></translation>
+        <translation>[フェード微調整]</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -1005,17 +1176,17 @@
     <message>
         <location line="+22"/>
         <source>复制</source>
-        <translation type="unfinished"></translation>
+        <translation>コピー</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>粘贴到此项之后</source>
-        <translation type="unfinished"></translation>
+        <translation>この項目の後に貼り付け</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>删除</source>
-        <translation type="unfinished"></translation>
+        <translation>削除</translation>
     </message>
     <message>
         <location line="+5"/>
@@ -1035,88 +1206,105 @@
     <message>
         <location line="+10"/>
         <source>粘贴到末尾</source>
-        <translation type="unfinished"></translation>
+        <translation>末尾に貼り付け</translation>
     </message>
     <message>
         <location line="+12"/>
         <source>确认删除</source>
-        <translation type="unfinished"></translation>
+        <translation>削除の確認</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>确定要删除 ROI {} 吗？</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {} を削除しますか？</translation>
     </message>
 </context>
 <context>
     <name>ScanReviewDialog</name>
     <message>
+        <location filename="../components/scan_review_dialog.py" line="+61"/>
         <source>深度扫描复核</source>
-        <translation type="vanished">詳細スキャンの確認</translation>
+        <translation>詳細スキャンの確認</translation>
     </message>
     <message>
+        <location line="+23"/>
         <source>字幕带 ROI（自动检测的主字幕区）</source>
-        <translation type="vanished">字幕帯 ROI（自動検出されたメイン字幕領域）</translation>
+        <translation>字幕帯 ROI（自動検出されたメイン字幕領域）</translation>
     </message>
     <message>
+        <location line="+6"/>
         <source>底部</source>
-        <translation type="vanished">下部</translation>
+        <translation>下部</translation>
     </message>
     <message>
+        <location line="+1"/>
         <source>顶部</source>
-        <translation type="vanished">上部</translation>
+        <translation>上部</translation>
     </message>
     <message>
+        <location line="+0"/>
         <source>中部</source>
-        <translation type="vanished">中央</translation>
+        <translation>中央</translation>
     </message>
     <message>
+        <location line="+3"/>
         <source>{0}  帧 [{1}-{2}]</source>
-        <translation type="vanished">{0}  フレーム [{1}-{2}]</translation>
+        <translation>{0}  フレーム [{1}-{2}]</translation>
     </message>
     <message>
+        <location line="+7"/>
         <source>用所选字幕带替换现有 ROI 列表（否则追加）</source>
-        <translation type="vanished">選択した字幕帯で既存の ROI リストを置き換える（チェックなしは追加）</translation>
+        <translation>選択した字幕帯で既存の ROI リストを置き換える（チェックなしは追加）</translation>
     </message>
     <message>
+        <location line="+4"/>
         <source>未检测到字幕带。</source>
-        <translation type="vanished">字幕帯は検出されませんでした。</translation>
+        <translation>字幕帯は検出されませんでした。</translation>
     </message>
     <message>
+        <location line="+4"/>
         <source>疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）</source>
-        <translation type="vanished">疑わしい透かし（恒定的テキスト＋位置、チェック＝認識時に除去）</translation>
+        <translation>疑わしい透かし（恒定的テキスト＋位置、チェック＝認識時に除去）</translation>
     </message>
     <message>
+        <location line="+6"/>
         <source>「{0}」 出现率 {1:.0%}</source>
-        <translation type="vanished">「{0}」 出現率 {1:.0%}</translation>
+        <translation>「{0}」 出現率 {1:.0%}</translation>
     </message>
     <message>
+        <location line="+10"/>
         <source>未检测到疑似水印。</source>
-        <translation type="vanished">疑わしい透かしは検出されませんでした。</translation>
+        <translation>疑わしい透かしは検出されませんでした。</translation>
     </message>
     <message>
+        <location line="+4"/>
         <source>画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）</source>
-        <translation type="vanished">画面中央のテキスト（シーン文字候補、チェック＝ROI として取り込み、すべて保持）</translation>
+        <translation>画面中央のテキスト（シーン文字候補、チェック＝ROI として取り込み、すべて保持）</translation>
     </message>
     <message>
+        <location line="+5"/>
         <source>「{0}」 出现 {1} 次（帧 {2}-{3}）</source>
-        <translation type="vanished">「{0}」 {1}回出現（フレーム {2}-{3}）</translation>
+        <translation>「{0}」 {1}回出現（フレーム {2}-{3}）</translation>
     </message>
     <message>
+        <location line="+14"/>
         <source>（其余 {} 处低频文字未列出）</source>
-        <translation type="vanished">（その他 {}箇所の低頻度テキストは未表示）</translation>
+        <translation>（その他 {}箇所の低頻度テキストは未表示）</translation>
     </message>
     <message>
+        <location line="+5"/>
         <source>未检测到画面中部文字。</source>
-        <translation type="vanished">画面中央のテキストは検出されませんでした。</translation>
+        <translation>画面中央のテキストは検出されませんでした。</translation>
     </message>
     <message>
+        <location line="+12"/>
         <source>应用</source>
-        <translation type="vanished">適用</translation>
+        <translation>適用</translation>
     </message>
     <message>
+        <location line="+1"/>
         <source>取消</source>
-        <translation type="vanished">キャンセル</translation>
+        <translation>キャンセル</translation>
     </message>
 </context>
 <context>
@@ -1313,7 +1501,7 @@
     <message>
         <location filename="../main_window/window.py" line="+95"/>
         <source>视频字幕 OCR 工具</source>
-        <translation type="unfinished"></translation>
+        <translation>動画字幕 OCR ツール</translation>
     </message>
     <message>
         <location line="+106"/>
@@ -1328,67 +1516,67 @@
     <message>
         <location line="+57"/>
         <source>已通过拖放加载 ASS 模板：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ドラッグ＆ドロップで ASS テンプレートを読み込みました：{}</translation>
     </message>
     <message>
         <location filename="../main_window/video_playback.py" line="+19"/>
         <source>选择视频文件</source>
-        <translation type="unfinished"></translation>
+        <translation>動画ファイルを選択</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>视频文件 (*.mp4 *.avi *.mov *.mkv)</source>
-        <translation type="unfinished"></translation>
+        <translation>動画ファイル (*.mp4 *.avi *.mov *.mkv)</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>无法打开视频文件</source>
-        <translation type="unfinished"></translation>
+        <translation>動画ファイルを開けません</translation>
     </message>
     <message>
         <location line="+27"/>
         <source>视频字幕 OCR 工具 - {}</source>
-        <translation type="unfinished"></translation>
+        <translation>動画字幕 OCR ツール - {}</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>视频已加载：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>動画を読み込みました：{}</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>分辨率：{}x{}，帧率：{:.2f}，总帧数：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>解像度：{}x{}、FPS：{:.2f}、総フレーム数：{}</translation>
     </message>
     <message>
         <location line="+22"/>
         <source>已自动加载 ROI 配置：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を自動読み込みしました：{}</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>自动加载 ROI 配置失败：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定の自動読み込みに失敗：{}</translation>
     </message>
     <message>
         <location line="+92"/>
         <source>无效的时间/帧号输入：&apos;{}&apos;</source>
-        <translation type="unfinished"></translation>
+        <translation>無効な時刻／フレーム番号の入力：'{}'</translation>
     </message>
     <message>
         <location filename="../main_window/roi_editing.py" line="+40"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
-        <translation type="unfinished"></translation>
+        <translation>新しい ROI を追加しました。フレーム範囲：{}-{}</translation>
     </message>
     <message>
         <location line="+15"/>
         <source>已更新 ROI {}，新帧范围：{}-{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {} を更新しました。新しいフレーム範囲：{}-{}</translation>
     </message>
     <message>
         <location line="+20"/>
         <source>已删除 ROI {}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {} を削除しました</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -1420,106 +1608,106 @@
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
-        <translation type="unfinished"></translation>
+        <translation>警告</translation>
     </message>
     <message>
         <location filename="../main_window/roi_editing.py" line="+1"/>
         <source>开始时间不能晚于结束时间。</source>
-        <translation type="unfinished"></translation>
+        <translation>開始時刻を終了時刻より後にすることはできません。</translation>
     </message>
     <message>
         <location line="+50"/>
         <source>创建 ROI 条目时出错：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 項目の作成中にエラー：{}</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>创建 ROI 时发生错误：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI の作成中にエラーが発生しました：{}</translation>
     </message>
     <message>
         <location filename="../main_window/roi_config_io.py" line="-66"/>
         <source>保存 ROI 配置</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を保存</translation>
     </message>
     <message>
         <location line="+2"/>
         <location line="+72"/>
         <source>JSON 文件 (*.json)</source>
-        <translation type="unfinished"></translation>
+        <translation>JSON ファイル (*.json)</translation>
     </message>
     <message>
         <location line="-63"/>
         <source>ROI 配置已保存到：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を保存しました：{}</translation>
     </message>
     <message>
         <location line="+4"/>
         <location line="+1"/>
         <source>保存 ROI 配置失败：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定の保存に失敗：{}</translation>
     </message>
     <message>
         <location line="+33"/>
         <source>自动备份 ROI 配置失败（识别仍会继续）：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定の自動バックアップに失敗しました（認識は続行されます）：{}</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>为防意外中断，已自动备份 ROI 配置到：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>予期しない中断に備え、ROI 設定を自動バックアップしました：{}</translation>
     </message>
     <message>
         <location line="+16"/>
         <source>加载 ROI 配置</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を読み込む</translation>
     </message>
     <message>
         <location line="+24"/>
         <source>ROI 配置已从 {} 加载</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定を {} から読み込みました</translation>
     </message>
     <message>
         <location line="+4"/>
         <location line="+1"/>
         <source>加载 ROI 配置失败：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI 設定の読み込みに失敗：{}</translation>
     </message>
     <message>
         <location filename="../main_window/roi_editing.py" line="+104"/>
         <source>已将 ROI {} 复制到剪贴板。</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {} をクリップボードにコピーしました。</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>已粘贴到 ROI {} 之后。</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI {} の後に貼り付けました。</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>已将 ROI 粘贴到列表末尾。</source>
-        <translation type="unfinished"></translation>
+        <translation>ROI をリストの末尾に貼り付けました。</translation>
     </message>
     <message>
         <location filename="../main_window/roi_config_io.py" line="+4"/>
         <source>选择 ASS 模板文件</source>
-        <translation type="unfinished"></translation>
+        <translation>ASS テンプレートファイルを選択</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>ASS 字幕文件 (*.ass)</source>
-        <translation type="unfinished"></translation>
+        <translation>ASS 字幕ファイル (*.ass)</translation>
     </message>
     <message>
         <location filename="../main_window/pipeline_control.py" line="-34"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
-        <translation type="unfinished"></translation>
+        <translation>まず動画を読み込み、ROI を 1 つ以上定義してください。</translation>
     </message>
     <message>
         <location filename="../main_window/source_config.py" line="+12"/>
         <source>当前帧不在任一 ROI 的时间范围内。请将时间轴移到含字幕的典型帧上，用于自动标定颜色。</source>
-        <translation type="unfinished"></translation>
+        <translation>現在のフレームはどの ROI の時間範囲にも含まれていません。色の自動較正のため、字幕が含まれる代表的なフレームにタイムラインを移動してください。</translation>
     </message>
     <message>
         <location line="+21"/>
@@ -1529,12 +1717,12 @@
     <message>
         <location line="+5"/>
         <source>预览失败</source>
-        <translation type="unfinished"></translation>
+        <translation>プレビュー失敗</translation>
     </message>
     <message>
         <location line="+9"/>
         <source>颜色门控已确认；下次运行「字幕 OCR 识别」时将在阶段一启用。</source>
-        <translation type="unfinished"></translation>
+        <translation>カラーゲートを確認しました。次回の「字幕 OCR 認識」のステージ 1 で有効になります。</translation>
     </message>
     <message>
         <location filename="../main_window/pipeline_control.py" line="+6"/>
@@ -1544,47 +1732,47 @@
     <message>
         <location line="+10"/>
         <source>已勾选「按字幕颜色跳过疑似无字帧」，但尚未通过预览确认。请点击「预览检测效果」并在满意时选择「采用」，或取消勾选以使用默认流程。</source>
-        <translation type="unfinished"></translation>
+        <translation>「字幕の色で無文字と思われるフレームをスキップ」にチェックがありますが、プレビューでの確認がまだです。「検出結果をプレビュー」をクリックし、満足できたら「採用」を選ぶか、チェックを外して既定のフローをご利用ください。</translation>
     </message>
     <message>
         <location line="+19"/>
         <source>已启用 DeepSeek 功能（润色/碎片合并/策略复核），但未填写 API Key。请填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
-        <translation type="unfinished"></translation>
+        <translation>DeepSeek 機能（ポリッシュ／断片マージ／戦略レビュー）が有効ですが、API Key が未入力です。API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
     </message>
     <message>
         <location line="+24"/>
         <source>保存字幕文件</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕ファイルを保存</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>ASS 字幕 (*.ass)</source>
-        <translation type="unfinished"></translation>
+        <translation>ASS 字幕 (*.ass)</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>用户取消保存，OCR 任务已中止。</source>
-        <translation type="unfinished"></translation>
+        <translation>保存がキャンセルされたため、OCR タスクを中止しました。</translation>
     </message>
     <message>
         <location line="+10"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
-        <translation type="unfinished"></translation>
+        <translation>[LLM] DeepSeek が有効になりました——ステップ 4 の LLM 進行状況は以下に表示されます。</translation>
     </message>
     <message>
         <location line="+6"/>
         <source>字幕 OCR + DeepSeek</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕 OCR + DeepSeek</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>字幕 OCR</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕 OCR</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>正在处理视频...</source>
-        <translation type="unfinished"></translation>
+        <translation>動画を処理中...</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1599,58 +1787,59 @@
     <message>
         <location line="+51"/>
         <source>[LLM] 完成 —— 已写入 ASS 文件。</source>
-        <translation type="unfinished"></translation>
+        <translation>[LLM] 完了——ASS ファイルに書き込みました。</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>完成</source>
-        <translation type="unfinished"></translation>
+        <translation>完了</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>字幕文件已生成：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>字幕ファイルを生成しました：{}</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>打开目录</source>
-        <translation type="unfinished"></translation>
+        <translation>フォルダーを開く</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>是否打开包含该文件的文件夹？</source>
-        <translation type="unfinished"></translation>
+        <translation>このファイルを含むフォルダーを開きますか？</translation>
     </message>
     <message>
         <location line="+11"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
-        <translation type="unfinished"></translation>
+        <translation>[LLM] 中止またはエラー——ダイアログの表示をご確認ください。</translation>
     </message>
     <message>
         <location line="+5"/>
         <source>处理过程中发生错误：
 {}</source>
-        <translation type="unfinished"></translation>
+        <translation>処理中にエラーが発生しました：
+{}</translation>
     </message>
     <message>
         <location filename="../main_window/auto_detection.py" line="+43"/>
         <source>已恢复上次保存的文字来源过滤设置。</source>
-        <translation type="unfinished"></translation>
+        <translation>前回保存したテキストソースフィルタの設定を復元しました。</translation>
     </message>
     <message>
         <location line="+35"/>
         <source>视频类型自动检测完成：{} (置信度 {:.0%})</source>
-        <translation type="unfinished"></translation>
+        <translation>動画タイプの自動検出が完了：{}（信頼度 {:.0%}）</translation>
     </message>
     <message>
         <location line="+9"/>
         <source>视频类型自动检测失败：{}</source>
-        <translation type="unfinished"></translation>
+        <translation>動画タイプの自動検出に失敗：{}</translation>
     </message>
     <message>
         <location line="+7"/>
         <source>自动分析失败，请手动选择场景类型</source>
-        <translation type="unfinished"></translation>
+        <translation>自動解析に失敗しました。シーンタイプを手動で選択してください</translation>
     </message>
     <message>
         <location filename="../main_window/scan_control.py" line="-56"/>
@@ -1690,12 +1879,12 @@
     <message>
         <location filename="../main_window/window.py" line="+26"/>
         <source>确认退出</source>
-        <translation type="unfinished"></translation>
+        <translation>終了の確認</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>后台任务仍在运行，确定要退出吗？</source>
-        <translation type="unfinished"></translation>
+        <translation>バックグラウンドタスクが実行中です。本当に終了しますか？</translation>
     </message>
     <message>
         <location filename="../main_window/pipeline_control.py" line="-1"/>

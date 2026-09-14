@@ -332,6 +332,25 @@ DICT = {
         "{} mid-frame text(s) detected (in-scene text candidates). Import them as ROIs in the deep scan review.",
     "自动检测失败：{}": "Auto-detection failed: {}",
 
+    # ── ScanReviewDialog ──
+    "深度扫描复核": "Deep scan review",
+    "字幕带 ROI（自动检测的主字幕区）": "Subtitle band ROIs (auto-detected main subtitle regions)",
+    "底部": "Bottom",
+    "顶部": "Top",
+    "中部": "Middle",
+    "{0}  帧 [{1}-{2}]": "{0}  frames [{1}-{2}]",
+    "用所选字幕带替换现有 ROI 列表（否则追加）": "Replace the existing ROI list with the selected bands (otherwise append)",
+    "未检测到字幕带。": "No subtitle bands detected.",
+    "疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）": "Suspected watermarks (constant text + position; checked = removed during recognition)",
+    "「{0}」 出现率 {1:.0%}": "\"{0}\" presence {1:.0%}",
+    "未检测到疑似水印。": "No suspected watermarks detected.",
+    "画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）": "Mid-frame text (in-scene candidates; checked = import as ROI, keep all)",
+    "「{0}」 出现 {1} 次（帧 {2}-{3}）": "\"{0}\" seen {1} time(s) (frames {2}-{3})",
+    "（其余 {} 处低频文字未列出）": "(remaining {} low-frequency text(s) not listed)",
+    "未检测到画面中部文字。": "No mid-frame text detected.",
+    "应用": "Apply",
+    "取消": "Cancel",
+
     # ── VideoFrameLabel ──
     "绘制错误：{}": "Drawing error: {}",
 }

@@ -11,7 +11,7 @@
     <message>
         <location line="+18"/>
         <source>以下缩略来自 ROI 区间内均匀采样。请确认「判定为保留」与您期望一致。若不满意，请选择「取消」或直接关闭对话框，并保持主界面选项关闭或未确认。</source>
-        <translation>The thumbnails below are sampled uniformly across the ROI span. Confirm that frames marked "keep" match your expectation. If not, choose "Cancel" or close this dialog, and leave the main-window option off or unconfirmed.</translation>
+        <translation>The thumbnails below are sampled uniformly across the ROI span. Confirm that frames marked &quot;keep&quot; match your expectation. If not, choose &quot;Cancel&quot; or close this dialog, and leave the main-window option off or unconfirmed.</translation>
     </message>
     <message>
         <location line="+10"/>
@@ -31,7 +31,7 @@
     <message>
         <location line="+3"/>
         <source>不采用</source>
-        <translation>Don't apply</translation>
+        <translation>Don&apos;t apply</translation>
     </message>
     <message>
         <location line="+25"/>
@@ -69,7 +69,7 @@
     <message>
         <location line="+5"/>
         <source>点击“浏览”选择 .ass 模板文件</source>
-        <translation>Click "Browse" to pick an .ass template file</translation>
+        <translation>Click &quot;Browse&quot; to pick an .ass template file</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -99,7 +99,7 @@
     <message>
         <location line="+3"/>
         <source>控制识别结果保留哪些文字。「保留全部文字」不做任何过滤；更精细的规则可在完整设置中调整。</source>
-        <translation>Controls which recognized text is kept. "Keep all text" applies no filtering; finer rules are available in Full settings.</translation>
+        <translation>Controls which recognized text is kept. &quot;Keep all text&quot; applies no filtering; finer rules are available in Full settings.</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -144,7 +144,7 @@
     <message>
         <location line="+3"/>
         <source>PaddleOCR 模型档位：Tiny 最快，Small 均衡，Medium 最准。“自动”使用 PP-OCRv6 默认模型。</source>
-        <translation>PaddleOCR model tier: Tiny is fastest, Small is balanced, Medium is most accurate. "Auto" uses the default PP-OCRv6 models.</translation>
+        <translation>PaddleOCR model tier: Tiny is fastest, Small is balanced, Medium is most accurate. &quot;Auto&quot; uses the default PP-OCRv6 models.</translation>
     </message>
     <message>
         <location line="+24"/>
@@ -195,7 +195,7 @@
         <source>保留无法判定文字 (UNKNOWN)
     分类器置信度不足的边界情况</source>
         <translation>Keep undetermined text (UNKNOWN)
-    Borderline cases the classifier can't decide</translation>
+    Borderline cases the classifier can&apos;t decide</translation>
     </message>
     <message>
         <location line="+12"/>
@@ -326,7 +326,7 @@
     <message>
         <location line="+3"/>
         <source>加载视频后在后台采样扫描全片，自动生成顶部/底部字幕带 ROI（文字过滤策略为「自动过滤」，可随时在 ROI 列表右键切换）。</source>
-        <translation>After a video is loaded, a background sampling scan of the whole file auto-creates top/bottom subtitle band ROIs (text filter policy "auto filter"; right-click any ROI in the list to switch anytime).</translation>
+        <translation>After a video is loaded, a background sampling scan of the whole file auto-creates top/bottom subtitle band ROIs (text filter policy &quot;auto filter&quot;; right-click any ROI in the list to switch anytime).</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -341,7 +341,7 @@
     <message>
         <location line="+4"/>
         <source>把长视频按时间切成多个窗口，用多个进程并行识别（与「按时间分片并行」的线程桶不同）。「自动」按 CPU 核数与可用内存决定；仅 CPU 模式生效，短视频自动走单进程。每个并行进程约占 600MB 内存。</source>
-        <translation>Splits long videos into time windows recognized by multiple worker processes (different from the thread pools of "parallel by time slices"). "Auto" decides by CPU cores and available memory; CPU mode only, short videos use a single process. Each worker uses about 600MB of memory.</translation>
+        <translation>Splits long videos into time windows recognized by multiple worker processes (different from the thread pools of &quot;parallel by time slices&quot;). &quot;Auto&quot; decides by CPU cores and available memory; CPU mode only, short videos use a single process. Each worker uses about 600MB of memory.</translation>
     </message>
     <message>
         <location line="+25"/>
@@ -351,7 +351,7 @@
     <message>
         <location line="+7"/>
         <source>在阶段一抽样 ROI 区间内若干帧并在当前画面上自动标定 HSV。仅当预览结果满意并在对话框中点击「采用」后，才会在本轮 OCR 启用；可随时关闭恢复默认逻辑。若预览不满意或选择「不采用」，请保持勾选关闭或未确认——程序将按原版流程输出全部 ROI 帧。</source>
-        <translation>In stage one, samples frames within the ROI span and auto-calibrates HSV on the current frame. It only applies to this OCR run after you click "Apply" in the preview dialog; turn it off anytime to restore default behavior. If the preview looks wrong or you choose "Don't apply", keep it unchecked or unconfirmed — the program will process all ROI frames as usual.</translation>
+        <translation>In stage one, samples frames within the ROI span and auto-calibrates HSV on the current frame. It only applies to this OCR run after you click &quot;Apply&quot; in the preview dialog; turn it off anytime to restore default behavior. If the preview looks wrong or you choose &quot;Don&apos;t apply&quot;, keep it unchecked or unconfirmed — the program will process all ROI frames as usual.</translation>
     </message>
     <message>
         <location line="+8"/>
@@ -432,7 +432,7 @@
     <message>
         <location line="+2"/>
         <source>从本机配置中删除已保存的 API Key（输入框会清空）。Base URL 与模型仍会保留。</source>
-        <translation>Deletes the saved API Key from this machine's config (the field is cleared). Base URL and model are kept.</translation>
+        <translation>Deletes the saved API Key from this machine&apos;s config (the field is cleared). Base URL and model are kept.</translation>
     </message>
     <message>
         <location line="+7"/>
@@ -477,12 +477,12 @@
     <message>
         <location line="+2"/>
         <source>颜色门控：已勾选，尚未确认。请点击「预览检测效果」并在满意时选择「采用」。</source>
-        <translation>Color gate: checked but not confirmed. Click "Preview detection" and choose "Apply" if satisfied.</translation>
+        <translation>Color gate: checked but not confirmed. Click &quot;Preview detection&quot; and choose &quot;Apply&quot; if satisfied.</translation>
     </message>
     <message>
         <location line="+4"/>
         <source>颜色门控：已确认，将用于下一轮「字幕 OCR 识别」阶段一截取。</source>
-        <translation>Color gate: confirmed; it will apply in stage one of the next "subtitle OCR" run.</translation>
+        <translation>Color gate: confirmed; it will apply in stage one of the next &quot;subtitle OCR&quot; run.</translation>
     </message>
     <message>
         <location line="+222"/>
@@ -624,6 +624,174 @@
         <location filename="../components/log_viewer.py" line="+10"/>
         <source>日志与进度</source>
         <translation>Logs &amp; progress</translation>
+    </message>
+</context>
+<context>
+    <name>OCRToASSOptimizer</name>
+    <message>
+        <location filename="../core/subtitle_generator/data_grouping.py" line="+47"/>
+        <source>Frame {} (ROI: {}) data list length mismatch, skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Error processing in-memory data for frame {} (ROI: {}): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Successfully loaded and organized OCR data by {} ROIs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+118"/>
+        <source>Merged into {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+192"/>
+        <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/generator.py" line="+109"/>
+        <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Using style template: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>No style template used, generating a rich set of default styles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>No valid OCR data found, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Processing ROI: {}, containing {} valid frames.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>ROI: {} generated {} subtitle groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>Step 4/4: DeepSeek reviewing merge strategy (round {}/{})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DeepSeek strategy review skipped or failed; keeping merge parameters unchanged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>DeepSeek strategy note: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>DeepSeek merge parameters converged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Re-merged subtitles with tuned parameters (gap {:.2f}s ratio {:.3f} overlap {}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Polish output length mismatch, using original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>DeepSeek subtitle polishing applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>--- Conversion successful ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>ASS subtitle file saved to: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>--- Conversion failed ---</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Error: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+59"/>
+        <source>DeepSeek merged fragmented events: {} -&gt; {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/roi_filters.py" line="+150"/>
+        <source>Watermark filter removed {} text line(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Text source filter skipped keep-all ROIs: {}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/subtitle_generator/styling.py" line="+121"/>
+        <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Failed to read template file {}: {}. Using default styles.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -856,6 +1024,94 @@
     </message>
 </context>
 <context>
+    <name>ScanReviewDialog</name>
+    <message>
+        <location filename="../components/scan_review_dialog.py" line="+61"/>
+        <source>深度扫描复核</source>
+        <translation>Deep scan review</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>字幕带 ROI（自动检测的主字幕区）</source>
+        <translation>Subtitle band ROIs (auto-detected main subtitle regions)</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>底部</source>
+        <translation>Bottom</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>顶部</source>
+        <translation>Top</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>中部</source>
+        <translation>Middle</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>{0}  帧 [{1}-{2}]</source>
+        <translation>{0}  frames [{1}-{2}]</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>用所选字幕带替换现有 ROI 列表（否则追加）</source>
+        <translation>Replace the existing ROI list with the selected bands (otherwise append)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>未检测到字幕带。</source>
+        <translation>No subtitle bands detected.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>疑似水印（恒定文本 + 恒定位置，勾选=识别时剔除）</source>
+        <translation>Suspected watermarks (constant text + position; checked = removed during recognition)</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>「{0}」 出现率 {1:.0%}</source>
+        <translation>"{0}" presence {1:.0%}</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>未检测到疑似水印。</source>
+        <translation>No suspected watermarks detected.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>画面中部文字（场景字候选，勾选=导入为 ROI，全部保留）</source>
+        <translation>Mid-frame text (in-scene candidates; checked = import as ROI, keep all)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>「{0}」 出现 {1} 次（帧 {2}-{3}）</source>
+        <translation>"{0}" seen {1} time(s) (frames {2}-{3})</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>（其余 {} 处低频文字未列出）</source>
+        <translation>(remaining {} low-frequency text(s) not listed)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>未检测到画面中部文字。</source>
+        <translation>No mid-frame text detected.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>应用</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>取消</source>
+        <translation type="unfinished">Cancel</translation>
+    </message>
+</context>
+<context>
     <name>SubtitleOCRGUI</name>
     <message>
         <location filename="../main_window/auto_detection.py" line="+43"/>
@@ -903,7 +1159,7 @@
     <message>
         <location line="+10"/>
         <source>已勾选「按字幕颜色跳过疑似无字帧」，但尚未通过预览确认。请点击「预览检测效果」并在满意时选择「采用」，或取消勾选以使用默认流程。</source>
-        <translation>"Skip likely textless frames by subtitle color" is checked but not yet confirmed via preview. Click "Preview detection" and choose "Apply" if satisfied, or uncheck it to use the default flow.</translation>
+        <translation>&quot;Skip likely textless frames by subtitle color&quot; is checked but not yet confirmed via preview. Click &quot;Preview detection&quot; and choose &quot;Apply&quot; if satisfied, or uncheck it to use the default flow.</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -1254,7 +1510,7 @@ Cancel: abort this detection.</translation>
     <message>
         <location filename="../main_window/source_config.py" line="+12"/>
         <source>当前帧不在任一 ROI 的时间范围内。请将时间轴移到含字幕的典型帧上，用于自动标定颜色。</source>
-        <translation>The current frame is outside every ROI's time span. Move the timeline to a typical frame with subtitles for automatic color calibration.</translation>
+        <translation>The current frame is outside every ROI&apos;s time span. Move the timeline to a typical frame with subtitles for automatic color calibration.</translation>
     </message>
     <message>
         <location line="+21"/>
@@ -1314,7 +1570,7 @@ Cancel: abort this detection.</translation>
     <message>
         <location line="+92"/>
         <source>无效的时间/帧号输入：&apos;{}&apos;</source>
-        <translation>Invalid time/frame input: '{}'</translation>
+        <translation>Invalid time/frame input: &apos;{}&apos;</translation>
     </message>
     <message>
         <location filename="../main_window/window.py" line="+95"/>
