@@ -2,9 +2,7 @@
 import sys
 import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import Qt, QTranslator, QLocale, QCoreApplication
-import os 
-
+from PySide6.QtCore import Qt, QCoreApplication
 from main_window import SubtitleOCRGUI
 
 
@@ -27,21 +25,12 @@ if __name__ == '__main__':
     QCoreApplication.setOrganizationName("VideoSubtitleOCR")
     QCoreApplication.setApplicationName("VideoSubtitleOCR")
     app = QApplication(sys.argv)
-    translator = QTranslator()
-    i18n_path = os.path.join(os.path.dirname(__file__), "i18n")
-#     if translator.load("app_zh_CN", i18n_path):
-#         app.installTranslator(translator)
-#         print("Loaded Chinese translation.")
-#     else:
-#         print(f"Failed to load Chinese translation from {os.path.join(i18n_path, 'app_zh_CN.qm')}")
 
-
-    current_locale = QLocale().system().name()
-    if translator.load(QLocale(), "app", "_", i18n_path):
-        app.installTranslator(translator)
-        print(f"Loaded translation for locale: {current_locale}")
-    else:
-        print(f"No translation file found for locale {current_locale} or failed to load.")
+    # 界面语言：读取持久化设置 ui/language（默认 auto 跟随系统），见 i18n/translator.py。
+    from i18n.translator import Translator
+    translator = Translator()
+    applied = translator.load_startup_language()
+    print(f"Language: {applied}" if applied else "Language: zh_CN (source; no translation loaded)")
 
 
     window = SubtitleOCRGUI()

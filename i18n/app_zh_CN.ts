@@ -655,7 +655,7 @@
         <translation type="vanished">加载抓取区域(ROI)配置</translation>
     </message>
     <message>
-        <location filename="../components/file_operations.py" line="+13"/>
+        <location filename="../components/file_operations.py" line="+25"/>
         <source>文件操作（支持拖放）</source>
         <translation type="unfinished"></translation>
     </message>
@@ -682,6 +682,52 @@
     <message>
         <location line="+1"/>
         <source>深度扫描（水印/场景字）…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>语言</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>自动（跟随系统）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>简体中文</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>繁體中文</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>English</source>
+        <translation type="unfinished">English</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>日本語</source>
+        <translation type="unfinished">日本語</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <location line="+20"/>
+        <source>切换语言</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-19"/>
+        <source>语言设置将在重启应用后生效。要立即重启吗？</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>无法自动重启，请手动重启应用以应用新语言。</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
