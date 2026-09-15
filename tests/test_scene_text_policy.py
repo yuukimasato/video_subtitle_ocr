@@ -346,6 +346,29 @@ class TestApplyMask:
         masks = [ev for ev in out if "\\p1" in ev["tags"]]
         assert all("\\1c&HFAFAFA&" in ev["tags"] for ev in masks)  # 250=0xFA
 
+    def test_mask_suppresses_style_outline(self):
+        # \p 矩形不得继承 Scene 样式的 1px 描边(否则补丁带灰边)
+        out, _applied, _notes = self._run()
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert masks and all("\\bord0" in ev["tags"] for ev in masks)
+
+    def test_mask_expands_to_rendered_text_width(self):
+        # 替换字体字宽 > 原 OCR 框宽时,遮罩按渲染宽度居中外扩
+        # (平面放宽,排除边界裁剪干扰)
+        plane_w = 900
+        long_text = "一" * 30  # 30 全角 × 行高 26 = 780 > 框宽 90
+        rows = [(long_text, (10.0, 10.0, 100.0, 36.0))]
+        events = [simple_event(rows[0][0], 0.0, 9 / FPS)]
+        out, _applied, _notes = apply_policy(
+            events, rows, np.full((PLANE_H, plane_w, 3), 250, np.uint8),
+            make_translation_tracks(), policy_cfg("mask"), plane_w, PLANE_H)
+        mask0 = next(ev for ev in out if "\\p1" in ev["tags"])
+        m = re.search(r"m 0 0 l (\d+) 0", mask0["tags"])
+        assert m
+        # 字幕 \an5 中心锚定:渲染文本(30×36=780)以行框中心 x=55 对称扩展,
+        # 可见部分 0..445;遮罩以其为中心等宽覆盖(0..449,左侧触平面边界)
+        assert int(m.group(1)) == pytest.approx(449, abs=2)
+
     def test_mask_covers_expanded_block_box(self):
         # 块 0 行高 16、pad=0.12×16≈1.92 → 遮罩框高 ≈ 19.84 → 绘制高 20
         out, _applied, _notes = self._run()

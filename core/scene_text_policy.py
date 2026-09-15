@@ -401,8 +401,9 @@ def _mask_events_for_block(
                         f"{_fmt1(tl1[0])},{_fmt1(tl1[1])},"
                         f"0,{_seg_ms(t0, t1)})")
             # 绘图命令与 {\p0} 必须原样进入 Text 字段,放进 tags(write_ass
-            # 只对 body 做 ASCII 花括号安全化)
-            tags = (f"{{\\an7\\p1{color_tag}{move}"
+            # 只对 body 做 ASCII 花括号安全化);\bord0 压掉样式描边,
+            # 否则 \p 矩形会带一圈 Style 的 Outline 色边框
+            tags = (f"{{\\an7\\p1\\bord0{color_tag}{move}"
                     + _overlay_tags(angles[ai], angles[bi],
                                     scales[ai], scales[bi], t0, t1, motion_cfg)
                     + "}")
@@ -418,6 +419,16 @@ def _mask_events_for_block(
                 "base_color": (b, g, r),
             })
     return events
+
+
+def _rendered_width(text: str, line_h: float) -> float:
+    """估算替换字体渲染该行文本的宽度:全角 1.0×字高、半角/ASCII 0.5×。
+
+    遮罩宽度须覆盖"渲染后的字幕"而不只是原 OCR 框——替换字体字宽通常
+    大于原排版,不外扩会出现字幕字形悬出补丁边缘。
+    """
+    units = sum(0.5 if ord(ch) < 0x2E80 else 1.0 for ch in str(text))
+    return units * float(line_h)
 
 
 def _apply_mask(
@@ -444,9 +455,20 @@ def _apply_mask(
     for bi, (s, e) in enumerate(blocks):
         union, line_h = _block_union(rows[s:e + 1])
         pad = float(cfg.mask_pad_ratio) * line_h
-        mbox = (max(0.0, union[0] - pad), max(0.0, union[1] - pad),
-                min(float(plane_w), union[2] + pad),
-                min(float(plane_h), union[3] + pad))
+        # 渲染宽度外扩:遮罩水平方向取"原框并集"与"最宽渲染行"的较大者
+        # (居中扩展),避免字幕字形悬出补丁
+        need_w = max(
+            _rendered_width(text, max(1.0, float(rbox[3] - rbox[1])))
+            for text, rbox in rows[s:e + 1]
+        )
+        cx = (union[0] + union[2]) / 2.0
+        half_w = (max(union[2] - union[0], need_w) + 2.0 * pad) / 2.0
+        mbox = (
+            max(0.0, cx - half_w),
+            max(0.0, union[1] - pad),
+            min(float(plane_w), cx + half_w),
+            min(float(plane_h), union[3] + pad),
+        )
         if analysis_box is not None:  # 遮罩不越出文字平面(quad 窗口)
             mbox = (max(float(analysis_box[0]), mbox[0]),
                     max(float(analysis_box[1]), mbox[1]),
