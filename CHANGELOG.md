@@ -35,6 +35,18 @@
   可经 `--config-json` 调整，开关关闭时输出与既有完全一致。DMG 手机场景
   验证：暗屏 247→30→233 全程跟随，最暗态字幕与原字同样淡出（忠实模式），
   烧录实测亮/中/暗三态墨水亮度符合标签期望。单元测试 441 → **466**。
+- **场景文字显示策略**：`scripts/motion_ass.py --scene-text-policy
+  overlap|mask|external|whitespace`（默认 overlap，行为不变）——解决识别
+  字幕与画面原文字"双重曝光"重影：**mask** 段落块合并后以 `\p1` 矢量遮罩
+  （layer 0）盖住原文字、识别文本置于 layer 1，遮罩取色剔除墨水像素、
+  `\bord0` 无缝贴合、宽度按渲染后字幕居中外扩，随轨迹 `\move`+`\t` 移动
+  并与亮度自适应联动；**external** 多块合并为单条 `NoteBox` 事件
+  （BorderStyle=3 自适应底框、底边居中、CJK 折行禁则、过高自动缩字号）；
+  **whitespace** 在统一坐标展开图检测空白带放置文本，轨迹/亮度标签零成本
+  复用；所选模式不可用时按 whitespace→mask→external 自动回退（背景杂色
+  std>18 判定等），全程告警留痕。DMG 手机场景验收：mask 模式重影彻底
+  消除，whitespace 因本例文本量大于空白带按设计回退 mask，external 布局
+  正确。新增 `core/scene_text_policy.py`，单元测试 466 → **525**。
 
 ## 2.6.1（2026-09-15）
 

@@ -75,3 +75,22 @@
     灰色半透明,与屏幕明暗融合 ✅
 - 度量方法学备注:全局/单行质心口径不适用于变色字幕的亮度核对,应采用
   「烧录帧 − 原帧差分掩码内的墨水亮度」;描边反差会污染掩码,读数取 p90。
+
+## 增补验收:场景文字显示策略(2026-09-16)
+
+设计 `docs/superpowers/specs/2026-09-16-scene-text-policy-design.md`;
+`--scene-text-policy overlap|mask|external|whitespace`(默认 overlap),
+回退链 whitespace→mask→external。全量测试 466 → **525 passed, 1 skipped**。
+
+| 模式 | 结果 | 证据 |
+| --- | --- | --- |
+| mask | ✅ 40 事件(26 文本 layer1 + 遮罩 layer0);白块无缝覆盖原字、随轨迹移动、调暗联动;重影彻底消除 | `policy-mask-f36.png` |
+| whitespace | ↪️ 回退 mask:合并 14 行文本 ≈420px 高,屏幕下半空白带仅 ~210px,字号压至下限仍放不下 → 按设计降级,告警 `whitespace->mask`;输出与 mask 逐字节一致 | 运行日志 |
+| external | ✅ 单条 NoteBox 事件(13 行 `\N` 合并、底边居中、亮度标签正常),纯黑底渲染布局正确 | `policy-external-layout.png`、`policy-external-f36.png` |
+
+- 回退链两级均有人在环测试覆盖(`whitespace→mask`、`mask→external` 背景杂色)。
+- mask 打磨两处(`8b94052`):`\bord0` 压掉样式描边(补丁带灰边)、遮罩宽度
+  按"渲染后字幕宽度"居中外扩(原按 OCR 框宽,"決"等字形悬出补丁缘)。
+- 已知观察:external 对多行内容(本例 13 行)块体量大,几乎盖住手机屏幕;
+  后续可考虑只外置最大块或分栏。whitespace 适合"文本量少 + 版面留白多"
+  的场景(如带白边的招牌),本例文本量偏大故降级,行为符合设计预期。
