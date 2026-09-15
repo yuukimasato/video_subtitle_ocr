@@ -451,12 +451,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+459"/>
+        <location line="+460"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-458"/>
         <source>清除已存密钥</source>
         <translation type="unfinished"></translation>
     </message>
@@ -491,7 +491,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+178"/>
+        <location line="+179"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -608,7 +608,7 @@
         <translation type="vanished">Medium(最准)</translation>
     </message>
     <message>
-        <location line="-719"/>
+        <location line="-720"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大模型润色（DeepSeek / OpenAI，可选）</translation>
     </message>
@@ -891,7 +891,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+105"/>
         <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1141,7 +1141,7 @@
         <translation type="vanished">确定要删除抓取区域(ROI) {}吗？</translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="+18"/>
+        <location filename="../components/roi_list.py" line="+17"/>
         <source>ROI 列表</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1219,7 +1219,7 @@
 <context>
     <name>ScanReviewDialog</name>
     <message>
-        <location filename="../components/scan_review_dialog.py" line="+61"/>
+        <location filename="../components/scan_review_dialog.py" line="+60"/>
         <source>深度扫描复核</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1990,7 +1990,7 @@
         <translation type="vanished">绘制错误：{}</translation>
     </message>
     <message>
-        <location filename="../components/video_display.py" line="+431"/>
+        <location filename="../components/video_display.py" line="+430"/>
         <source>绘制错误：{}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2069,7 +2069,7 @@
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="+117"/>
+        <location filename="../core/ocr_optimizer.py" line="+346"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation>无法获取帧 {} 的图像数据。输入类型：{}</translation>
     </message>
@@ -2079,12 +2079,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+67"/>
         <source>Sampled frames disagree on line count; keeping base frame OCR result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+115"/>
+        <location line="+134"/>
         <source>VLM refine returned {0} lines for {1} expected; keeping original result.</source>
         <translation type="unfinished"></translation>
     </message>

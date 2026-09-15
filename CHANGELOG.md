@@ -4,7 +4,7 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
-## 未发布
+## 2.6.3（2026-09-16）
 
 ### 新增
 

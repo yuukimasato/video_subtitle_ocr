@@ -454,12 +454,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+459"/>
+        <location line="+460"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-458"/>
         <source>清除已存密钥</source>
         <translation>保存済みキーを削除</translation>
     </message>
@@ -494,7 +494,7 @@
         <translation>ワンクリックのシンプル表示に戻り、詳細設定を隠します。すべての選択肢は変わりません。</translation>
     </message>
     <message>
-        <location line="+178"/>
+        <location line="+179"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
@@ -611,7 +611,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-719"/>
+        <location line="-720"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -894,7 +894,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+105"/>
         <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1144,7 +1144,7 @@
         <translation type="vanished">対象領域(ROI) {}を削除してもよろしいですか？</translation>
     </message>
     <message>
-        <location filename="../components/roi_list.py" line="+18"/>
+        <location filename="../components/roi_list.py" line="+17"/>
         <source>ROI 列表</source>
         <translation>ROI リスト</translation>
     </message>
@@ -1222,7 +1222,7 @@
 <context>
     <name>ScanReviewDialog</name>
     <message>
-        <location filename="../components/scan_review_dialog.py" line="+61"/>
+        <location filename="../components/scan_review_dialog.py" line="+60"/>
         <source>深度扫描复核</source>
         <translation>詳細スキャンの確認</translation>
     </message>
@@ -1561,7 +1561,7 @@
     <message>
         <location line="+92"/>
         <source>无效的时间/帧号输入：&apos;{}&apos;</source>
-        <translation>無効な時刻／フレーム番号の入力：'{}'</translation>
+        <translation>無効な時刻／フレーム番号の入力：&apos;{}&apos;</translation>
     </message>
     <message>
         <location filename="../main_window/roi_editing.py" line="+40"/>
@@ -1994,7 +1994,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="vanished">描画エラー: {}</translation>
     </message>
     <message>
-        <location filename="../components/video_display.py" line="+431"/>
+        <location filename="../components/video_display.py" line="+430"/>
         <source>绘制错误：{}</source>
         <translation>描画エラー：{}</translation>
     </message>
@@ -2073,7 +2073,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="+117"/>
+        <location filename="../core/ocr_optimizer.py" line="+346"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation>フレーム{}の画像データを取得できませんでした。入力タイプ: {}</translation>
     </message>
@@ -2083,12 +2083,12 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+67"/>
         <source>Sampled frames disagree on line count; keeping base frame OCR result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+115"/>
+        <location line="+134"/>
         <source>VLM refine returned {0} lines for {1} expected; keeping original result.</source>
         <translation type="unfinished"></translation>
     </message>

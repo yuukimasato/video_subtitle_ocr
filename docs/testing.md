@@ -278,3 +278,21 @@ python scripts/benchmark_regression.py \
 | 回归基准 | 行准确率 100%（5/5）；ocr_calls=133、frames_filled=475 与 2.6.0 记录持平 |
 | 安装态（2.6.0 deb） | `/usr/bin` 启动器 `--version` 正常；基准视频端到端 5/5 条 8.07s；`~/.paddlex` 模型缓存、`/opt/apps` 应用文件、man 页（2.6.1 版本头）、i18n 4 语 .qm 齐全 |
 | deb 构建 | 2.6.1 版本号三处同步（cli.py / DEBIAN/control / man ×2）；`./build_deb.sh` 重建，`dpkg-deb -I/-c` 校验通过 |
+
+### 2026-09-16 · v2.6.3 · Linux 7.2.4-070204-generic x86_64 · Python 3.12.3 · 32 核 / 91GB
+
+> 本版主要变化：移动文字轨迹字幕（阶段一：手动框选平面四边形 → 单应逐帧跟踪 →
+> 关键帧 OCR → 轨迹合成 `\move`/`\t` ASS，配套 `verify_motion_ass` 渲染偏差校验）
+> 与轨迹屏幕亮度自适应（`\1c`/`\alpha` 链）；另含逐行倾斜投票、quick panel ROI
+> 绘制入口恢复等修复。单元测试 350 → **466**（2.6.1 发布后累计）。
+> DMG 手机邮件场景验收记录见
+> `docs/superpowers/evidence/2026-09-16-motion-trajectory-ass-acceptance.md`。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **466 passed, 1 skipped**（52.85s；skip 为需真实 OCR 引擎的用例） |
+| 静态检查 | `ruff check --select F` 全部通过（存量 1135 条风格债务维持现状，非缺陷） |
+| README 预览 | 离屏 Qt 抓取 test/ 真实样本更新 preview1（对话字幕带 ROI）/preview2（手机屏幕多边形 ROI），同步刷新图注 |
+| deb 构建 | 2.6.3 版本号四处同步（cli.py / DEBIAN/control / man ×2）；`./build_deb.sh` 构建成功（11.3MB，181 项），`dpkg-deb -I/-c` 校验通过；体积较 2.6.2（5.7MB）增长源于 docs/superpowers 轨迹字幕验收证据 PNG 随 docs/ 入包 |
+| deb 抽查 | `dpkg-deb -x` 解包：cli.py `__version__` 2.6.3、`scripts/{motion_ass,track_plane,verify_motion_ass}.py` 在包内、4 语言 .qm 齐全、man 页 2.6.3、无 `__pycache__`/`tests/`/`.venv`/`*.pyc` 泄漏 |
+| 发布 | 推送 main 后创建 GitHub Release v2.6.3，deb 附于 Release 资产 |
