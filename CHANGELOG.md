@@ -4,6 +4,29 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
+## 未发布
+
+### 新增
+
+- **移动文字轨迹字幕（阶段一，手动触发全链路）**：新增 `scripts/motion_ass.py`
+  端到端入口——手动框选平面四边形（手机屏幕/信件/招牌）+ 时间范围后，
+  复用 `scene_plane_tracker` 逐帧单应跟踪，`core/keyframe_selector.py` 按
+  展开图清晰度（Laplacian 方差）选 top-K 关键帧，OCR 在统一坐标展开图上
+  运行并经模块级 `fuse_samples_by_position`（自 `ocr_optimizer` 行为保持
+  抽取）按位置对齐投票，最终 `core/motion_ass.py` 纯函数合成器把逐帧
+  中心/角度/缩放轨迹按误差预算（默认 2px @1080p）选标签：匀速直线单段
+  `\move`、非线性分段 `\move`（段边界时间无缝相接）、旋转/缩放叠
+  `\t(\frz/\fscx/\fscy)`、混乱抖动帧级 `\pos` 兜底、lost 遮挡切段不外推。
+  配套 `scripts/verify_motion_ass.py` 渲染偏差校验（libass 烧录质心/包围盒
+  偏差统计，超预算可自动减半容差复验）。在「冴えない彼女の育てかた♭
+  第07話」手机邮件场景验收：263 条碎片静态 `\pos` 事件 → 26 条轨迹事件
+  （13 行 × 2 链），运动轴贴合偏差 ≤1px，模糊碎片/重复行/零时长事件清零；
+  验收记录见
+  `docs/superpowers/evidence/2026-09-16-motion-trajectory-ass-acceptance.md`。
+  单元测试 350 → **441**（新增 `tests/test_motion_ass.py` 31 项、
+  `tests/test_motion_ass_cli.py` 11 项、`tests/test_keyframe_selector.py`
+  8 项、`tests/test_verify_motion_ass.py` 38 项、融合抽取 3 项）。
+
 ## 2.6.1（2026-09-15）
 
 ### 新增
