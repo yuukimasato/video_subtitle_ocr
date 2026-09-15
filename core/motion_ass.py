@@ -33,7 +33,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -655,11 +655,13 @@ def brightness_tag_chain(
     *,
     use_color: bool = True,
     use_alpha: bool = True,
+    base_color: Optional[Tuple[int, int, int]] = None,
 ) -> str:
     """把全局亮度关键帧折线换算成一条事件的局部标签串(不含最外层大括号)。
 
-    - 事件起点处插值得到 r0:基值标签 ``\\1c&H..&``(灰度 g=round(255·r0),
-      三通道同值)+ ``\\alpha&H..&``(a=round(255·(1-r0)),00=不透明);
+    - 事件起点处插值得到 r0:基值标签 ``\\1c&H..&``(缺省 ``base_color`` 时
+      灰度 g=round(255·r0),三通道同值;给定 BGR ``base_color`` 时按通道
+      缩放 ``round(c·r0)``)+ ``\\alpha&H..&``(a=round(255·(1-r0)),00=不透明);
     - 对每一段落在 ``(ev_start, ev_end)`` 内的相邻关键帧区间 [t1,t2] 各输出
       一个 ``\\t(ms1,ms2,\\1c..\\alpha..)``,ms 相对事件开始取整,相邻端点
       相接;区间与事件跨度求交集,交集 <1ms 丢弃;段目标值 = 段终点时间的
@@ -680,8 +682,12 @@ def brightness_tag_chain(
         ratio = min(1.0, max(0.0, ratio))
         out = ""
         if use_color:
-            g = int(round(255.0 * ratio))
-            out += f"\\1c&H{g:02X}{g:02X}{g:02X}&"
+            if base_color is None:
+                g = int(round(255.0 * ratio))
+                out += f"\\1c&H{g:02X}{g:02X}{g:02X}&"
+            else:  # 给定基色:按通道缩放(遮罩与字幕一起调暗)
+                channels = [int(round(float(c) * ratio)) for c in base_color]
+                out += "\\1c&H{0:02X}{1:02X}{2:02X}&".format(*channels)
         if use_alpha:
             a = int(round(255.0 * (1.0 - ratio)))
             out += f"\\alpha&H{a:02X}&"

@@ -521,3 +521,269 @@ def test_auto_brightness_use_color_off_via_config(tmp_path, monkeypatch):
     for field in _text_fields(out_ass.read_text(encoding="utf-8-sig")):
         assert "\\1c" not in field
         assert "\\alpha&H" in field
+
+
+# ---------------------------------------------------------------------------
+# 场景文字显示策略(--scene-text-policy,设计 §3/§4/§5)
+# ---------------------------------------------------------------------------
+
+def make_clean_card() -> np.ndarray:
+    """mask 友好卡片:白底 + 空心黑"文字"条(笔画占比低,采样中位停在背景);
+    ORB 纹理色块只放在卡片上下边缘,远离文字块(否则采样区杂色会触发回退)。"""
+    card = np.full((CARD_H, CARD_W, 3), 245, np.uint8)
+    rng = np.random.default_rng(11)
+    for x in range(8, CARD_W - 24, 30):
+        color = tuple(int(c) for c in rng.integers(100, 180, 3))
+        cv2.rectangle(card, (x, 2), (min(x + 22, CARD_W - 8), 12), color, -1)
+        cv2.rectangle(card, (x, CARD_H - 12), (min(x + 22, CARD_W - 8), CARD_H - 2),
+                      color, -1)
+    for x1, y1, x2, y2 in TEXT_BARS:
+        cv2.rectangle(card, (x1, y1), (x2, y2), (10, 10, 10), 2)  # 空心条
+    return card
+
+
+def motion_mat_at(tx: float, scale: float, x0: int, y0: int,
+                  w: int, h: int) -> np.ndarray:
+    """卡片局部像素 → 画面的 3x3 变换(原点/尺寸可参量化)。"""
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    to_origin = np.array([[1, 0, -cx], [0, 1, -cy], [0, 0, 1]], float)
+    scale_m = np.diag([scale, scale, 1.0])
+    to_center = np.array([
+        [1, 0, x0 + cx + tx],
+        [0, 1, y0 + cy],
+        [0, 0, 1],
+    ], float)
+    return to_center @ scale_m @ to_origin
+
+
+def build_case_custom(tmp_path, card, n: int = N_FRAMES,
+                      scale_step: float = SCALE_STEP,
+                      x0: int = CARD_X0, y0: int = CARD_Y0):
+    """用给定卡片写合成视频(FFV1),返回 (video_path, 初始帧四角 quad)。"""
+    ch, cw = card.shape[:2]
+    frames, quad0 = [], None
+    for i in range(n):
+        m = motion_mat_at(TX_STEP * i, 1.0 + scale_step * i, x0, y0, cw, ch)
+        frame = np.full((FRAME_H, FRAME_W, 3), 200, np.uint8)
+        cv2.warpPerspective(
+            card, m, (FRAME_W, FRAME_H), dst=frame,
+            flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_TRANSPARENT)
+        corners = np.array([
+            [0, 0], [cw - 1, 0], [cw - 1, ch - 1], [0, ch - 1]
+        ], dtype=np.float32)
+        gt = cv2.perspectiveTransform(
+            corners.reshape(-1, 1, 2), m.astype(np.float32)).reshape(-1, 2)
+        frames.append(frame)
+        if i == 0:
+            quad0 = [[float(x), float(y)] for x, y in gt]
+    video_path = str(tmp_path / "case.avi")
+    writer = cv2.VideoWriter(
+        video_path, cv2.VideoWriter_fourcc(*"FFV1"), float(FPS),
+        (FRAME_W, FRAME_H))
+    if not writer.isOpened():
+        pytest.skip("no usable video codec (FFV1) for motion ass cli tests")
+    for f in frames:
+        writer.write(f)
+    writer.release()
+    return video_path, quad0
+
+
+# whitespace 卡片:文字条 + 纹理都在上半部,下半部留大片纯白空白带
+WS_CARD_W, WS_CARD_H = 160, 200
+WS_X0, WS_Y0 = 90, 20
+WS_TEXT_BARS = [
+    (20, 60, 120, 74),
+    (30, 88, 110, 102),
+]
+
+
+def make_ws_card() -> np.ndarray:
+    card = np.full((WS_CARD_H, WS_CARD_W, 3), 245, np.uint8)
+    rng = np.random.default_rng(13)
+    for x in range(8, WS_CARD_W - 24, 30):  # 纹理行(上半部,跟踪用)
+        color = tuple(int(c) for c in rng.integers(100, 180, 3))
+        cv2.rectangle(card, (x, 6), (min(x + 22, WS_CARD_W - 8), 18), color, -1)
+        cv2.rectangle(card, (x, 30), (min(x + 22, WS_CARD_W - 8), 42), color, -1)
+    for x1, y1, x2, y2 in WS_TEXT_BARS:
+        cv2.rectangle(card, (x1, y1), (x2, y2), (10, 10, 10), -1)
+    return card
+
+
+def test_default_overlap_output_identical(tmp_path):
+    """默认(无参数)与显式 --scene-text-policy overlap 输出逐字节一致。"""
+    video_path, quad0 = build_case(tmp_path)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_default = tmp_path / "default.ass"
+    out_overlap = tmp_path / "overlap.ass"
+
+    common = ["--video", video_path, "--quad", quad_spec]
+    assert motion_cli.main(
+        common + ["--out", str(out_default)], ocr_fn=make_mock_ocr([])) == 0
+    assert motion_cli.main(
+        common + ["--out", str(out_overlap), "--scene-text-policy", "overlap"],
+        ocr_fn=make_mock_ocr([])) == 0
+
+    assert out_default.read_bytes() == out_overlap.read_bytes()
+    # 既有回归:Dialogue 行仍是 layer 0 的 Scene/motion;NoteBox 样式行存在
+    text = out_default.read_text(encoding="utf-8-sig")
+    assert "Style: NoteBox,思源黑体 CN,10," in text
+    for line in _dialogue_lines(text):
+        assert DIALOGUE_RE.match(line), line
+
+
+def test_policy_config_keys_validated(tmp_path, capsys):
+    """policy_ 前缀键进 build_config 校验体系:合法键通过、未知键报错。"""
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "ok.ass"
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({
+        "policy_bg_max_std": 18.0,
+        "policy_external_margin": 40,
+        "policy_block_vgap_ratio": 0.35,
+    }), encoding="utf-8")
+    assert motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--config-json", str(cfg)],
+        ocr_fn=make_mock_ocr([])) == 0
+    assert out_ass.exists()
+
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"policy_bogus": 1}), encoding="utf-8")
+    out_bad = tmp_path / "bad.ass"
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_bad), "--quad", quad_spec,
+         "--config-json", str(bad)],
+        ocr_fn=make_mock_ocr([]))
+    assert rc != 0 and not out_bad.exists()
+    assert "policy_bogus" in capsys.readouterr().err
+
+
+def test_mask_policy_end_to_end(tmp_path, capsys):
+    """mask:遮罩事件(layer 0,`\\p1`+`\\move`+`\\1c` 采样色)+ 原文本事件升 layer 1。"""
+    video_path, quad0 = build_case_custom(tmp_path, make_clean_card())
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "mask.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--scene-text-policy", "mask"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "scene-text-policy" in err  # applied 日志(mask == 所选,无回退)
+    assert "warning: scene-text-policy" not in err
+    text = out_ass.read_text(encoding="utf-8-sig")
+    dialogue = _dialogue_lines(text)
+    masks = [l for l in dialogue if "\\p1" in l]
+    texts = [l for l in dialogue if "\\p1" not in l]
+    assert len(masks) == 2 and len(texts) == 2  # 两块遮罩 + 两行文本
+    for line in masks:
+        assert line.startswith("Dialogue: 0,"), line
+        assert "\\an7\\p1" in line and "\\move(" in line
+        assert "\\1c&HF5F5F5&" in line          # 采样色 = 白底 245 = 0xF5
+        assert "m 0 0 l " in line and line.rstrip().endswith("{\\p0}")
+    for line in texts:
+        assert line.startswith("Dialogue: 1,"), line
+        field = line.split(",", 9)[9]
+        assert "\\move(" in field
+        assert re.sub(r"^\{[^}]*\}", "", field) in {"LINE0", "LINE1"}
+
+
+def test_external_policy_end_to_end(tmp_path):
+    """external:全部块合并单条 NoteBox 事件,底带居中、行序自上而下。"""
+    video_path, quad0 = build_case(tmp_path, n=10, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "external.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--scene-text-policy", "external"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    text = out_ass.read_text(encoding="utf-8-sig")
+    assert "Style: NoteBox,思源黑体 CN,10," in text
+    dialogue = _dialogue_lines(text)
+    assert len(dialogue) == 1
+    line = dialogue[0]
+    assert line.startswith("Dialogue: 0,") and "NoteBox,motion," in line
+    field = line.split(",", 9)[9]
+    assert field.startswith("{\\an2\\pos(160.0,200.0)\\fs")
+    assert re.sub(r"^\{[^}]*\}", "", field) == "LINE0\\NLINE1"
+
+
+def test_whitespace_policy_places_text_in_band(tmp_path, capsys):
+    """whitespace:折行文本落入下半空白带、随轨迹平移、字号按带适配。"""
+    video_path, quad0 = build_case_custom(
+        tmp_path, make_ws_card(), n=16, scale_step=0.0,
+        x0=WS_X0, y0=WS_Y0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "ws.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--scene-text-policy", "whitespace"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    assert "warning: scene-text-policy" not in capsys.readouterr().err
+    dialogue = _dialogue_lines(out_ass.read_text(encoding="utf-8-sig"))
+    # LINE0/LINE1 按带宽(159//40=3 字)折行 → 4 行
+    assert len(dialogue) == 4
+    bars_bottom = WS_Y0 + max(y2 for _x1, y1, _x2, y2 in WS_TEXT_BARS)
+    card_bottom = WS_Y0 + WS_CARD_H - 1
+    for line in dialogue:
+        field = line.split(",", 9)[9]
+        assert "\\fs24" in field  # fit_font_size(4 行, 带高≈92) 夹到下限 24
+        m = re.search(r"\\move\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)", field)
+        assert m, field
+        x1, y1, x2, y2 = (float(g) for g in m.groups())
+        assert abs(y1 - y2) <= 2.0             # 带内水平排布(忽略跟踪噪声)
+        assert bars_bottom < y1 < card_bottom  # 落在原文字下方的空白带
+        assert x2 - x1 == pytest.approx(TX_STEP * 13, abs=4.0)  # 随轨迹平移
+    bodies = {re.sub(r"^\{[^}]*\}", "", l.split(",", 9)[9]) for l in dialogue}
+    assert bodies == {"LIN", "E0", "LIN", "E1"}
+
+
+def test_whitespace_without_band_falls_back_to_mask(tmp_path, capsys):
+    """回退链:标准卡片无空白带 → whitespace 降级 mask(白底干净,可用)。"""
+    video_path, quad0 = build_case_custom(tmp_path, make_clean_card())
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "wsfallback.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--scene-text-policy", "whitespace"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "whitespace->mask" in err  # 回退原因写入 warn 日志
+    assert "mask->external" not in err
+    dialogue = _dialogue_lines(out_ass.read_text(encoding="utf-8-sig"))
+    assert sum(1 for l in dialogue if "\\p1" in l) == 2  # 降级后遮罩生效
+    assert sum(1 for l in dialogue if l.startswith("Dialogue: 1,")) == 2
+
+
+def test_full_fallback_chain_whitespace_mask_external(tmp_path, capsys):
+    """完整回退链:标准卡片(纹理贴着文字)无空白带 + 背景杂色 → external。"""
+    video_path, quad0 = build_case(tmp_path, n=10, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "chain.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--scene-text-policy", "whitespace"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "whitespace->mask" in err
+    assert "mask->external" in err
+    dialogue = _dialogue_lines(out_ass.read_text(encoding="utf-8-sig"))
+    assert len(dialogue) == 1
+    assert "NoteBox,motion," in dialogue[0]
+    assert re.sub(r"^\{[^}]*\}", "",
+                  dialogue[0].split(",", 9)[9]) == "LINE0\\NLINE1"
