@@ -1,0 +1,9 @@
+{
+  "source_or_tests_changed_during_run": [
+    "CHANGELOG.md",
+    "cli.py",
+    "docs/testing.md"
+  ],
+  "eligible_as_frozen_release_baseline": false,
+  "interpretation": "Observed test pass only. Concurrent edits detected: recreate a frozen baseline in an isolated checkout before implementation."
+}

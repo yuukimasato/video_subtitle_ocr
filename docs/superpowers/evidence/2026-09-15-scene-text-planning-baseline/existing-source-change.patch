@@ -1,0 +1,107 @@
+diff --git a/core/subtitle_roi_suggester.py b/core/subtitle_roi_suggester.py
+index b6550f1..25ea496 100644
+--- a/core/subtitle_roi_suggester.py
++++ b/core/subtitle_roi_suggester.py
+@@ -38,6 +38,12 @@ BAND_CENTER_TOLERANCE_RATIO = 0.5
+ # 4 点多边形（旋转矩形）而非轴对齐矩形。
+ POLY_TILT_THRESHOLD_DEG = 4.0
+ 
++# 判定"倾斜带"所需的倾斜行占比下限（其余视为混入的非带内容）。
++POLY_TILT_MAJORITY_RATIO = 0.6
++# 倾斜行之间允许的最大方向差（度，含 180° 环绕）；超出视为方向不一致，
++# 退回轴对齐矩形，避免单一旋转矩形无法覆盖整条带。
++POLY_TILT_CONSISTENCY_TOL_DEG = 2.0 * POLY_TILT_THRESHOLD_DEG
++
+ ProgressCB = Callable[[int, int], None]
+ 
+ 
+@@ -224,6 +230,38 @@ def _cluster_hits_into_segments(hits: List[Dict[str, Any]]) -> List[Dict[str, An
+     return segments
+ 
+ 
++def _long_edge_tilt_deg(quad: Sequence[Sequence[float]]) -> Optional[float]:
++    """单个文本行四边形的长边相对最近坐标轴的偏角（度，(-90, 90]）。
++
++    与 OpenCV 旋转矩形的角度约定无关；无法计算时返回 None。
++    """
++    pts = np.asarray(quad, dtype=np.float32)
++    if pts.ndim != 2 or pts.shape[0] < 3 or pts.shape[1] != 2:
++        return None
++    e1 = pts[1] - pts[0]
++    e2 = pts[2] - pts[1]
++    edge = e1 if (e1[0] ** 2 + e1[1] ** 2) >= (e2[0] ** 2 + e2[1] ** 2) else e2
++    if edge[0] == 0 and edge[1] == 0:
++        return None
++    tilt = math.degrees(math.atan2(edge[1], edge[0]))
++    if tilt > 90.0:
++        tilt -= 180.0
++    elif tilt <= -90.0:
++        tilt += 180.0
++    return tilt
++
++
++def _axis_deviation_deg(tilt_deg: float) -> float:
++    """偏角相对最近坐标轴（水平或垂直）的偏离量，[0, 45]。"""
++    return min(abs(tilt_deg), 90.0 - abs(tilt_deg))
++
++
++def _angle_spread_deg(a: float, b: float) -> float:
++    """两个方向的差值（0~90]，含 180° 环绕（89° 与 -89° 实为同一垂直朝向）。"""
++    d = abs(a - b)
++    return min(d, 180.0 - d)
++
++
+ def cluster_poly_points_if_tilted(
+     quad_points: Sequence[Sequence[float]],
+     frame_width: int,
+@@ -232,16 +270,45 @@ def cluster_poly_points_if_tilted(
+ ) -> Optional[List[List[int]]]:
+     """把聚类内全部文本行 quad 点合并成倾斜带；仅当明显倾斜时返回多边形。
+ 
+-    对全部 quad 点求最小外接旋转矩形，用长边向量测量相对最近坐标轴的偏角
+-    （与 OpenCV 版本的角度约定无关）。偏角 <= ``POLY_TILT_THRESHOLD_DEG`` 返回
+-    ``None``（调用方维持原轴对齐 rect 路径）；否则把旋转矩形沿长边外扩
+-    ``X_PAD_PX``、短边外扩 ``y_pad`` 后返回 4 个顶点（逐点钳制到画面内）。
++    "倾斜带"按**逐文本行**判定：对每个 quad 求其自身长边相对最近坐标轴的
++    偏角，当超过 ``POLY_TILT_THRESHOLD_DEG`` 的行占比达
++    ``POLY_TILT_MAJORITY_RATIO`` 且这些行的倾斜方向一致
++    （最大两两差 ≤ ``POLY_TILT_CONSISTENCY_TOL_DEG``，含 180° 环绕）时，
++    以这些倾斜行的点求最小外接旋转矩形，沿长边外扩 ``X_PAD_PX``、短边外扩
++    ``y_pad`` 后返回 4 个顶点（逐点钳制到画面内）；否则返回 ``None``
++    （调用方维持原轴对齐 rect 路径）。
++
++    .. note::
++        不能用全部点的最小外接矩形朝向判定倾斜：底部字幕带内各句文本的
++        位置/宽度随时间变化，点云整体可能呈对角分布，令水平字幕带被误判为
++        倾斜带并输出对角多边形，OCR 只能覆盖字幕的局部（截断文本）。
+     """
+     try:
+         pts = np.array(quad_points, dtype=np.float32)
+         if pts.ndim != 2 or pts.shape[0] < 3 or pts.shape[1] != 2:
+             return None
+-        rect = cv2.minAreaRect(pts)
++        # 每 4 个点为一条文本行 quad（_quad_of_line 恒返回 4 点）。
++        line_quads = [pts[i:i + 4] for i in range(0, pts.shape[0] - 3, 4)]
++        if not line_quads:
++            return None
++        quad_tilts = [(q, _long_edge_tilt_deg(q)) for q in line_quads]
++        measured = [(q, t) for q, t in quad_tilts if t is not None]
++        if not measured:
++            return None
++        tilted_pairs = [(q, t) for q, t in measured
++                        if _axis_deviation_deg(t) > POLY_TILT_THRESHOLD_DEG]
++        if len(tilted_pairs) < max(1, math.ceil(
++                POLY_TILT_MAJORITY_RATIO * len(measured))):
++            return None
++        base_tilt = tilted_pairs[0][1]
++        if any(_angle_spread_deg(t, base_tilt) > POLY_TILT_CONSISTENCY_TOL_DEG
++               for _, t in tilted_pairs[1:]):
++            return None
++
++        # 仅用倾斜行求外接矩形：混入的非倾斜行不属于该带，纳入会把矩形
++        # 拉偏、重新引入截断风险。
++        tilted_points = np.concatenate([q for q, _ in tilted_pairs])
++        rect = cv2.minAreaRect(tilted_points)
+         (cx, cy), (rw, rh), angle = rect
+         if rw <= 0 or rh <= 0:
+             return None

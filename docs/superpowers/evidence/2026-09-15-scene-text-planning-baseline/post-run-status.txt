@@ -1,0 +1,10 @@
+ M CHANGELOG.md
+ M cli.py
+ M core/subtitle_roi_suggester.py
+ M docs/testing.md
+ M tests/test_subtitle_roi_suggester.py
+?? docs/superpowers/evidence/
+?? docs/superpowers/plans/2026-09-15-roi-drawing-restoration.md
+?? docs/superpowers/specs/
+?? optimization_plan_2.5.0.md
+?? optimization_plan_main.md

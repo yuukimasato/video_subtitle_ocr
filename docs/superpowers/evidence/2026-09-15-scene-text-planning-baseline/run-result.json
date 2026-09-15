@@ -1,0 +1,13 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/",
+    "-q",
+    "-ra",
+    "--junitxml=<evidence-dir>/pytest.xml"
+  ],
+  "QT_QPA_PLATFORM": "offscreen",
+  "exit_code": 0
+}
