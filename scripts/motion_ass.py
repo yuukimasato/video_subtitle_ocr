@@ -1,0 +1,562 @@
+#!/usr/bin/env python3
+# scripts/motion_ass.py
+"""移动文字轨迹 → ASS 轨迹字幕:端到端 CLI(阶段一,手动触发)。
+
+串接 core 各模块,完成「视频 + quad → 逐帧平面跟踪 → 清晰关键帧选取 →
+关键帧 OCR(统一坐标)→ 按位置投票融合 → 轨迹合成 ASS 事件 → 写 .ass」:
+
+1. ``scene_plane_tracker.track_plane``:逐帧单应跟踪(质量门限,lost 不外推);
+2. ``keyframe_selector.select_keyframes``:展开图 Laplacian 方差选 top-K 清晰帧;
+3. 关键帧 ``unwarp_canonical`` 展开到统一坐标(初始帧平面坐标)后 OCR;
+4. ``ocr_optimizer.fuse_samples_by_position``:锚定帧 = 最清晰关键帧,按行框
+   位置对齐投票(阶段一不接 VLM,``--vlm-min-confidence`` 缺省 0.0 使难行
+   列表尽量少);
+5. ``motion_ass.build_line_tracks`` → ``smooth_line_track``(显式调用,合成器
+   内部不平滑)→ ``synthesize_events``:标签阶梯(单段 \\move / 分段 \\move /
+   \\t 旋转缩放 / 帧级 \\pos 兜底,lost 切段);
+6. 写 .ass(UTF-8-sig;头与主流水线默认样式一致,事件 Name=motion,按解析
+   start 时间排序)。
+
+统一坐标约定(与 core/motion_ass.build_line_tracks 对齐):初始帧平面坐标,
+即「关键帧(= start_frame)画面」的屏幕坐标。unwarp_canonical 的输出像素
+(i, j) 恰为平面点 (i, j)(见 core/scene_plane_tracker.unwarp_canonical);
+本脚本再把窗口锚定到 init quad 的外接矩形左上角 (qx1, qy1)、尺寸由 quad
+边长推导(与 keyframe_selector 缺省逻辑一致),因此 OCR 行框(窗口像素
+坐标)加回常量偏移 (qx1, qy1) 即平面坐标行框——是常量平移,非坐标还原。
+
+用法(四角顺序:左上 → 右上 → 右下 → 左下,顺时针):
+    python scripts/motion_ass.py --video clip.mp4 \
+        (--quad-file quad.json | --quad "x1,y1 x2,y2 x3,y3 x4,y4") \
+        --out motion.ass \
+        [--start-frame 0] [--end-frame N] [--trajectory-json traj.json] \
+        [--config-json cfg.json] [--ocr-engine rapid|paddle] \
+        [--keyframe-count 3] [--min-gap-sec 0.33] [--vlm-min-confidence 0.0]
+
+quad 文件格式:{"video": "...", "frame": 0, "quad": [[x, y] × 4]}
+(兼容裸 4×2 列表,与 scripts/track_plane.py 一致)。顶点顺序必须为顺时针
+(与 cv2.boxPoints 的 TL,TR,BR,BL 一致);逆时针会使展开图镜像,检测到
+即报错并以非零码退出。
+
+OCR 通过 ``ocr_fn`` 注入(``main(..., ocr_fn=...)``),缺省用引擎管理器构造
+独立引擎实例;单测注入 mock,不加载真模型。阶段一不接 VLM 复核。
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import os
+import sys
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+OcrFn = Callable[[Any], Dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# quad 输入与校验
+# ---------------------------------------------------------------------------
+
+def parse_quad_spec(spec: str) -> List[List[float]]:
+    """解析 "x1,y1 x2,y2 x3,y3 x4,y4"(兼容逗号/空白混合分隔的 8 个数)。"""
+    nums = [v for chunk in str(spec).replace(",", " ").split() for v in [chunk]]
+    try:
+        values = [float(v) for v in nums]
+    except ValueError:
+        raise ValueError(f"invalid quad spec: {spec!r}")
+    if len(values) != 8:
+        raise ValueError(
+            f"quad needs 8 numbers (4 points), got {len(values)}: {spec!r}")
+    return [[values[i], values[i + 1]] for i in range(0, 8, 2)]
+
+
+def load_quad_file(path: str) -> List[List[float]]:
+    """读 quad 文件:{"video": ..., "frame": ..., "quad": [[x, y] × 4]}。
+
+    兼容裸 4×2 列表(与 scripts/track_plane.py 的 quad 文件一致)。
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        if "quad" not in data:
+            raise ValueError(f"quad file must contain a 'quad' field: {path}")
+        return data["quad"]
+    return data
+
+
+def validate_quad(quad: Sequence[Sequence[float]]) -> List[List[float]]:
+    """校验 4×2 / 有限数值 / 最小面积 / 凸性(复用 tracker 的
+    ``_validate_init_quad``,与其凸性校验保持兼容),并强制顶点顺序为顺时针。
+
+    图像坐标系 y 向下,TL,TR,BR,BL(顺时针,与 cv2.boxPoints 一致)的
+    有向面积(鞋带公式)为正;逆时针会使 unwarp 展开图镜像、跟踪几何
+    翻转,检测到即抛 :class:`ValueError`。
+    """
+    import numpy as np
+
+    from core.scene_plane_tracker import _validate_init_quad
+
+    try:
+        arr = _validate_init_quad(quad)
+    except TypeError as exc:  # 结构非法(如 dict)统一按输入错误处理
+        raise ValueError(f"invalid quad structure: {quad!r} ({exc})") from exc
+    pts = arr.reshape(-1, 2)
+    x, y = pts[:, 0], pts[:, 1]
+    signed2 = float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+    if signed2 <= 0:
+        raise ValueError(
+            "quad vertex order must be clockwise (TL,TR,BR,BL, like "
+            f"cv2.boxPoints); got counter-clockwise quad (signed area "
+            f"{0.5 * signed2:.1f}) which would mirror the unwarped plane")
+    return [[float(px), float(py)] for px, py in pts]
+
+
+# ---------------------------------------------------------------------------
+# 配置
+# ---------------------------------------------------------------------------
+
+def build_config(config_data: Optional[Dict[str, Any]]):
+    """dict → MotionAssConfig;未知键直接报错(防拼写错误静默失效)。"""
+    from core.motion_ass import MotionAssConfig
+
+    if not config_data:
+        return MotionAssConfig()
+    known = {f.name: f for f in dataclasses.fields(MotionAssConfig)}
+    unknown = sorted(set(map(str, config_data)) - set(known))
+    if unknown:
+        raise ValueError(
+            f"unknown MotionAssConfig field(s): {', '.join(unknown)}; "
+            f"valid fields: {', '.join(sorted(known))}")
+    return MotionAssConfig(**config_data)
+
+
+# ---------------------------------------------------------------------------
+# 视频读取与统一坐标展开
+# ---------------------------------------------------------------------------
+
+def _video_size(video_path: str) -> Tuple[int, int]:
+    """视频分辨率 (width, height),打不开或读到 0 时抛 RuntimeError。"""
+    import cv2
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    try:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    finally:
+        cap.release()
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"cannot read video resolution: {video_path}")
+    return width, height
+
+
+def _read_keyframe_frames(
+    video_path: str, frame_nums: Sequence[int],
+) -> Dict[int, Any]:
+    """顺序解码一遍取关键帧图像(不随机 seek,与 keyframe_selector 一致)。"""
+    import cv2
+
+    want = {int(f) for f in frame_nums}
+    got: Dict[int, Any] = {}
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    try:
+        idx = 0
+        while len(got) < len(want):
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                break
+            if idx in want:
+                got[idx] = frame
+            idx += 1
+    finally:
+        cap.release()
+    missing = sorted(want - set(got))
+    if missing:
+        raise RuntimeError(f"cannot decode keyframe(s) from video: {missing}")
+    return got
+
+
+def _unwarp_quad_window(
+    frame_bgr: Any,
+    homography_inv: Sequence[Sequence[float]],
+    plane_size: Tuple[int, int],
+    origin: Tuple[int, int],
+) -> Any:
+    """关键帧 → 统一坐标(初始帧平面坐标)展开,并裁出 quad 外接矩形窗口。
+
+    unwarp_canonical 的输出像素 (i, j) 即平面点 (i, j);先按 (qx1+pw,
+    qy1+ph) 展开再裁出左上角 (qx1, qy1) 起、plane_size(由 init quad 边长
+    推导,与 keyframe_selector 缺省逻辑一致)的窗口,故窗口像素 (u, v) =
+    平面点 (qx1+u, qy1+v)。
+    """
+    from core.scene_plane_tracker import unwarp_canonical
+
+    qx1, qy1 = int(origin[0]), int(origin[1])
+    pw, ph = int(plane_size[0]), int(plane_size[1])
+    full = unwarp_canonical(frame_bgr, homography_inv, (qx1 + pw, qy1 + ph))
+    return full[qy1:qy1 + ph, qx1:qx1 + pw]
+
+
+# ---------------------------------------------------------------------------
+# OCR 融合结果 → 行框
+# ---------------------------------------------------------------------------
+
+def _fused_line_rows(best_ocr_data: Dict[str, Any]) -> List[Tuple[str, Tuple[float, float, float, float]]]:
+    """融合 OCR dict → [(text, (x1, y1, x2, y2))] 行框列表(展开窗口像素坐标)。
+
+    行框优先取 ``rec_polys`` 的轴对齐外接框(浮点精度),缺失时回退
+    ``rec_boxes``([x1, y1, x2, y2]);两者都缺的行丢弃(无几何不成轨迹)。
+    与 ``motion_ass.build_line_tracks`` 的 (x1, y1, x2, y2) 行框约定对齐。
+    """
+    from core.ocr_optimizer import _poly_to_aabb
+
+    texts = best_ocr_data.get("rec_texts") or []
+    polys = best_ocr_data.get("rec_polys") or []
+    rec_boxes = best_ocr_data.get("rec_boxes") or []
+    rows: List[Tuple[str, Tuple[float, float, float, float]]] = []
+    for i, text in enumerate(texts):
+        box: Optional[Tuple[float, float, float, float]] = None
+        if i < len(polys):
+            box = _poly_to_aabb(polys[i])
+        if box is None and i < len(rec_boxes):
+            rb = rec_boxes[i]
+            try:
+                if rb is not None and len(rb) >= 4:
+                    box = (float(rb[0]), float(rb[1]), float(rb[2]), float(rb[3]))
+            except (TypeError, ValueError):
+                box = None
+        if box is None:
+            print(f"warning: drop OCR line {i} ({text!r}): no line geometry",
+                  file=sys.stderr)
+            continue
+        rows.append((str(text), box))
+    return rows
+
+
+def _default_ocr_fn(engine_id: Optional[str]) -> Tuple[OcrFn, Any]:
+    """用引擎管理器构造独立引擎实例(不占用进程级单例),返回 (ocr_fn, engine)。
+
+    图像 → 统一 OCR dict(rec_texts/rec_scores/rec_boxes/rec_polys/dt_polys),
+    与 ``ocr_engine_manager.run_batch_ocr`` 的取数方式一致。
+    """
+    from core.ocr_engine_manager import build_standalone_engine
+
+    engine = build_standalone_engine(engine_id)
+
+    def _predict(img):
+        return engine.normalize_result(engine.predict(img))
+
+    return _predict, engine
+
+
+# ---------------------------------------------------------------------------
+# ASS 输出(与主流水线 generator/styling 默认行为一致)
+# ---------------------------------------------------------------------------
+
+def build_ass_header(width: int, height: int, title: str) -> str:
+    """默认 ASS 头:与 core/subtitle_generator/styling.py ``_get_ass_header``
+    的默认样式一致(含 Scene 行,fontsize=height*0.04),PlayRes 取视频分辨率。"""
+    fs_body = height * 0.06
+    fs_top = height * 0.05
+    fs_scene = height * 0.04
+    # 各样式共有的颜色/缩放/边框前缀(至 BorderStyle),便于对齐原文件逐行样式
+    common = "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1"
+    return f"""[Script Info]
+Title: {title} - Generated by Subtitle-OCR
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: {width}
+PlayResY: {height}
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,思源黑体 CN,{fs_body:.0f},{common},2,1,2,10,10,10,1
+Style: CH,思源黑体 CN,{fs_body:.0f},{common},2,1,2,10,10,10,1
+Style: JP,源ノ角ゴシック JP,{fs_body:.0f},{common},2,1,2,10,10,10,1
+Style: KO,Malgun Gothic,{fs_body:.0f},{common},2,1,2,10,10,10,1
+Style: RU,Arial,{fs_body:.0f},{common},2,1,2,10,10,10,1
+Style: Top,思源黑体 CN,{fs_top:.0f},{common},2,1,8,10,10,10,1
+Style: Scene,思源黑体 CN,{fs_scene:.0f},{common},1,0,5,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
+def _sanitize_ass_body(body: str) -> str:
+    """OCR 文本安全化(与 generator._sanitize_ass_body 行为一致):
+    CR/LF/TAB 换空格,ASCII 花括号映射为全角(避免被当 override 标签)。"""
+    text = str(body or "").replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    return text.replace("{", "｛").replace("}", "｝")
+
+
+def _parse_ass_time(value: str) -> float:
+    """ASS ``H:MM:SS.CC`` → 秒(排序用)。"""
+    h, m, rest = str(value).split(":")
+    return int(h) * 3600 + int(m) * 60 + float(rest)
+
+
+def write_ass(
+    path: str,
+    events: List[Dict[str, str]],
+    width: int,
+    height: int,
+    title: str,
+) -> int:
+    """事件列表 → .ass 文件(UTF-8-sig),按解析 start 时间排序。
+
+    事件行格式(阶段一脚本直写,Name=motion 作为合并豁免标记):
+    ``Dialogue: 0,{start},{end},{style},{name},0,0,0,,{tags}{body}``
+    返回写出的事件数。
+    """
+    ordered = sorted(events, key=lambda ev: _parse_ass_time(ev["start_time"]))
+    entries = []
+    for ev in ordered:
+        entries.append(
+            "Dialogue: 0,{},{},{},{},0,0,0,,{}{}".format(
+                ev["start_time"], ev["end_time"], ev["style"],
+                ev.get("name", ""), ev.get("tags", ""),
+                _sanitize_ass_body(ev.get("body", ""))))
+    content = build_ass_header(width, height, title) + "\n".join(entries)
+    with open(path, "w", encoding="utf-8-sig") as f:
+        f.write(content)
+    return len(entries)
+
+
+# ---------------------------------------------------------------------------
+# 端到端管线
+# ---------------------------------------------------------------------------
+
+def run_pipeline(
+    video_path: str,
+    out_path: str,
+    quad: Sequence[Sequence[float]],
+    *,
+    start_frame: int = 0,
+    end_frame: Optional[int] = None,
+    trajectory_json: Optional[str] = None,
+    config_data: Optional[Dict[str, Any]] = None,
+    ocr_engine: Optional[str] = None,
+    keyframe_count: int = 3,
+    min_gap_sec: float = 0.33,
+    vlm_min_confidence: float = 0.0,
+    ocr_fn: Optional[OcrFn] = None,
+    quiet: bool = False,
+) -> Dict[str, Any]:
+    """全链路:跟踪 → 关键帧 → OCR → 融合 → 合成 → 写 .ass(± 轨迹 JSON)。
+
+    ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``--ocr-engine`` 指定的
+    引擎(未指定时取注册表默认)构造独立实例并在结束时清理。
+    返回摘要 dict(events / ok_frames / total_frames / keyframes / hard_lines)。
+    """
+    from core.keyframe_selector import _plane_size_from_quad, select_keyframes
+    from core.motion_ass import (
+        build_line_tracks,
+        smooth_line_track,
+        synthesize_events,
+    )
+    from core.ocr_optimizer import _line_aabbs, fuse_samples_by_position
+    from core.scene_plane_tracker import save_trajectory, track_plane
+
+    def log(message: str) -> None:
+        if not quiet:
+            print(message, file=sys.stderr)
+
+    cfg = build_config(config_data)
+
+    # 1. 逐帧平面跟踪(全范围;lost 帧无 quad/单应,不外推)
+    end_desc = str(end_frame) if end_frame is not None else "end"
+    log(f"[1/5] tracking plane on frames [{start_frame}, {end_desc}] ...")
+    tracks = track_plane(
+        video_path, quad, start_frame=start_frame, end_frame=end_frame)
+    ok_tracks = [t for t in tracks if t.status == "ok"]
+    if not ok_tracks:
+        raise RuntimeError(
+            "plane tracking produced no ok frames; cannot build motion subtitles")
+    log(f"      {len(ok_tracks)}/{len(tracks)} frames ok")
+
+    # 2. 清晰关键帧(展开图 Laplacian 方差;top-K,分数降序,首个为锚定帧)。
+    #    plane_size 由 init quad 边长推导,与 keyframe_selector 缺省逻辑一致
+    #    (显式传入,避免依赖 ok_tracks[0].quad 的隐式推导)。
+    plane_size = _plane_size_from_quad(quad)
+    keyframes = select_keyframes(
+        video_path, tracks, k=max(1, int(keyframe_count)),
+        min_gap_sec=max(0.0, float(min_gap_sec)), plane_size=plane_size)
+    if not keyframes:  # 防御:有 ok 帧则必非空
+        raise RuntimeError("no keyframes selected from tracking result")
+    log(f"[2/5] keyframes (sharpest first): {keyframes}")
+
+    # 3. 关键帧 OCR(统一坐标 = 初始帧平面坐标;窗口锚定 quad 外接矩形)
+    xs = [float(p[0]) for p in quad]
+    ys = [float(p[1]) for p in quad]
+    origin = (int(min(xs)), int(min(ys)))
+
+    owned_engine = None
+    if ocr_fn is None:
+        ocr_fn, owned_engine = _default_ocr_fn(ocr_engine)
+    try:
+        frames = _read_keyframe_frames(video_path, keyframes)
+        by_frame = {t.frame_num: t for t in ok_tracks}
+        sample_results: List[Tuple[int, Dict[str, Any]]] = []
+        for frame_num in keyframes:  # 顺序 = 清晰度降序,首个为锚定帧
+            track = by_frame[frame_num]
+            window = _unwarp_quad_window(
+                frames[frame_num], track.homography_inv, plane_size, origin)
+            ocr_data = ocr_fn(window)
+            if not isinstance(ocr_data, dict):
+                raise RuntimeError(
+                    f"ocr_fn must return a unified OCR dict, got "
+                    f"{type(ocr_data).__name__}")
+            sample_results.append((frame_num, ocr_data))
+    finally:
+        if owned_engine is not None:
+            try:
+                owned_engine.cleanup()
+            except Exception:  # 引擎清理失败不影响主流程
+                pass
+
+    anchor_aabbs = _line_aabbs(sample_results[0][1])
+    if anchor_aabbs is None:
+        raise RuntimeError(
+            "anchor keyframe OCR result has no usable line geometry (dt_polys)")
+
+    # 4. 按位置投票融合(锚定 = 最清晰关键帧;阶段一不接 VLM,宽松阈值)
+    best_ocr_data, hard_lines, _candidates = fuse_samples_by_position(
+        sample_results, anchor_aabbs,
+        vlm_refine_min_confidence=max(0.0, float(vlm_min_confidence)))
+    if hard_lines:
+        log(f"      {len(hard_lines)} hard line(s) (stage-1: no VLM refine): "
+            f"{hard_lines}")
+
+    rows = _fused_line_rows(best_ocr_data)
+    if not rows:
+        raise RuntimeError("no text lines recognized on any keyframe")
+    # 窗口像素坐标 + 外接矩形偏移 = 初始帧平面坐标(常量平移,见模块 docstring)
+    qx1, qy1 = origin
+    line_boxes = [
+        (x1 + qx1, y1 + qy1, x2 + qx1, y2 + qy1) for _t, (x1, y1, x2, y2) in rows
+    ]
+    texts = [text for text, _box in rows]
+    log(f"[3/5] fused OCR lines: {texts}")
+
+    # 5. 行轨迹 → 平滑(显式调用)→ 合成事件 → 写 .ass
+    line_tracks = build_line_tracks(
+        line_boxes, texts, tracks, ref_frame=int(start_frame))
+    for line_track in line_tracks:
+        smooth_line_track(line_track, window=cfg.smooth_window)
+    events = synthesize_events(line_tracks, tracks, cfg, style="Scene")
+
+    width, height = _video_size(video_path)
+    title = os.path.splitext(os.path.basename(str(video_path)))[0]
+    n_written = write_ass(out_path, events, width, height, title)
+    log(f"[4/5] synthesized {len(events)} event(s) for {len(line_tracks)} line(s)")
+    log(f"[5/5] wrote {n_written} dialogue line(s) -> {out_path}")
+
+    if trajectory_json:
+        save_trajectory(
+            trajectory_json, tracks,
+            video_path=os.path.abspath(str(video_path)),
+            init_quad=quad,
+            meta={
+                "motion_ass": os.path.abspath(str(out_path)),
+                "keyframes": [int(f) for f in keyframes],
+                "plane_size": [int(plane_size[0]), int(plane_size[1])],
+                "quad_window_origin": [int(qx1), int(qy1)],
+                "ocr_engine": str(ocr_engine) if ocr_engine else "default",
+            })
+
+    return {
+        "events": n_written,
+        "ok_frames": len(ok_tracks),
+        "total_frames": len(tracks),
+        "keyframes": [int(f) for f in keyframes],
+        "hard_lines": list(hard_lines),
+    }
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -> int:
+    """CLI 入口。``ocr_fn`` 供测试注入 mock(图像 → 统一 OCR dict),注入后
+    不构造任何真引擎。返回进程退出码:0 成功,2 输入/管线错误。"""
+    parser = argparse.ArgumentParser(
+        prog="motion_ass",
+        description="Track a hand-picked text plane (quad) frame-by-frame, OCR "
+                    "only the sharpest keyframes in unified (initial-frame plane) "
+                    "coordinates, fuse readings by position voting, and emit "
+                    "motion-trajectory ASS events (\\move segments / \\t / dense "
+                    "\\pos fallback).",
+    )
+    parser.add_argument("--video", required=True, help="input video file")
+    parser.add_argument("--out", required=True, help="output .ass file")
+    parser.add_argument("--quad-file", metavar="Q.json",
+                        help='JSON file {"video": ..., "frame": ..., "quad": [[x,y]x4]} '
+                             "(a bare 4x2 list is also accepted)")
+    parser.add_argument("--quad", metavar='"x1,y1 x2,y2 x3,y3 x4,y4"',
+                        help="four corners as clockwise TL,TR,BR,BL (keyframe coords)")
+    parser.add_argument("--start-frame", type=int, default=0,
+                        help="first frame to track (default: 0)")
+    parser.add_argument("--end-frame", type=int, default=None,
+                        help="last frame (inclusive; default: video end)")
+    parser.add_argument("--trajectory-json", metavar="OUT.json", default=None,
+                        help="also write the per-frame trajectory JSON")
+    parser.add_argument("--config-json", metavar="CFG.json", default=None,
+                        help="JSON object with core.motion_ass.MotionAssConfig fields")
+    parser.add_argument("--ocr-engine", choices=["rapid", "paddle"], default=None,
+                        help="OCR engine for keyframe recognition (default: registry default)")
+    parser.add_argument("--keyframe-count", type=int, default=3,
+                        help="number of sharp keyframes to OCR & vote (default: 3)")
+    parser.add_argument("--min-gap-sec", type=float, default=0.33,
+                        help="min time gap between chosen keyframes in seconds (default: 0.33)")
+    parser.add_argument("--vlm-min-confidence", type=float, default=0.0,
+                        help="hard-line confidence threshold; stage-1 runs without VLM "
+                             "refine, keep lenient (default: 0.0)")
+    args = parser.parse_args(argv)
+
+    if bool(args.quad) == bool(args.quad_file):
+        parser.error("provide exactly one of --quad / --quad-file")
+
+    try:
+        quad = validate_quad(
+            load_quad_file(args.quad_file) if args.quad_file
+            else parse_quad_spec(args.quad))
+        config_data = None
+        if args.config_json:
+            with open(args.config_json, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+            if not isinstance(config_data, dict):
+                raise ValueError(
+                    "--config-json must contain a JSON object of MotionAssConfig fields")
+        summary = run_pipeline(
+            args.video, args.out, quad,
+            start_frame=args.start_frame, end_frame=args.end_frame,
+            trajectory_json=args.trajectory_json, config_data=config_data,
+            ocr_engine=args.ocr_engine, keyframe_count=args.keyframe_count,
+            min_gap_sec=args.min_gap_sec,
+            vlm_min_confidence=args.vlm_min_confidence,
+            ocr_fn=ocr_fn,
+        )
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(
+        f"motion-ass: {summary['events']} event(s) "
+        f"({summary['ok_frames']}/{summary['total_frames']} frames ok, "
+        f"keyframes {summary['keyframes']}) -> {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
