@@ -14,11 +14,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-import pytest
 
 from core import chunk_worker
 from core.chunk_planner import ChunkWindow
-from core.chunk_planner import plan_chunks
 from core.chunk_worker import chunk_worker_main, clip_roi_data_to_window
 from core.pipeline_stages import PipelineCancelled, PipelineContext
 

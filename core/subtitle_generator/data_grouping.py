@@ -121,7 +121,7 @@ class _DataGroupingMixin:
         if len(lines) <= 1:
             return lines
         merged: List[TextLine] = []
-        for line in sorted(lines, key=lambda l: (l.box[1], l.box[0])):
+        for line in sorted(lines, key=lambda line: (line.box[1], line.box[0])):
             if (
                 merged
                 and self._line_in_dialogue_band(merged[-1])
@@ -197,7 +197,7 @@ class _DataGroupingMixin:
 
     def _normalized_group_text(self, group: SubtitleGroup) -> str:
         return strip_flicker_punctuation(
-            "".join(l.text for l in sorted(group.lines, key=lambda l: l.box[1]))
+            "".join(line.text for line in sorted(group.lines, key=lambda line: line.box[1]))
         ).replace(" ", "")
 
     def _frame_gap_between_groups(self, a: SubtitleGroup, b: SubtitleGroup) -> int:
@@ -261,7 +261,7 @@ class _DataGroupingMixin:
         per_frame: List[List[TextLine]] = []
         for frame in group.frames or []:
             if frame.lines:
-                per_frame.append(sorted(frame.lines, key=lambda l: l.box[1]))
+                per_frame.append(sorted(frame.lines, key=lambda line: line.box[1]))
         if not per_frame:
             return group.lines
         count_votes = Counter(len(ls) for ls in per_frame)
@@ -298,7 +298,7 @@ class _DataGroupingMixin:
         if not lines:
             return mapping
         taken = [False] * len(reference)
-        for line in sorted(lines, key=lambda l: l.box[1]):
+        for line in sorted(lines, key=lambda line: line.box[1]):
             best_slot, best_overlap = None, 0.5
             for slot, ref_line in enumerate(reference):
                 if taken[slot]:
@@ -316,9 +316,9 @@ class _DataGroupingMixin:
     def _are_frames_similar(self, group: SubtitleGroup, frame2: FrameData) -> bool:
         frame1_lines = group.lines; frame2_lines = frame2.lines
         if len(frame1_lines) != len(frame2_lines): return False
-        fp1 = tuple(sorted([l.text for l in frame1_lines])); fp2 = tuple(sorted([l.text for l in frame2_lines]))
+        fp1 = tuple(sorted([line.text for line in frame1_lines])); fp2 = tuple(sorted([line.text for line in frame2_lines]))
         if fp1 == fp2:
-            sorted_lines1 = sorted(frame1_lines, key=lambda l: l.box[1]); sorted_lines2 = sorted(frame2_lines, key=lambda l: l.box[1])
+            sorted_lines1 = sorted(frame1_lines, key=lambda line: line.box[1]); sorted_lines2 = sorted(frame2_lines, key=lambda line: line.box[1])
             for line1, line2 in zip(sorted_lines1, sorted_lines2):
                 dist = math.hypot(line1.center[0] - line2.center[0], line1.center[1] - line2.center[1])
                 if dist > self.MERGE_POS_TOLERANCE: return False
@@ -329,8 +329,8 @@ class _DataGroupingMixin:
         return Levenshtein.ratio(text1, text2) >= self.MERGE_TEXT_SIMILARITY
 
     def _lines_center_distance_ok(self, lines1: List[TextLine], lines2: List[TextLine]) -> bool:
-        sorted_lines1 = sorted(lines1, key=lambda l: l.box[1])
-        sorted_lines2 = sorted(lines2, key=lambda l: l.box[1])
+        sorted_lines1 = sorted(lines1, key=lambda line: line.box[1])
+        sorted_lines2 = sorted(lines2, key=lambda line: line.box[1])
         for line1, line2 in zip(sorted_lines1, sorted_lines2):
             dist = math.hypot(line1.center[0] - line2.center[0], line1.center[1] - line2.center[1])
             if dist > self.MERGE_POS_TOLERANCE:
@@ -346,10 +346,10 @@ class _DataGroupingMixin:
         if len(g_lines) != len(c_lines):
             return False
         text_g = strip_flicker_punctuation(
-            "".join(l.text for l in sorted(g_lines, key=lambda l: l.box[1]))
+            "".join(line.text for line in sorted(g_lines, key=lambda line: line.box[1]))
         ).replace(" ", "")
         text_c = strip_flicker_punctuation(
-            "".join(l.text for l in sorted(c_lines, key=lambda l: l.box[1]))
+            "".join(line.text for line in sorted(c_lines, key=lambda line: line.box[1]))
         ).replace(" ", "")
         if not text_g or not text_c or len(text_g) != len(text_c):
             return False
@@ -357,8 +357,8 @@ class _DataGroupingMixin:
             dt = curr_frame.time_sec - prev_frame.time_sec
             if dt > self.MERGE_BRIDGE_MAX_SEC:
                 return False
-        fp_g = tuple(sorted(l.text for l in g_lines))
-        fp_c = tuple(sorted(l.text for l in c_lines))
+        fp_g = tuple(sorted(line.text for line in g_lines))
+        fp_c = tuple(sorted(line.text for line in c_lines))
         if fp_g == fp_c:
             return self._lines_center_distance_ok(g_lines, c_lines)
         if Levenshtein.ratio(text_g, text_c) < self.MERGE_TEXT_SIMILARITY:

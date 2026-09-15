@@ -2,7 +2,7 @@
 import os
 import json
 import logging
-from typing import Generator, Tuple, Dict, Any, Optional, Union
+from typing import Generator, Tuple, Dict, Any, Optional
 import numpy as np
 import cv2
 from PySide6.QtCore import QCoreApplication

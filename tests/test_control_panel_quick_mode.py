@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QAbstractButton,
     QComboBox,
     QLabel,
-    QLineEdit,
 )
 
 _app = QApplication.instance() or QApplication(sys.argv[:1])

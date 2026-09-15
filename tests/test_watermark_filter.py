@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from core.watermark_filter import WatermarkFilter, build_watermark_filter
 

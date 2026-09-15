@@ -1,10 +1,9 @@
 # components/video_display.py
 import logging
-import sys
 from typing import Dict, List, Optional, Tuple, Union
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor, QPolygon
+from PySide6.QtGui import QPixmap, QPainter, QPen, QBrush, QColor, QPolygon
 from PySide6.QtCore import QPoint, Qt, QRect, QSize, Signal, QCoreApplication
 
 logger = logging.getLogger(__name__)

@@ -30,7 +30,6 @@ from core import ocr_engine_manager
 from core.subtitle_roi_suggester import (
     X_PAD_PX,
     Y_PAD_HEIGHT_RATIO,
-    _bbox_of_line,
     _cluster_hits_into_segments,
     _collect_frame_hits,
     _uniform_sample_indices,

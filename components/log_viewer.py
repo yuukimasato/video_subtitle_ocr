@@ -1,7 +1,7 @@
 # components/log_viewer.py
 import html
 
-from PySide6.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QTextEdit
+from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QTextEdit
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Slot, QCoreApplication
 

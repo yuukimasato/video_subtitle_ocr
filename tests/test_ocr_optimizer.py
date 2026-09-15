@@ -321,7 +321,7 @@ def test_feature_cache_lru_eviction(tmp_path):
 def test_motion_sentinel_skips_identical_frames(tmp_path, install_fake_engine):
     # First frame OCRs to empty text, so no grouping is attempted and the
     # remaining identical frames must be skipped by the motion sentinel.
-    engine = install_fake_engine(FakeEngine(default_text=""))
+    install_fake_engine(FakeEngine(default_text=""))
     opt = make_optimizer(tmp_path)  # motion_sentinel_enabled=True by default
     frames = make_frames(5)
 

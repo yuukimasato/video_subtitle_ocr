@@ -349,7 +349,6 @@ DICT = {
     "（其余 {} 处低频文字未列出）": "(remaining {} low-frequency text(s) not listed)",
     "未检测到画面中部文字。": "No mid-frame text detected.",
     "应用": "Apply",
-    "取消": "Cancel",
 
     # ── VideoFrameLabel ──
     "绘制错误：{}": "Drawing error: {}",

@@ -1,10 +1,13 @@
 # core/subtitle_generator/source_classification.py
 import logging
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from PySide6.QtCore import QCoreApplication
 
-from .models import FrameData
+from .models import FrameData, TextLine
+
+if TYPE_CHECKING:
+    from core.classification_features import TextRegionFeatures
 
 logger = logging.getLogger("core.subtitle_generator")
 
@@ -25,15 +28,8 @@ class _SourceClassificationMixin:
         output of this tool.
         """
         from core.text_source_classifier import (
-            TextSourceClassifier,
             TextSource,
-            ClassificationResult,
             create_classifier_from_config,
-        )
-        from core.classification_features import (
-            TextRegionFeatures,
-            extract_visual_features,
-            extract_semantic_features,
         )
 
         classifier = create_classifier_from_config(self.source_filter_config)
@@ -183,8 +179,8 @@ class _SourceClassificationMixin:
 
     def _build_text_region_features(
         self,
-        text_line: "TextLine",
-        frame_data: "FrameData",
+        text_line: TextLine,
+        frame_data: FrameData,
         temporal_stats: Optional[Dict[str, Any]] = None,
         sem_cache: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> "TextRegionFeatures":

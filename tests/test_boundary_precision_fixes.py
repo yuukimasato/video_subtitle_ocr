@@ -226,7 +226,7 @@ def test_representative_lines_vote_restores_missing_second_line(tmp_path):
         ]))
     group = _group(frames)
     lines = opt._select_representative_lines(group)
-    assert [l.text for l in lines] == ["你現在就一副", "打死也不肯離開這裡的樣子"]
+    assert [line.text for line in lines] == ["你現在就一副", "打死也不肯離開這裡的樣子"]
 
 
 def test_representative_lines_vote_prefers_longer_reading(tmp_path):

@@ -18,13 +18,13 @@ import sys
 import cv2
 import numpy as np
 import pytest
+from typing import Tuple
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.scene_plane_tracker import (
-    TrackedQuad,
     load_trajectory,
     save_trajectory,
     track_plane,
@@ -217,7 +217,7 @@ def test_unwarp_plane_restorts_card_view():
 def test_degenerate_and_flat_quads_rejected():
     with pytest.raises(ValueError):
         _validate_init_quad([[0, 0], [10, 0], [20, 0], [0, 0]])  # 共线
-    card = make_card()
+    make_card()
     blank = np.full((FRAME_H, FRAME_W, 3), 200, np.uint8)
     blank[380:430, 40:90] = 205  # 特征贫乏区域
     with pytest.raises(ValueError):

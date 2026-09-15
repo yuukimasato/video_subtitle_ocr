@@ -9,7 +9,6 @@ from typing import Any, List, Optional
 import openai
 from openai import OpenAI
 from tenacity import (
-    RetryCallState,
     retry,
     retry_if_exception_type,
     stop_after_attempt,

@@ -11,7 +11,6 @@ Models are cached to ~/.paddleocr/ by PaddleOCR internally.
 import sys
 import os
 import logging
-import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,7 +69,7 @@ def preload_paddleocr(languages=("ch", "en"), device="cpu"):
             logger.info(f"  ✓ Language '{lang}' models ready")
         except Exception as e:
             logger.warning(f"  ⚠ Language '{lang}' preload failed: {e}")
-            logger.warning(f"    Models will be downloaded on first OCR use instead.")
+            logger.warning("    Models will be downloaded on first OCR use instead.")
 
 
 def preload_rapidocr():

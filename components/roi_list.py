@@ -1,8 +1,7 @@
 # components/roi_list.py
-import copy
-from typing import List, Dict, Optional
+from typing import List, Dict
 
-from PySide6.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QListWidget, QListWidgetItem, QMenu, QMessageBox
+from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QListWidget, QListWidgetItem, QMenu, QMessageBox
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Signal, Qt, QPoint, Slot, QCoreApplication
 

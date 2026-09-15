@@ -9,7 +9,7 @@ along with the OCREngineRegistry for engine discovery and management.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterator, Tuple, Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 import logging
 

@@ -270,7 +270,7 @@ def test_progress_callback_reports_monotonic_done_with_stable_total():
     roi_entry, results = build_results(range(OCR_FIRST, OCR_LAST + 1))
     video = FakeVideo()
     reports = []
-    refined = boundary_refine.refine_boundaries(
+    boundary_refine.refine_boundaries(
         results, [roi_entry],
         ocr_frame_func=video.ocr_frame_func,
         probe_frame_func=video.probe_frame_func,

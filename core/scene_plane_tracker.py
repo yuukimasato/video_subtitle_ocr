@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import cv2

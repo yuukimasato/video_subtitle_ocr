@@ -149,7 +149,6 @@ def test_cancel_propagates_and_kills_children():
     def progress_cb(pct, msg):
         cancel_flag["on"] = True  # flip on first progress message
 
-    procs = {}
 
     real_launch = runner.run_chunk_parallel
 

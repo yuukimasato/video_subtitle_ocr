@@ -30,7 +30,7 @@ import logging
 import os
 import threading
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 

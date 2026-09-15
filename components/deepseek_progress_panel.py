@@ -1,7 +1,7 @@
 # components/deepseek_progress_panel.py
 from __future__ import annotations
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton
+from PySide6.QtWidgets import QVBoxLayout, QGroupBox, QTextEdit, QPushButton
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import QCoreApplication
 

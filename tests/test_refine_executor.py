@@ -27,7 +27,6 @@ import numpy as np
 import pytest
 
 from core import boundary_refine
-from core import ocr_engine_manager as mgr
 from core import roi_extractor
 from core.chunk_worker import clip_roi_data_to_window  # noqa: F401  (import sanity)
 from core.ocr_engine_base import BaseOCREngine, OCREngineInfo, OCREngineRegistry

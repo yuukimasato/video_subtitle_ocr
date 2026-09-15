@@ -117,7 +117,7 @@ def test_empty_anchor_rescued_by_later_samples(tmp_path, install_engine):
         ("第一行正文", 0.97, (40, 40, 280, 70)),
         ("第二行正文", 0.96, (40, 90, 280, 120)),
     ]
-    engine = install_engine(ScriptableEngine(scripted=[EMPTY, _raw(body), _raw(body)]))
+    install_engine(ScriptableEngine(scripted=[EMPTY, _raw(body), _raw(body)]))
     opt = make_optimizer(tmp_path)
 
     result = opt._get_best_ocr_result_from_sequence(make_frames(9))
@@ -133,7 +133,7 @@ def test_anchor_missing_middle_line_rescued(tmp_path, install_engine):
     top = ("顶部标题", 0.97, (40, 30, 280, 60))
     mid = ("中间正文", 0.96, (40, 80, 280, 110))
     bottom = ("底部落款", 0.95, (40, 130, 280, 160))
-    engine = install_engine(ScriptableEngine(scripted=[
+    install_engine(ScriptableEngine(scripted=[
         _raw([top, bottom]),            # 锚定帧：漏读中间行
         _raw([top, mid, bottom]),       # 中采样：三行齐全
         _raw([top, mid, bottom]),       # 尾采样：三行齐全
@@ -149,7 +149,7 @@ def test_missing_observation_does_not_vote_negatively(tmp_path, install_engine, 
     """某行只在 2/3 采样中被读到且两处一致 → 观测一致即确认，不送 VLM。"""
     line_a = ("未遮挡行", 0.97, (40, 40, 280, 70))
     line_b = ("被遮挡行", 0.96, (40, 90, 280, 120))
-    engine = install_engine(ScriptableEngine(scripted=[
+    install_engine(ScriptableEngine(scripted=[
         _raw([line_a, line_b]),
         _raw([line_a]),                 # 中采样：手挡住 B 行
         _raw([line_a, line_b]),
@@ -169,7 +169,7 @@ def test_missing_observation_does_not_vote_negatively(tmp_path, install_engine, 
 def test_disagreement_routes_ambiguous_line_to_vlm(tmp_path, install_engine, monkeypatch):
     """同一位置三个采样读出三种文本 → 无多数，行级送 VLM 裁决。"""
     box = (40, 40, 280, 70)
-    engine = install_engine(ScriptableEngine(scripted=[
+    install_engine(ScriptableEngine(scripted=[
         _raw([("讀法甲", 0.9, box)]),
         _raw([("讀法乙", 0.9, box)]),
         _raw([("讀法丙", 0.9, box)]),
@@ -203,7 +203,7 @@ def test_no_geometry_falls_back_to_strict_index(tmp_path, install_engine):
     two_lines["rec_texts"] = ["第一行", "第二行"]
     two_lines["rec_scores"] = [0.95, 0.94]
     two_lines["rec_boxes"] = [[40, 40, 280, 70], [40, 90, 280, 120]]
-    engine = install_engine(ScriptableEngine(scripted=[
+    install_engine(ScriptableEngine(scripted=[
         two_lines, no_geo("第一行"), no_geo("第一行"),
     ]))
     opt = make_optimizer(tmp_path)
@@ -252,7 +252,7 @@ def test_representative_lines_align_by_position_on_count_tie(tmp_path):
 
     # 行槽 0（y≈100）只有"第一行"的证据，行槽 1（y≈200）四帧全一致；
     # 旧行索引投票会把 (第一行,第二行) vs (第二行,第三行) 按槽位硬凑。
-    assert [l.text for l in lines] == ["第一行", "第二行"]
+    assert [line.text for line in lines] == ["第一行", "第二行"]
 
 
 def test_representative_lines_partial_frames_contribute_votes(tmp_path):
@@ -268,7 +268,7 @@ def test_representative_lines_partial_frames_contribute_votes(tmp_path):
 
     lines = gen._select_representative_lines(_sgroup(frames))
 
-    assert [l.text for l in lines] == ["第一行", "第二行"]
+    assert [line.text for line in lines] == ["第一行", "第二行"]
 
 
 # ---------------------------------------------------------------------------

@@ -129,7 +129,6 @@ def fuse_samples_by_position(
     base_result_tuple = sample_results[0]
     anchor = base_result_tuple[1]
     anchor_texts = anchor.get('rec_texts', []) or []
-    anchor_scores = anchor.get('rec_scores', []) or []
     num_anchor = len(anchor_texts)
 
     # 每个行槽的独立观测：(text, score, 来源 ocr_data, 行号)。

@@ -6,7 +6,7 @@
 最小尺寸钳制。
 """
 
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPolygon
 
 from components.video_display import (

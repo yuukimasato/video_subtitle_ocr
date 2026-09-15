@@ -22,7 +22,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.chunk_planner import ChunkWindow, plan_chunks, owner_window
+from core.chunk_planner import plan_chunks, owner_window
 
 
 def _plan(total_frames, fps=30, cores=8, ram_mb=8192, gpu="cpu", **kw):

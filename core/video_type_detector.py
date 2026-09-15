@@ -15,8 +15,6 @@ Four-stage detection pipeline:
 
 from __future__ import annotations
 
-import os
-import re
 import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple

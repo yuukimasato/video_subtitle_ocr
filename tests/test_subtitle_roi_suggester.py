@@ -217,7 +217,7 @@ def test_sample_indices_cover_first_and_last_frame(tmp_path, probe_env):
     engine, _ = probe_env
     video = _write_video(tmp_path / "cover", make_drawer(sub_range=(20, 90)))
 
-    rois = suggest_subtitle_rois(str(video), sample_count=12)
+    suggest_subtitle_rois(str(video), sample_count=12)
 
     indices = expected_sample_indices()
     assert indices[0] == 0 and indices[-1] == N_FRAMES - 1
