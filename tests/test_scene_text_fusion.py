@@ -25,7 +25,7 @@ if PROJECT_ROOT not in sys.path:
 
 from core import ocr_engine_manager, vlm_refine
 from core.fullframe_scanner import _merge_scene_candidates
-from core.ocr_optimizer import OcrOptimizer
+from core.ocr_optimizer import OcrOptimizer, _line_aabbs, fuse_samples_by_position
 from core.subtitle_generator import OCRToASSOptimizer
 from core.subtitle_generator.models import FrameData, SubtitleGroup, TextLine
 
@@ -335,3 +335,74 @@ def test_scene_candidates_same_text_far_apart_not_merged():
     ]
     merged = _merge_scene_candidates(cands, fps=10.0)
     assert len(merged) == 2
+
+
+# ---------------------------------------------------------------------------
+# d) 模块级按位置融合函数（供运动轨迹脚本复用，优化器方法为纯委托）
+# ---------------------------------------------------------------------------
+
+def test_fuse_samples_by_position_missing_observation_not_negative():
+    """模块级函数：某帧漏读一行只算缺失观测；一致观测不产生难帧。"""
+    line_a = ("未遮挡行", 0.97, (40, 40, 280, 70))
+    line_b = ("被遮挡行", 0.96, (40, 90, 280, 120))
+    sample_results = [
+        (None, _raw([line_a, line_b])),
+        (None, _raw([line_a])),          # 中采样：手挡住 B 行 → 缺失观测
+        (None, _raw([line_a, line_b])),
+    ]
+    anchor_aabbs = _line_aabbs(sample_results[0][1])
+
+    best, hard_lines, candidates = fuse_samples_by_position(
+        sample_results, anchor_aabbs, vlm_refine_min_confidence=0.6)
+
+    assert best["rec_texts"] == ["未遮挡行", "被遮挡行"]
+    # 缺失观测不投票、不计入分母：两处一致观测即确认，不送 VLM。
+    assert hard_lines == []
+    assert candidates == [["未遮挡行"], ["被遮挡行"]]
+
+
+def test_fuse_samples_by_position_rescues_anchor_missing_line():
+    """模块级函数：锚定帧漏读的行由其余采样帧按位置补为额外行槽。"""
+    top = ("顶部标题", 0.97, (40, 30, 280, 60))
+    mid = ("中间正文", 0.96, (40, 80, 280, 110))
+    bottom = ("底部落款", 0.95, (40, 130, 280, 160))
+    sample_results = [
+        (None, _raw([top, bottom])),     # 锚定帧：漏读中间行
+        (None, _raw([top, mid, bottom])),
+        (None, _raw([top, mid, bottom])),
+    ]
+    anchor_aabbs = _line_aabbs(sample_results[0][1])
+
+    best, hard_lines, candidates = fuse_samples_by_position(
+        sample_results, anchor_aabbs, vlm_refine_min_confidence=0.6)
+
+    # 被救回的行按 y 中心插回读取顺序，几何/分数来自提供证据的采样帧。
+    assert best["rec_texts"] == ["顶部标题", "中间正文", "底部落款"]
+    assert best["rec_scores"] == [0.97, 0.96, 0.95]
+    assert best["dt_polys"][1][0] == [40.0, 80.0]
+    assert hard_lines == []
+    assert candidates == [["顶部标题"], ["中间正文"], ["底部落款"]]
+
+
+def test_optimizer_method_delegates_to_module_function(tmp_path):
+    """行为保持：优化器方法与模块级函数输出完全一致（纯委托）。"""
+    box = (40, 40, 280, 70)
+    sample_results = [
+        (None, _raw([("讀法甲", 0.9, box)])),
+        (None, _raw([("讀法乙", 0.9, box)])),
+        (None, _raw([("讀法丙", 0.9, box)])),
+    ]
+    anchor_aabbs = _line_aabbs(sample_results[0][1])
+    opt = make_optimizer(tmp_path)
+
+    method_out = opt._fuse_samples_by_position(sample_results, anchor_aabbs)
+    module_out = fuse_samples_by_position(
+        sample_results, anchor_aabbs,
+        vlm_refine_min_confidence=opt.vlm_refine_min_confidence,
+    )
+
+    # 三读法无多数 → 行级送审难帧，候选按序去重透传。
+    assert module_out[0]["rec_texts"] == ["讀法甲"]
+    assert module_out[1] == [0]
+    assert module_out[2] == [["讀法甲", "讀法乙", "讀法丙"]]
+    assert method_out == module_out

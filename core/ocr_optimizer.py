@@ -103,6 +103,146 @@ def _pick_list_item(ocr_data: Dict[str, Any], key: str, idx: int) -> Any:
         return items[idx]
     return None
 
+
+def fuse_samples_by_position(
+    sample_results: List[Tuple],
+    anchor_aabbs: List[_LineBox],
+    *,
+    vlm_refine_min_confidence: float,
+) -> Tuple[Dict[str, Any], List[int], List[List[str]]]:
+    """基于行框位置对齐的逐行融合（模块级，供优化器与运动轨迹脚本复用）。
+
+    行为与 ``OcrOptimizer._fuse_samples_by_position`` 完全一致（该方法现为
+    纯委托）；难帧判定的置信度阈值 ``vlm_refine_min_confidence`` 由调用方
+    显式传入。``sample_results`` 的每项只需索引 1（unified OCR dict），
+    ``anchor_aabbs`` 是锚定帧逐行轴对齐框（``_line_aabbs`` 的结果）。
+
+    与旧行索引投票的区别（对应场景文字/遮挡/首帧漏读的根因）：
+    - 某个采样帧漏读一行只让该行在该帧成为"缺失观测"，不再使整段
+      放弃投票；缺失观测不投票、也不计入该行的分母（遮挡行不做负向
+      投票）。
+    - 锚定帧（首采样）漏读的行由其余采样帧中同位置的行补齐为额外
+      行槽——首帧为空/漏字可以被后续清晰帧救回。
+    - 行数不一致不再直接放弃，而是逐行对齐后继续投票，歧义行交给
+      VLM 复核。
+    """
+    base_result_tuple = sample_results[0]
+    anchor = base_result_tuple[1]
+    anchor_texts = anchor.get('rec_texts', []) or []
+    anchor_scores = anchor.get('rec_scores', []) or []
+    num_anchor = len(anchor_texts)
+
+    # 每个行槽的独立观测：(text, score, 来源 ocr_data, 行号)。
+    slots: List[List[Tuple[str, float, Dict[str, Any], int]]] = [[] for _ in range(num_anchor)]
+    # 锚定帧漏读、由其余帧补出的额外行槽。
+    extra_slots: List[List[Tuple[str, float, Dict[str, Any], int]]] = []
+    extra_aabbs: List[_LineBox] = []
+
+    for pos, res_tuple in enumerate(sample_results):
+        ocr_data = res_tuple[1]
+        texts = ocr_data.get('rec_texts', []) or []
+        scores = ocr_data.get('rec_scores', []) or []
+
+        def _obs(li: int) -> Tuple[str, float, Dict[str, Any], int]:
+            score = float(scores[li]) if li < len(scores) else 0.0
+            return (texts[li], score, ocr_data, li)
+
+        if pos == 0:
+            # 锚定帧按行号自映射。
+            for li in range(len(texts)):
+                slots[li].append(_obs(li))
+            continue
+
+        sample_aabbs = _line_aabbs(ocr_data)
+        if sample_aabbs is None or len(sample_aabbs) != len(texts):
+            # 该采样帧没有可用几何：行数与锚定帧一致时仍可按索引对齐，
+            # 否则丢弃其观测（宁缺勿错接）。
+            if len(texts) == num_anchor:
+                for li in range(len(texts)):
+                    slots[li].append(_obs(li))
+            continue
+
+        mapping, unmatched = _align_lines_to_anchor(anchor_aabbs, sample_aabbs, scores)
+        for ai, oi in enumerate(mapping):
+            if oi is not None:
+                slots[ai].append(_obs(oi))
+        for oi in unmatched:
+            obs = _obs(oi)
+            target: Optional[int] = None
+            best_iou = MIN_LINE_MATCH_IOU
+            for ei, box in enumerate(extra_aabbs):
+                iou = _box_iou(box, sample_aabbs[oi])
+                if iou >= best_iou:
+                    target, best_iou = ei, iou
+            if target is None:
+                extra_slots.append([obs])
+                extra_aabbs.append(sample_aabbs[oi])
+            else:
+                extra_slots[target].append(obs)
+
+    best_ocr_data = {
+        'dt_polys': [],
+        'rec_polys': [],
+        'rec_texts': [],
+        'rec_scores': [],
+        'rec_boxes': []
+    }
+    hard_lines: List[int] = []
+    per_slot_candidates: List[List[str]] = []
+
+    # 行槽统一按行框 y 中心排序输出：被救回的额外行槽（锚定帧漏读的
+    # 行）按其真实位置插回读取顺序，而不是追加在尾部。
+    ordered_slots = (
+        [(obs, box) for obs, box in zip(slots, anchor_aabbs)]
+        + [(obs, box) for obs, box in zip(extra_slots, extra_aabbs)]
+    )
+    ordered_slots.sort(key=lambda pair: (pair[1][1] + pair[1][3]) / 2.0)
+
+    for obs_list, _ in ordered_slots:
+        if not obs_list:
+            # 锚定帧行槽必然有自映射观测；防御空槽。
+            continue
+        text_votes = Counter(o[0] for o in obs_list)
+        score_sum = defaultdict(float)
+        for text, score, _, _ in obs_list:
+            score_sum[text] += score
+        best_text = max(text_votes, key=lambda t: (text_votes[t], score_sum[t] / text_votes[t]))
+
+        win_score, win_data, win_idx = next(
+            (score, data, li) for text, score, data, li in obs_list if text == best_text
+        )
+        best_ocr_data['rec_texts'].append(best_text)
+        best_ocr_data['rec_scores'].append(win_score)
+        best_ocr_data['dt_polys'].append(_pick_list_item(win_data, 'dt_polys', win_idx))
+        best_ocr_data['rec_polys'].append(_pick_list_item(win_data, 'rec_polys', win_idx))
+        best_ocr_data['rec_boxes'].append(_pick_list_item(win_data, 'rec_boxes', win_idx))
+
+        seen = set()
+        candidates: List[str] = []
+        for text, _, _, _ in obs_list:
+            if text and text not in seen:
+                seen.add(text)
+                candidates.append(text)
+        per_slot_candidates.append(candidates)
+
+        # 难帧判定（分母只数真实观测）：
+        # - 观测内部无多数（票数不足观测数一半）；或
+        # - 只有一个采样帧读到该行（缺第二证据交叉验证；旧行为下行数
+        #   不一致时整段跳过 VLM，这里收敛到行级送审）；或
+        # - 平均置信度低于阈值。
+        votes = text_votes[best_text]
+        observations = len(obs_list)
+        avg_confidence = score_sum[best_text] / votes if votes else 0.0
+        if (
+            (observations == 1 and len(sample_results) > 1)
+            or votes * 2 < observations
+            or avg_confidence < vlm_refine_min_confidence
+        ):
+            hard_lines.append(len(best_ocr_data['rec_texts']) - 1)
+
+    return best_ocr_data, hard_lines, per_slot_candidates
+
+
 # Optional dependency for fuzzy text matching; fall back to exact-match only.
 try:
     import Levenshtein
@@ -592,132 +732,16 @@ class OcrOptimizer:
         sample_results: List[Tuple],
         anchor_aabbs: List[_LineBox],
     ) -> Tuple[Dict[str, Any], List[int], List[List[str]]]:
-        """基于行框位置对齐的逐行融合。
+        """基于行框位置对齐的逐行融合（委托模块级 ``fuse_samples_by_position``）。
 
-        与旧行索引投票的区别（对应场景文字/遮挡/首帧漏读的根因）：
-        - 某个采样帧漏读一行只让该行在该帧成为"缺失观测"，不再使整段
-          放弃投票；缺失观测不投票、也不计入该行的分母（遮挡行不做负向
-          投票）。
-        - 锚定帧（首采样）漏读的行由其余采样帧中同位置的行补齐为额外
-          行槽——首帧为空/漏字可以被后续清晰帧救回。
-        - 行数不一致不再直接放弃，而是逐行对齐后继续投票，歧义行交给
-          VLM 复核。
+        行为保持抽取：全部实现与难帧判定说明见模块级函数；本方法仅把实例
+        配置 ``self.vlm_refine_min_confidence`` 作为显式阈值参数传入，签名
+        与返回值不变。
         """
-        base_result_tuple = sample_results[0]
-        anchor = base_result_tuple[1]
-        anchor_texts = anchor.get('rec_texts', []) or []
-        anchor_scores = anchor.get('rec_scores', []) or []
-        num_anchor = len(anchor_texts)
-
-        # 每个行槽的独立观测：(text, score, 来源 ocr_data, 行号)。
-        slots: List[List[Tuple[str, float, Dict[str, Any], int]]] = [[] for _ in range(num_anchor)]
-        # 锚定帧漏读、由其余帧补出的额外行槽。
-        extra_slots: List[List[Tuple[str, float, Dict[str, Any], int]]] = []
-        extra_aabbs: List[_LineBox] = []
-
-        for pos, res_tuple in enumerate(sample_results):
-            ocr_data = res_tuple[1]
-            texts = ocr_data.get('rec_texts', []) or []
-            scores = ocr_data.get('rec_scores', []) or []
-
-            def _obs(li: int) -> Tuple[str, float, Dict[str, Any], int]:
-                score = float(scores[li]) if li < len(scores) else 0.0
-                return (texts[li], score, ocr_data, li)
-
-            if pos == 0:
-                # 锚定帧按行号自映射。
-                for li in range(len(texts)):
-                    slots[li].append(_obs(li))
-                continue
-
-            sample_aabbs = _line_aabbs(ocr_data)
-            if sample_aabbs is None or len(sample_aabbs) != len(texts):
-                # 该采样帧没有可用几何：行数与锚定帧一致时仍可按索引对齐，
-                # 否则丢弃其观测（宁缺勿错接）。
-                if len(texts) == num_anchor:
-                    for li in range(len(texts)):
-                        slots[li].append(_obs(li))
-                continue
-
-            mapping, unmatched = _align_lines_to_anchor(anchor_aabbs, sample_aabbs, scores)
-            for ai, oi in enumerate(mapping):
-                if oi is not None:
-                    slots[ai].append(_obs(oi))
-            for oi in unmatched:
-                obs = _obs(oi)
-                target: Optional[int] = None
-                best_iou = MIN_LINE_MATCH_IOU
-                for ei, box in enumerate(extra_aabbs):
-                    iou = _box_iou(box, sample_aabbs[oi])
-                    if iou >= best_iou:
-                        target, best_iou = ei, iou
-                if target is None:
-                    extra_slots.append([obs])
-                    extra_aabbs.append(sample_aabbs[oi])
-                else:
-                    extra_slots[target].append(obs)
-
-        best_ocr_data = {
-            'dt_polys': [],
-            'rec_polys': [],
-            'rec_texts': [],
-            'rec_scores': [],
-            'rec_boxes': []
-        }
-        hard_lines: List[int] = []
-        per_slot_candidates: List[List[str]] = []
-
-        # 行槽统一按行框 y 中心排序输出：被救回的额外行槽（锚定帧漏读的
-        # 行）按其真实位置插回读取顺序，而不是追加在尾部。
-        ordered_slots = (
-            [(obs, box) for obs, box in zip(slots, anchor_aabbs)]
-            + [(obs, box) for obs, box in zip(extra_slots, extra_aabbs)]
+        return fuse_samples_by_position(
+            sample_results, anchor_aabbs,
+            vlm_refine_min_confidence=self.vlm_refine_min_confidence,
         )
-        ordered_slots.sort(key=lambda pair: (pair[1][1] + pair[1][3]) / 2.0)
-
-        for obs_list, _ in ordered_slots:
-            if not obs_list:
-                # 锚定帧行槽必然有自映射观测；防御空槽。
-                continue
-            text_votes = Counter(o[0] for o in obs_list)
-            score_sum = defaultdict(float)
-            for text, score, _, _ in obs_list:
-                score_sum[text] += score
-            best_text = max(text_votes, key=lambda t: (text_votes[t], score_sum[t] / text_votes[t]))
-
-            win_score, win_data, win_idx = next(
-                (score, data, li) for text, score, data, li in obs_list if text == best_text
-            )
-            best_ocr_data['rec_texts'].append(best_text)
-            best_ocr_data['rec_scores'].append(win_score)
-            best_ocr_data['dt_polys'].append(_pick_list_item(win_data, 'dt_polys', win_idx))
-            best_ocr_data['rec_polys'].append(_pick_list_item(win_data, 'rec_polys', win_idx))
-            best_ocr_data['rec_boxes'].append(_pick_list_item(win_data, 'rec_boxes', win_idx))
-
-            seen = set()
-            candidates: List[str] = []
-            for text, _, _, _ in obs_list:
-                if text and text not in seen:
-                    seen.add(text)
-                    candidates.append(text)
-            per_slot_candidates.append(candidates)
-
-            # 难帧判定（分母只数真实观测）：
-            # - 观测内部无多数（票数不足观测数一半）；或
-            # - 只有一个采样帧读到该行（缺第二证据交叉验证；旧行为下行数
-            #   不一致时整段跳过 VLM，这里收敛到行级送审）；或
-            # - 平均置信度低于阈值。
-            votes = text_votes[best_text]
-            observations = len(obs_list)
-            avg_confidence = score_sum[best_text] / votes if votes else 0.0
-            if (
-                (observations == 1 and len(sample_results) > 1)
-                or votes * 2 < observations
-                or avg_confidence < self.vlm_refine_min_confidence
-            ):
-                hard_lines.append(len(best_ocr_data['rec_texts']) - 1)
-
-        return best_ocr_data, hard_lines, per_slot_candidates
 
     def _maybe_vlm_refine(
         self,
