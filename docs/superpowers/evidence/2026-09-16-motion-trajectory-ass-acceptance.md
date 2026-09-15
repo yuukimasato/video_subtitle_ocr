@@ -94,3 +94,25 @@
 - 已知观察:external 对多行内容(本例 13 行)块体量大,几乎盖住手机屏幕;
   后续可考虑只外置最大块或分栏。whitespace 适合"文本量少 + 版面留白多"
   的场景(如带白边的招牌),本例文本量偏大故降级,行为符合设计预期。
+
+## 增补验收:策略接入完整版 GUI 与主流水线(2026-09-16)
+
+设计 `docs/superpowers/specs/2026-09-16-scene-text-policy-gui-design.md`;
+每 ROI 独立设置。全量测试 525 → **583 passed, 1 skipped**。
+
+- GUI:完整版 ROI 定义面板新增「场景文字显示」下拉(叠加/遮罩/外置框/
+  空白区),随 ROI json `scene_text_policy` 键持久化,选中回填;
+  三语 i18n 落齐,.qm 重编并实测加载。
+- 主流水线:`pipeline_worker` 收集每 ROI 策略与外接矩形 → 生成器静态路径
+  应用(分析图 = 最大 SCENE 组范围内取亮度最高候选帧);`cli.py` 同步
+  `--scene-text-policy` 参数;策略事件豁免噪声过滤/时间合并,支持 layer。
+- DMG 实跑(`cli.py --roi "599,280,725,799@…"`):
+  - 全时段 mask → **移动门限触发**,告警 "text moves more than 24px",
+    自动降级 external(0 条 `\p1`)——静态路径不跟随移动文字的边界
+    由门限守住,移动场景请使用轨迹管线;
+  - 静止时段(6.6~7.4s)mask → 7 条遮罩 + 文本 `\fs=行高`,烧录帧
+    (`policy-mainline-mask-static.png`)补丁无缝、大小贴合原字、无重影 ✅
+  - 全时段 external → 单条 NoteBox 事件 ✅
+- 过程修复:分析图候选帧改为跨全部 SCENE 组范围取最亮帧(原"最大组中间帧"
+  落在暗屏段,遮罩取色发黑);静态文本事件显式 `\fs=行高`(原按 Scene 样式
+  43px 渲染,与遮罩/原字尺寸体系脱节)。

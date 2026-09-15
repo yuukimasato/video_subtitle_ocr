@@ -224,18 +224,41 @@ class OCRToASSOptimizer(
                     "Scene text policy: no analysis rect for {}; keeping original placement."
                     ).format(roi_id))
             return None
-        # 分析图:最大 SCENE 组(帧跨度)的中间帧,每 ROI 仅 seek 一次。
-        anchor = max(scene_groups,
-                     key=lambda g: (g.duration_frames, len(g.frames)))
-        mid_frame = (anchor.start_frame + anchor.end_frame) // 2
-        plane_img, origin = self._grab_frame_crop(mid_frame, rect)
+        # 分析图:跨全部 SCENE 组的时间范围等距取候选帧,取灰度中位亮度
+        # 最高者。不能只看最大组——最大组往往是"手机静止"的暗屏段(亮屏段
+        # 因移动被位置容差切碎),而取色要的是"亮屏底色";背景色与文本内容
+        # 无关,任一充分照亮帧都具代表性(与 keyframe_selector 的选帧哲学
+        # 一致,这里以亮度为准)。
+        lo = min(g.start_frame for g in scene_groups)
+        hi = max(g.end_frame for g in scene_groups)
+        span = max(0, hi - lo)
+        candidates = sorted({
+            lo + int(round(span * f))
+            for f in (0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0)
+        })
+        plane_img = origin = None
+        best_luma = -1.0
+        probes: List[Tuple[int, float]] = []
+        for frame_num in candidates:
+            img, org = self._grab_frame_crop(frame_num, rect)
+            if img is None:
+                continue
+            luma = float(np.median(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)))
+            probes.append((frame_num, round(luma, 1)))
+            if luma > best_luma:
+                plane_img, origin, best_luma = img, org, luma
         if plane_img is None:
             return None
+        logger.info(
+            _tr("OCRToASSOptimizer",
+                "Scene text policy: analysis frame probes (frame, luma) = {} for {}; picked luma {:.1f}."
+                ).format(probes, roi_id, best_luma))
         return {
             "policy": policy,
             "plane": plane_img,
             "origin": origin,
             "rows": [],        # [(text, 视频坐标行框)],行序 = 收集序(组内自上而下)
+            "rows_motion": [],  # [(text, 视频坐标行框)] 逐帧行,仅供移动门限
             "row_times": [],   # 与 rows 对齐的 (start_time, end_time)
         }
 
@@ -246,10 +269,32 @@ class OCRToASSOptimizer(
         if not rows_video:
             return []
         ox, oy = ctx["origin"]
+        # 移动门限:同一文本的行框中心跨组位移超过 Scene 位置容差,说明场景
+        # 文字在移动——静态遮罩/空白区会与原字错位,自动降级 external(逐帧
+        # 跟随属于轨迹管线的能力)。
+        # 注意用逐帧行(rows_motion)而非代表行(rows):分组/代表行投票会把
+        # 移动文本坍缩到单一位置,移动信息在那里已经被抹掉。
+        centers: Dict[str, List[Tuple[float, float]]] = {}
+        for text, (x1, y1, x2, y2) in ctx.get("rows_motion", []):
+            centers.setdefault(text, []).append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+        tol = float(self.SCENE_POS_TOLERANCE_PX)
+        moved = any(
+            np.hypot(cx - px, cy - py) > tol
+            for pts in centers.values() if len(pts) > 1
+            for (cx, cy) in pts for (px, py) in pts
+        )
+        policy = str(ctx["policy"])
+        if moved and policy in ("mask", "whitespace"):
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: text moves more than {:.0f}px in {}; "
+                    "static {} would misalign, falling back to external."
+                    ).format(tol, roi_id, policy))
+            policy = "external"
         # 行框:视频坐标 − 外接框原点 → 平面坐标,与纯函数对接
         rows = [(text, (x1 - ox, y1 - oy, x2 - ox, y2 - oy))
                 for text, (x1, y1, x2, y2) in rows_video]
-        cfg = SceneTextPolicyConfig(mode=ctx["policy"])
+        cfg = SceneTextPolicyConfig(mode=policy)
         specs, applied, notes = apply_policy_static(
             rows, ctx["plane"], cfg, float(self.width), float(self.height),
             base_font_size=int(self.height * 0.04))
@@ -367,6 +412,11 @@ class OCRToASSOptimizer(
                             policy_ctx["rows"].append(
                                 (line.text, tuple(float(v) for v in line.box)))
                             policy_ctx["row_times"].append((start_time, end_time))
+                        for fr in group_frames:
+                            for line in fr.lines:
+                                policy_ctx["rows_motion"].append(
+                                    (line.text,
+                                     tuple(float(v) for v in line.box)))
                         continue
                     pose = self.roi_pose_tags.get(str(roi_id))
                     if pose:

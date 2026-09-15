@@ -129,6 +129,28 @@ def test_mask_policy_replaces_scene_events(scene_video, tmp_path):
     assert "Style: NoteBox," in text
 
 
+def test_mask_policy_falls_back_to_external_when_text_moves(scene_video, tmp_path):
+    # 同一文本跨组位移超过 Scene 位置容差 = 场景文字在移动:静态遮罩会与
+    # 原字错位,自动降级 external 并留痕。
+    def items():
+        for f in range(5, 12):
+            yield _make_ocr_item(f, "店铺招牌", TEXT_BOX)
+        for f in range(13, 21):
+            # 位移 (60,45):中心距 75px > 容差 24px,且保持同高、画面内
+            # (越界/变高的组会先被 ROI 画像过滤器丢弃,轮不到门限)
+            moved = (TEXT_BOX[0] + 60, TEXT_BOX[1] + 45,
+                     TEXT_BOX[2] + 60, TEXT_BOX[3] + 45)
+            yield _make_ocr_item(f, "店铺招牌", moved)
+    conv = _build_converter(scene_video, tmp_path / "out.ass",
+                            {"roi_0": "mask"}, {"roi_0": (40, 60, 280, 140)})
+    conv.convert_from_memory(items())
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+
+    assert "\\p1" not in text  # 未产出静态遮罩
+    notes = [ln for ln in _dialogues(text) if ",NoteBox," in ln]
+    assert len(notes) == 1 and "店铺招牌" in notes[0]
+
+
 def test_external_policy_single_notebox_event(scene_video, tmp_path):
     conv = _build_converter(scene_video, tmp_path / "out.ass",
                             {"roi_0": "external"}, {"roi_0": (40, 60, 280, 140)})

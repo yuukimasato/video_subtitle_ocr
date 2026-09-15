@@ -376,6 +376,14 @@ def run_pipeline(args: argparse.Namespace) -> int:
             f"roi_{i}": str(entry.get("text_filter_policy") or "keep_all")
             for i, entry in enumerate(roi_entries)
         }
+        # Per-ROI scene-text display policy (overlap/mask/external/whitespace).
+        if args.scene_text_policy and args.scene_text_policy != "overlap":
+            for entry in roi_entries:
+                entry["scene_text_policy"] = args.scene_text_policy
+        from core.pipeline_worker import collect_roi_scene_text_options
+        roi_scene_policies, roi_analysis_rects = collect_roi_scene_text_options(
+            roi_entries
+        )
         source_filter_config = None
         if args.preset:
             try:
@@ -408,6 +416,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             subtitle_polisher=None,
             source_filter_config=source_filter_config,
             roi_text_filter_policies=roi_policies or None,
+            roi_scene_text_policies=roi_scene_policies or None,
+            roi_analysis_rects=roi_analysis_rects or None,
             watermark_filter_config=watermark_config,
         )
         converter.convert_from_memory(iter(restored_results))
@@ -483,6 +493,12 @@ def parse_args(argv=None) -> argparse.Namespace:
              "by cores/RAM; 1 = single process; N = cap the auto count at N)",
     )
     parser.add_argument("--template", help="external .ass file as style template")
+    parser.add_argument(
+        "--scene-text-policy", default="overlap",
+        choices=["overlap", "mask", "external", "whitespace"],
+        help="scene-text display policy for --roi entries (default: overlap; "
+             "unavailable modes fall back whitespace->mask->external)",
+    )
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")

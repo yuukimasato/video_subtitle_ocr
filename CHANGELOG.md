@@ -4,6 +4,70 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
+## 未发布
+
+### 修复
+
+- **LLM 服务端失败不再击穿任务链（工作区规则落实）**：`core.llm_client.call_llm`
+  现把 openai SDK 级失败（连接失败/超时，以及 429 有界退避耗尽后的原始
+  `RateLimitError`，装饰器加 `reraise=True`）归一化为 `LlmApiError`
+  （`RuntimeError` 子类）——`subtitle_llm_polish` 各入口（润色/碎片合并/
+  策略复核/来源分类）既有的 `except RuntimeError` 优雅降级分支此前接不住
+  `tenacity.RetryError`/`openai.APIError`，一次限速耗尽即让整条生成链崩溃。
+  另为 `fetch_openai_compatible_model_ids`（GET /v1/models）补上有界 429
+  退避（≤3 次重试、单次等待 ≤5s、总等待 ≤30s，耗尽抛可恢复
+  `RuntimeError`）。
+- **颜色门限校准的色相环形均值**：`color_presence_gate.calibrate_hsv_from_crop`
+  对 OpenCV 色相（0-179 环形量）改用倍角法环形均值；红色/品红等横跨
+  0/179 边界的颜色旧实现算术均值会落到无关色相（如红样本均值 ≈绿区），
+  inRange 校准完全失配、字幕帧被成批丢弃。跨界区间拆为
+  `orange_lower/upper` + 可选 `orange_lower2/upper2` 两段取并集，
+  `build_gate_spec`/`roi_extractor` 同步透传（老 gate spec 无新键不受影响）。
+- **语言检测误判未知脚本为 JP**：`styling._detect_language` 用
+  `defaultdict` 查 `counts['JP']` 会物化 `JP:0` 键，使 `if not counts`
+  永不成立——希腊/阿拉伯/泰文等全字符在已知脚本范围外的行被误判为
+  `JP` 并套用日文字体（缺字形整行豆腐块）；改用 `counts.get('JP', 0)`。
+- **OCR 采样融合平票按"无多数"送审**：`fuse_samples_by_position` 与
+  `_fuse_samples_strict_index` 的难帧判定由 `votes*2 < observations`
+  （允许平票通过）收紧为 `<=`，与注释"观测内部无多数"一致——两帧读出
+  不同文本时不再静默按置信度平局裁决，而是交 VLM 复核。
+- **批量 OCR 错位防护**：`_run_batch_ocr_on_samples` 在返回前校验覆盖了
+  全部采样帧、`normalize_batch_result` 输出条数与块一致；缺帧时回退逐帧
+  路径，不再返回与输入错位（锚定帧语义被破坏）的结果列表。
+  `imread` 失败不再把 `None` 写入图像缓存（瞬时 IO 错误可在 LRU 淘汰前
+  恢复重试）。
+- **取消任务不再误报成功**：阶段 4（LLM 润色）中取消时 worker 仍会写出
+  半成品 ASS 并正常返回、误发 `pipeline_finished`；现与阶段 1-3 一致
+  静默返回。取消路径的进度对话框销毁与 DeepSeek 面板复位在
+  `_on_pipeline_worker_thread_done` 兜底（此前隐藏对话框跨运行累积、
+  LLM 面板残留过期内容）。
+- **分块并行只在安全模式启用**：`PipelineWorker.run` 的分块条件补上
+  `not save_intermediate_json and in_memory_ocr`——重叠窗口的各 worker
+  会向共享 `work_dir` 写同名逐帧文件（`frame_%06d.jpg`/中间 JSON），
+  磁盘模式与调试模式下存在写竞争（与注释声称的行为对齐）。
+- **分块协调者存活误判**：worker 发完 `records/done` 即退出，消息尚在
+  队列 backlog 时 `is_alive()` 已为 False，会被误判失败烧掉一次重试整窗
+  重 OCR；`_check_liveness` 现先非阻塞排空队列再复核。
+  `_terminate_all` 在 join 前先置 `cancel_event`，避免意外异常路径上
+  每个存活 worker 空等 10s。
+- **换视频时自动 ROI 扫描不再丢失**：`load_video` 先取消旧扫描（异步
+  收尾）再触发新扫描，旧实现 `isRunning()` 恒为真导致新视频的自动扫描
+  被静默跳过；现置挂起标记，旧线程收尾后自动补扫（保持与旧扫描串行，
+  不引入全局引擎并发争用）。
+- **时间轴浮点截断噪声**：`timeline._format_time_seconds` 的
+  `int(sec*100)` 在毫秒量化时间戳上约 5% 概率提前 1cs（如 1.16s →
+  `.15`）；加 1e-6 epsilon 抵消 ULP 噪声，截断语义不变。
+- **`SubtitleAligner` 插入段错位与行首占位**：连续插入（run ≥ 2）时旧
+  flag 逻辑把真实目标行顶掉（等长但内容错位丢行）；占位行改为直接落到
+  自己一侧并保证返回等长列表，行首占位填充空串。另加 ndiff 提示行
+  防御分支。
+- **平面跟踪健壮性**：容器帧数不可靠（部分 MKV/WebM 报 0）时
+  `track_plane` 不再把 end 钳到 -1 抛 "empty frame range"，顺序解码读到
+  EOF；`unwarp_canonical` 对退化单应（h22≈0/非有限）显式抛
+  `ValueError` 而非产出 NaN 展开图。
+- **场景文字策略空行守卫**：`apply_policy` 无识别行时原样返回事件并留痕
+  （此前 whitespace/mask 路径会在空 rows 上取最值崩溃）。
+
 ## 2.6.3（2026-09-16）
 
 ### 新增
@@ -47,6 +111,17 @@
   std>18 判定等），全程告警留痕。DMG 手机场景验收：mask 模式重影彻底
   消除，whitespace 因本例文本量大于空白带按设计回退 mask，external 布局
   正确。新增 `core/scene_text_policy.py`，单元测试 466 → **525**。
+- **场景文字显示策略接入完整版 GUI 与主流水线**：完整版 ROI 定义面板新增
+  「场景文字显示」下拉（叠加/遮罩原文字/外置展示框/空白区放置），每个 ROI
+  独立设置并随 ROI json（`scene_text_policy` 键）持久化；主流水线静态
+  `\pos` 路径复用同一策略引擎（遮罩取色在 ROI 亮帧上剔除墨水像素、空白带
+  检测、回退链），策略事件豁免噪声过滤与时间合并并支持 Layer 列；CLI 增加
+  `--scene-text-policy`。移动文字保护：同一文本行框中心跨组位移超过位置
+  容差时自动降级 external（静态遮罩会与原字错位，逐帧跟随请用轨迹管线）。
+  过程修复：策略分析图改为跨全部场景组范围取最亮候选帧（避免取色落在暗屏
+  段）；策略文本事件显式 `\fs=行高`（字幕大小贴合原字）。三语 i18n 补齐。
+  DMG 主流水线验收：移动段自动降级、静止段遮罩无缝、外置框布局正确。
+  单元测试 525 → **583**。
 
 ## 2.6.1（2026-09-15）
 

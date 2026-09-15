@@ -803,10 +803,13 @@ def _apply_static_mask(
     for i, (text, box) in enumerate(rows):
         cx = int((float(box[0]) + float(box[2])) / 2.0)
         cy = int((float(box[1]) + float(box[3])) / 2.0)
+        line_h = max(1.0, float(box[3]) - float(box[1]))
+        # 显式 \fs=行高:与遮罩/渲染宽度估算同一尺寸体系(Scene 样式字号
+        # 是画面高度常数,与原文字大小无关,会让字幕远大于原字)
         out.append({
             "kind": "text",
             "style": "Scene",
-            "tags": f"{{\\an5\\pos({cx},{cy})}}",
+            "tags": f"{{\\an5\\pos({cx},{cy})\\fs({round(line_h)})}}",
             "body": text,
             "layer": 1,
             "row": int(orig_indices[i]),
