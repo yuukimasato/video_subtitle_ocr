@@ -26,6 +26,15 @@
   单元测试 350 → **441**（新增 `tests/test_motion_ass.py` 31 项、
   `tests/test_motion_ass_cli.py` 11 项、`tests/test_keyframe_selector.py`
   8 项、`tests/test_verify_motion_ass.py` 38 项、融合抽取 3 项）。
+- **轨迹字幕屏幕亮度自适应**：`scripts/motion_ass.py --auto-brightness`
+  ——逐 ok 帧测量文字平面区域亮度（`core/screen_luma.py`，90 分位基线，
+  中位值口径），DP 简化后把变暗/变亮折线换算成每条事件的局部
+  `\t(ms1,ms2,\1c&H..&\alpha&H..&)` 链（毫秒端点相接，与 `\move` 位移共存），
+  字幕颜色与透明度忠实跟随屏幕明暗；`brightness_use_color`/
+  `brightness_use_alpha`/`brightness_tol`/`brightness_baseline_percentile`
+  可经 `--config-json` 调整，开关关闭时输出与既有完全一致。DMG 手机场景
+  验证：暗屏 247→30→233 全程跟随，最暗态字幕与原字同样淡出（忠实模式），
+  烧录实测亮/中/暗三态墨水亮度符合标签期望。单元测试 441 → **466**。
 
 ## 2.6.1（2026-09-15）
 
