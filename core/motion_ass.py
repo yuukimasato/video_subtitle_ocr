@@ -20,6 +20,12 @@
 
 时间一律用 ``TrackedQuad.time_sec`` 浮点,仅在格式化时转 centisecond
 (:func:`format_ass_time` 与主流水线 ``H:MM:SS.CC`` 截断语义一致)。
+
+增量特性「屏幕亮度自适应」:文字平面(手机屏幕)渐变变暗/变亮时,字幕用
+``\\t`` 驱动 ``\\1c``(颜色变暗)+ ``\\alpha``(变透明)忠实跟随——
+:func:`simplify_luma_curve` 简化 ``core.screen_luma`` 测得的亮度比值折线,
+:func:`brightness_tag_chain` 把折线换算成单条事件的局部标签串。
+两者均为纯函数,不依赖视频 I/O。
 """
 
 from __future__ import annotations
@@ -43,6 +49,8 @@ __all__ = [
     "smooth_line_track",
     "simplify_and_segment",
     "synthesize_events",
+    "simplify_luma_curve",
+    "brightness_tag_chain",
 ]
 
 
@@ -63,6 +71,12 @@ class MotionAssConfig:
     dense_stride: int = 2           # 兜底 \pos 每 N 好帧一条
     max_segments_per_sec: float = 6.0
     lost_hold_sec: float = 0.0      # lost 保持时长(0=切段)
+
+    # —— 屏幕亮度自适应(增量特性;--auto-brightness 开启,--config-json 可覆盖)——
+    brightness_tol: float = 8.0                   # 亮度曲线 DP 简化容差(0-255 亮度级)
+    brightness_baseline_percentile: float = 90.0  # 亮度基线分位(各帧中位值的分位)
+    brightness_use_color: bool = True             # \1c 颜色跟随
+    brightness_use_alpha: bool = True             # \alpha 透明度跟随
 
 
 @dataclass
@@ -573,3 +587,122 @@ def synthesize_events(
         for chain in chains:
             events.extend(_chain_events(lt, chain, tmap, cfg, style))
     return events
+
+
+# ---------------------------------------------------------------------------
+# 屏幕亮度自适应(增量特性;曲线来自 core.screen_luma,纯函数不碰视频 I/O)
+# ---------------------------------------------------------------------------
+
+def _interp_ratio(ts: Sequence[float], rs: Sequence[float], t: float) -> float:
+    """折线在时刻 t 的插值比值;越界侧钳到端点(不外推)。"""
+    if t <= ts[0]:
+        return rs[0]
+    if t >= ts[-1]:
+        return rs[-1]
+    idx = bisect_left(ts, t)
+    t1, t2 = ts[idx - 1], ts[idx]
+    r1, r2 = rs[idx - 1], rs[idx]
+    if t2 <= t1 + 1e-12:
+        return r1
+    return r1 + (r2 - r1) * (t - t1) / (t2 - t1)
+
+
+def simplify_luma_curve(
+    curve: List[Tuple[float, float]],
+    tol_luma: float = 8.0,
+    baseline_luma: float = 247.0,
+) -> List[Tuple[float, float]]:
+    """对 ``(time, ratio)`` 亮度折线做 Douglas-Peucker 简化。
+
+    容差由亮度级换算:``tol_ratio = tol_luma / baseline_luma``;偏差按
+    「还原亮度后」的值偏差计(``luma = baseline * ratio``,等价于比值空间内
+    对段的垂直偏差),与时间轴尺度无关。首末点恒保留,容差内的过渡抖动
+    舍弃、拐点保留;输入按 time 升序,不修改输入。
+    """
+    out = [(float(t), float(r)) for t, r in curve]
+    n = len(out)
+    if n < 3:
+        return out
+    ts = [t for t, _r in out]
+    rs = [r for _t, r in out]
+    tol = abs(float(tol_luma)) / abs(float(baseline_luma)) if baseline_luma else 0.0
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        span = ts[j] - ts[i]
+        k, dmax = -1, -1.0
+        for m in range(i + 1, j):
+            r_line = (rs[i] + (rs[j] - rs[i]) * (ts[m] - ts[i]) / span
+                      if span > 1e-12 else rs[i])
+            d = abs(rs[m] - r_line)
+            if d > dmax:
+                k, dmax = m, d
+        if k >= 0 and dmax > tol:
+            keep[k] = True
+            stack.append((i, k))
+            stack.append((k, j))
+    return [out[idx] for idx in range(n) if keep[idx]]
+
+
+def brightness_tag_chain(
+    curve: List[Tuple[float, float]],
+    ev_start: float,
+    ev_end: float,
+    *,
+    use_color: bool = True,
+    use_alpha: bool = True,
+) -> str:
+    """把全局亮度关键帧折线换算成一条事件的局部标签串(不含最外层大括号)。
+
+    - 事件起点处插值得到 r0:基值标签 ``\\1c&H..&``(灰度 g=round(255·r0),
+      三通道同值)+ ``\\alpha&H..&``(a=round(255·(1-r0)),00=不透明);
+    - 对每一段落在 ``(ev_start, ev_end)`` 内的相邻关键帧区间 [t1,t2] 各输出
+      一个 ``\\t(ms1,ms2,\\1c..\\alpha..)``,ms 相对事件开始取整,相邻端点
+      相接;区间与事件跨度求交集,交集 <1ms 丢弃;段目标值 = 段终点时间的
+      插值比值;``use_color``/``use_alpha`` 为 False 时省略对应部分,两者都
+      False 返回 "";
+    - 曲线恒为 1.0(所有点比值==1.0),或事件跨度内无任何有效变化
+      (r0==1.0 且所有段落入跨度部分的目标值也全为 1.0)→ 返回 ""
+      (不加任何标签)。
+    """
+    if not curve or ev_end <= ev_start or not (use_color or use_alpha):
+        return ""
+    ts = [float(t) for t, _r in curve]
+    rs = [float(r) for _t, r in curve]
+    if all(r == 1.0 for r in rs):
+        return ""
+
+    def fmt_tags(ratio: float) -> str:
+        ratio = min(1.0, max(0.0, ratio))
+        out = ""
+        if use_color:
+            g = int(round(255.0 * ratio))
+            out += f"\\1c&H{g:02X}{g:02X}{g:02X}&"
+        if use_alpha:
+            a = int(round(255.0 * (1.0 - ratio)))
+            out += f"\\alpha&H{a:02X}&"
+        return out
+
+    ev_start = float(ev_start)
+    ev_end = float(ev_end)
+    r0 = _interp_ratio(ts, rs, ev_start)
+    changed = r0 != 1.0
+    parts = [fmt_tags(r0)]
+    for (t1, _r1), (t2, _r2) in zip(curve, curve[1:]):
+        lo = max(t1, ev_start)
+        hi = min(t2, ev_end)
+        if hi - lo < 0.001:  # 交集 <1ms 丢弃
+            continue
+        target = _interp_ratio(ts, rs, hi)
+        if target != 1.0:
+            changed = True
+        ms1 = int(round((lo - ev_start) * 1000))
+        ms2 = int(round((hi - ev_start) * 1000))
+        parts.append(f"\\t({ms1},{ms2},{fmt_tags(target)})")
+    if not changed:
+        return ""  # 跨度内恒亮:基值与 \t 都是空操作
+    return "".join(parts)

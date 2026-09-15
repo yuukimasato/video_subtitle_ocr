@@ -28,10 +28,12 @@ from core.motion_ass import (  # noqa: E402
     LinePose,
     LineTrack,
     MotionAssConfig,
+    brightness_tag_chain,
     build_line_tracks,
     format_ass_time,
     homography_between,
     simplify_and_segment,
+    simplify_luma_curve,
     smooth_line_track,
     synthesize_events,
 )
@@ -551,3 +553,125 @@ class TestSynthesizeMisc:
         for body in ("a", "b"):
             times = [parse_ass_time(ev["start_time"]) for ev in events if ev["body"] == body]
             assert times == sorted(times)
+
+
+# ---------------------------------------------------------------------------
+# 增量特性:屏幕亮度自适应(simplify_luma_curve / brightness_tag_chain)
+# ---------------------------------------------------------------------------
+
+# 仿真实场景(基线 247 = 90 分位)简化后的亮度关键帧折线:
+# 恒亮 247 → 7.34s 174 → 7.67~8.34s 暗 30 → 9.01s 174 → 9.67s 回亮 247,
+# 比值 = 中位亮度 / 247。
+REAL_CURVE = [
+    (6.0, 1.0),
+    (7.34, 174.0 / 247.0),
+    (7.67, 30.0 / 247.0),
+    (8.34, 30.0 / 247.0),
+    (9.01, 174.0 / 247.0),
+    (9.67, 1.0),
+]
+
+
+class TestSimplifyLumaCurve:
+    def test_collinear_ramp_collapses_to_endpoints(self):
+        # 线性渐变(共线)→ 只留首末点
+        curve = [(i * 0.5, 1.0 - (1.0 - 30.0 / 247.0) * i / 10.0) for i in range(11)]
+        out = simplify_luma_curve(curve, tol_luma=8.0, baseline_luma=247.0)
+        assert out == [curve[0], curve[-1]]
+
+    def test_corners_kept_and_flat_runs_collapsed(self):
+        # 两个拐点(2.0s 变暗起点、2.5s 谷底)必须保留;平坦段与容差内的
+        # 过渡抖动(2.25s,偏差 ≈0.011 < 8/247≈0.032)被舍弃。
+        curve = [
+            (0.0, 1.0), (1.0, 1.0), (2.0, 1.0),
+            (2.25, 0.55),
+            (2.5, 30.0 / 247.0),
+            (3.0, 30.0 / 247.0), (4.0, 30.0 / 247.0),
+        ]
+        out = simplify_luma_curve(curve, tol_luma=8.0, baseline_luma=247.0)
+        assert out == [curve[0], curve[2], curve[4], curve[6]]
+
+    def test_tolerance_in_luma_levels(self):
+        # 容差按亮度级换算:tol_ratio = tol_luma / baseline_luma。
+        baseline = 250.0
+        keep = [(0.0, 1.0), (1.0, 1.0 - 10.0 / baseline), (2.0, 1.0)]  # 偏差 10 级 > 8
+        drop = [(0.0, 1.0), (1.0, 1.0 - 5.0 / baseline), (2.0, 1.0)]   # 偏差 5 级 < 8
+        assert simplify_luma_curve(
+            keep, tol_luma=8.0, baseline_luma=baseline) == keep
+        assert simplify_luma_curve(
+            drop, tol_luma=8.0, baseline_luma=baseline) == [drop[0], drop[2]]
+
+    def test_short_curves_passthrough(self):
+        assert simplify_luma_curve([], 8.0) == []
+        assert simplify_luma_curve([(1.0, 0.5)], 8.0) == [(1.0, 0.5)]
+        two = [(0.0, 1.0), (1.0, 0.2)]
+        assert simplify_luma_curve(two, 8.0, 247.0) == two
+
+
+class TestBrightnessTagChain:
+    def test_faithful_following_dark(self):
+        # 忠实跟随自检:r=0.12 → g=round(30.6)=31=0x1F、a=round(224.4)=224=0xE0
+        assert brightness_tag_chain([(0.0, 0.12)], 0.0, 10.0) == \
+            "\\1c&H1F1F1F&\\alpha&HE0&"
+
+    def test_faithful_following_bright_base(self):
+        # r=1.0 基值 → \1c&HFFFFFF& + \alpha&H00&,随后线性变暗到 r=0.5
+        # (g=round(127.5)=128=0x80、a=round(127.5)=128=0x80)
+        assert brightness_tag_chain([(0.0, 1.0), (2.0, 0.5)], 0.0, 4.0) == (
+            "\\1c&HFFFFFF&\\alpha&H00&"
+            "\\t(0,2000,\\1c&H808080&\\alpha&H80&)")
+
+    def test_flat_or_empty_curve_returns_empty(self):
+        # 曲线恒为 1.0(或无曲线)→ 不加任何标签
+        assert brightness_tag_chain(
+            [(0.0, 1.0), (5.0, 1.0), (9.0, 1.0)], 0.0, 9.0) == ""
+        assert brightness_tag_chain([], 0.0, 5.0) == ""
+
+    def test_variation_outside_span_returns_empty(self):
+        # 变化段完全在事件跨度之外、起点插值仍为 1.0 → 不加标签
+        curve = [(0.0, 1.0), (1.0, 0.3), (2.0, 1.0), (9.0, 1.0)]
+        assert brightness_tag_chain(curve, 4.0, 8.0) == ""
+
+    def test_real_curve_chain_and_touching_endpoints(self):
+        chain = brightness_tag_chain(REAL_CURVE, 6.54, 10.21)
+        assert chain == (
+            "\\1c&HE1E1E1&\\alpha&H1E&"
+            "\\t(0,800,\\1c&HB4B4B4&\\alpha&H4B&)"
+            "\\t(800,1130,\\1c&H1F1F1F&\\alpha&HE0&)"
+            "\\t(1130,1800,\\1c&H1F1F1F&\\alpha&HE0&)"
+            "\\t(1800,2470,\\1c&HB4B4B4&\\alpha&H4B&)"
+            "\\t(2470,3130,\\1c&HFFFFFF&\\alpha&H00&)")
+        # 相邻 \t 的毫秒区间端点精确相接
+        import re
+        spans = [(int(a), int(b))
+                 for a, b in re.findall(r"\\t\((\d+),(\d+),", chain)]
+        assert spans == [(0, 800), (800, 1130), (1130, 1800),
+                         (1800, 2470), (2470, 3130)]
+
+    def test_event_span_clipped_to_middle(self):
+        # 事件只覆盖曲线中段 [3,5]:首段 [2,4] 裁到 [3,4](ms 0~1000),
+        # 末段 [4,6] 裁到 [4,5](ms 1000~2000),段目标值取段终点插值
+        # (t=5 → r=0.56 → g=143=0x8F、a=112=0x70)。
+        curve = [(0.0, 1.0), (2.0, 0.12), (4.0, 0.12), (6.0, 1.0)]
+        chain = brightness_tag_chain(curve, 3.0, 5.0)
+        assert chain == (
+            "\\1c&H1F1F1F&\\alpha&HE0&"
+            "\\t(0,1000,\\1c&H1F1F1F&\\alpha&HE0&)"
+            "\\t(1000,2000,\\1c&H8F8F8F&\\alpha&H70&)")
+
+    def test_sub_millisecond_intersection_dropped(self):
+        # 事件起点距拐点 0.2ms:区间 [0,1] 与跨度的交集 <1ms → 丢弃
+        curve = [(0.0, 1.0), (1.0, 0.5), (2.0, 1.0)]
+        chain = brightness_tag_chain(curve, 0.9998, 1.5)
+        assert chain == (
+            "\\1c&H808080&\\alpha&H7F&"
+            "\\t(0,500,\\1c&HBFBFBF&\\alpha&H40&)")
+
+    def test_use_color_use_alpha_switches(self):
+        curve = [(0.0, 1.0), (1.0, 0.12)]
+        assert brightness_tag_chain(curve, 0.0, 1.0, use_color=False) == (
+            "\\alpha&H00&\\t(0,1000,\\alpha&HE0&)")
+        assert brightness_tag_chain(curve, 0.0, 1.0, use_alpha=False) == (
+            "\\1c&HFFFFFF&\\t(0,1000,\\1c&H1F1F1F&)")
+        assert brightness_tag_chain(
+            curve, 0.0, 1.0, use_color=False, use_alpha=False) == ""

@@ -30,7 +30,8 @@
         --out motion.ass \
         [--start-frame 0] [--end-frame N] [--trajectory-json traj.json] \
         [--config-json cfg.json] [--ocr-engine rapid|paddle] \
-        [--keyframe-count 3] [--min-gap-sec 0.33] [--vlm-min-confidence 0.0]
+        [--keyframe-count 3] [--min-gap-sec 0.33] [--vlm-min-confidence 0.0] \
+        [--auto-brightness]
 
 quad 文件格式:{"video": "...", "frame": 0, "quad": [[x, y] × 4]}
 (兼容裸 4×2 列表,与 scripts/track_plane.py 一致)。顶点顺序必须为顺时针
@@ -349,6 +350,7 @@ def run_pipeline(
     keyframe_count: int = 3,
     min_gap_sec: float = 0.33,
     vlm_min_confidence: float = 0.0,
+    auto_brightness: bool = False,
     ocr_fn: Optional[OcrFn] = None,
     quiet: bool = False,
 ) -> Dict[str, Any]:
@@ -356,6 +358,10 @@ def run_pipeline(
 
     ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``--ocr-engine`` 指定的
     引擎(未指定时取注册表默认)构造独立实例并在结束时清理。
+    ``auto_brightness`` 开启时,合成事件后逐 ok 帧测量文字平面亮度,对每条
+    事件追加独立的亮度 override 块(``{原有tags}{\\1c/\\alpha \\t 链}body``,
+    不改动既有标签);无 ok 帧 / 曲线退化(基线 ≤ 0 / 全程恒亮)时告警并
+    静默跳过。
     返回摘要 dict(events / ok_frames / total_frames / keyframes / hard_lines)。
     """
     from core.keyframe_selector import _plane_size_from_quad, select_keyframes
@@ -455,6 +461,38 @@ def run_pipeline(
         smooth_line_track(line_track, window=cfg.smooth_window)
     events = synthesize_events(line_tracks, tracks, cfg, style="Scene")
 
+    # 5.5 屏幕亮度自适应(可选):测亮度曲线 → DP 简化 → 每条事件追加
+    #     独立的亮度 override 块({原有tags}{亮度标签}body),不改既有标签。
+    if auto_brightness:
+        from core.motion_ass import brightness_tag_chain, simplify_luma_curve
+        from core.screen_luma import measure_luma_curve_with_baseline
+
+        curve, baseline_luma = measure_luma_curve_with_baseline(
+            video_path, tracks,
+            baseline_percentile=cfg.brightness_baseline_percentile)
+        if not curve:
+            log("      brightness: no ok-frame luma samples; skip")
+        elif baseline_luma <= 0.0:
+            log("      brightness: degenerate baseline (all-black plane); skip")
+        else:
+            simplified = simplify_luma_curve(
+                curve, tol_luma=cfg.brightness_tol, baseline_luma=baseline_luma)
+            n_tagged = 0
+            for ev in events:
+                chain = brightness_tag_chain(
+                    simplified,
+                    _parse_ass_time(ev["start_time"]),
+                    _parse_ass_time(ev["end_time"]),
+                    use_color=cfg.brightness_use_color,
+                    use_alpha=cfg.brightness_use_alpha,
+                )
+                if chain:
+                    ev["tags"] = f"{ev['tags']}{{{chain}}}"
+                    n_tagged += 1
+            log(f"      brightness: baseline {baseline_luma:.1f}, "
+                f"{len(simplified)} keyframe(s), "
+                f"tagged {n_tagged}/{len(events)} event(s)")
+
     width, height = _video_size(video_path)
     title = os.path.splitext(os.path.basename(str(video_path)))[0]
     n_written = write_ass(out_path, events, width, height, title)
@@ -522,6 +560,10 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
     parser.add_argument("--vlm-min-confidence", type=float, default=0.0,
                         help="hard-line confidence threshold; stage-1 runs without VLM "
                              "refine, keep lenient (default: 0.0)")
+    parser.add_argument("--auto-brightness", action="store_true",
+                        help="measure text-plane brightness per ok frame and append "
+                             "\\1c/\\alpha \\t chains so subtitles faithfully follow "
+                             "screen dimming/brightening (default: off)")
     args = parser.parse_args(argv)
 
     if bool(args.quad) == bool(args.quad_file):
@@ -545,6 +587,7 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
             ocr_engine=args.ocr_engine, keyframe_count=args.keyframe_count,
             min_gap_sec=args.min_gap_sec,
             vlm_min_confidence=args.vlm_min_confidence,
+            auto_brightness=args.auto_brightness,
             ocr_fn=ocr_fn,
         )
     except (OSError, ValueError, RuntimeError, KeyError) as exc:

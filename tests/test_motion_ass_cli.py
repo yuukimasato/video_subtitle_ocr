@@ -375,3 +375,149 @@ def test_no_text_lines_exits_nonzero(tmp_path):
 
     assert rc != 0
     assert not out_ass.exists()
+
+
+# ---------------------------------------------------------------------------
+# 屏幕亮度自适应(--auto-brightness)
+# ---------------------------------------------------------------------------
+
+# 仿真实数据(基线 247)的亮度比值折线,缩放到该合成视频时长(~3s)内:
+# 恒亮 → 1.2s 变暗至 174/247 → 1.5s 谷底 30/247 → 2.0s 保持 → 2.6s 回亮。
+BRIGHT_CURVE = [
+    (0.0, 1.0),
+    (1.2, 174.0 / 247.0),
+    (1.5, 30.0 / 247.0),
+    (2.0, 30.0 / 247.0),
+    (2.6, 1.0),
+]
+
+
+def _text_fields(text: str) -> list:
+    """Dialogue 行的 Text 字段(前 9 列之后),按文件序。"""
+    return [line.split(",", 9)[9] for line in _dialogue_lines(text)]
+
+
+def _dialogue_records(text: str) -> list:
+    """[(start_sec, end_sec, text_field)],按文件序。"""
+    out = []
+    for line in _dialogue_lines(text):
+        m = DIALOGUE_RE.match(line)
+        assert m, line
+        out.append((_ass_time_to_sec(m.group(1)), _ass_time_to_sec(m.group(2)),
+                    line.split(",", 9)[9]))
+    return out
+
+
+def test_auto_brightness_appends_independent_override_block(tmp_path, monkeypatch):
+    video_path, quad0 = build_case(tmp_path)
+    quad_file = tmp_path / "quad.json"
+    quad_file.write_text(json.dumps(
+        {"video": os.path.basename(video_path), "frame": 0, "quad": quad0}),
+        encoding="utf-8")
+    out_plain = tmp_path / "plain.ass"
+    out_bright = tmp_path / "bright.ass"
+    # 亮度测量不重解码视频(接线测试注入真值曲线;曲线正确性归
+    # test_screen_luma / test_motion_ass 覆盖)
+    monkeypatch.setattr(
+        "core.screen_luma.measure_luma_curve_with_baseline",
+        lambda *a, **k: (list(BRIGHT_CURVE), 247.0))
+
+    common = ["--video", video_path, "--quad-file", str(quad_file)]
+    rc0 = motion_cli.main(
+        common + ["--out", str(out_plain)], ocr_fn=make_mock_ocr([]))
+    assert rc0 == 0
+
+    # brightness_* 为合法 config 键(--config-json 可覆盖)
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({
+        "brightness_tol": 8.0,
+        "brightness_baseline_percentile": 90.0,
+        "brightness_use_color": True,
+        "brightness_use_alpha": True,
+    }), encoding="utf-8")
+    rc = motion_cli.main(
+        common + ["--out", str(out_bright), "--auto-brightness",
+                  "--config-json", str(cfg)],
+        ocr_fn=make_mock_ocr([]))
+    assert rc == 0
+
+    # 开启状态:作为独立的附加 override 块接在既有 tags 之后
+    # ({原有tags}{亮度链}body),既有标签内容逐字符不变、事件时间不变;
+    # 亮度链与直接调用 brightness_tag_chain(同一解析事件时间)完全一致。
+    from core.motion_ass import brightness_tag_chain as _chain
+
+    plain_recs = _dialogue_records(out_plain.read_text(encoding="utf-8-sig"))
+    bright_recs = _dialogue_records(out_bright.read_text(encoding="utf-8-sig"))
+    assert len(plain_recs) == len(bright_recs) == 2
+    for (st, en, plain), (st2, en2, bright) in zip(plain_recs, bright_recs):
+        # 关闭状态(回归):无任何颜色/透明度标签;两次运行事件时间一致
+        assert (st, en) == (st2, en2)
+        assert "\\1c" not in plain and "\\alpha&" not in plain
+        body = re.sub(r"^\{[^}]*\}", "", plain)
+        prefix = plain[:len(plain) - len(body)]  # 原有 override 块
+        expected = "{" + _chain(BRIGHT_CURVE, st, en) + "}"
+        assert "\\1c&H" in expected and "\\alpha&H" in expected
+        assert bright == prefix + expected + body
+        # 链内 \t 毫秒端点相接
+        spans = [(int(a), int(b))
+                 for a, b in re.findall(r"\\t\((\d+),(\d+),", expected)]
+        for (_a, b), (a1, _b1) in zip(spans, spans[1:]):
+            assert b == a1
+
+
+def test_auto_brightness_flat_curve_skips_silently(tmp_path, monkeypatch):
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "flat.ass"
+    monkeypatch.setattr(
+        "core.screen_luma.measure_luma_curve_with_baseline",
+        lambda *a, **k: ([(0.0, 1.0), (5.0, 1.0)], 247.0))  # 全程恒亮
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--auto-brightness"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    for field in _text_fields(out_ass.read_text(encoding="utf-8-sig")):
+        assert "\\1c" not in field and "\\alpha&" not in field
+
+
+def test_auto_brightness_no_ok_frames_skips(tmp_path, monkeypatch):
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "nook.ass"
+    monkeypatch.setattr(
+        "core.screen_luma.measure_luma_curve_with_baseline",
+        lambda *a, **k: ([], 0.0))  # 无 ok 帧 → 静默跳过
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--auto-brightness"],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    text = out_ass.read_text(encoding="utf-8-sig")
+    assert _dialogue_lines(text)
+    assert "\\1c" not in text and "\\alpha&" not in text
+
+
+def test_auto_brightness_use_color_off_via_config(tmp_path, monkeypatch):
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "alphaonly.ass"
+    monkeypatch.setattr(
+        "core.screen_luma.measure_luma_curve_with_baseline",
+        lambda *a, **k: (list(BRIGHT_CURVE), 247.0))
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"brightness_use_color": False}), encoding="utf-8")
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--auto-brightness", "--config-json", str(cfg)],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    for field in _text_fields(out_ass.read_text(encoding="utf-8-sig")):
+        assert "\\1c" not in field
+        assert "\\alpha&H" in field
