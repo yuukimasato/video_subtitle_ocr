@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QHBoxLayout,
     QCheckBox,
+    QComboBox,
     QSpinBox,
     QColorDialog,
     QLabel,
@@ -135,6 +136,27 @@ class RoiDefinitionWidget(QGroupBox):
             )
         )
         roi_layout.addRow(self.pose_tags_checkbox)
+
+        # 场景文字显示策略(每 ROI 独立):仅作用于场景文字(画面文字)事件;
+        # 所选模式不可用时按 空白区 → 遮罩 → 外置 自动回退。
+        self.scene_text_policy_combo = QComboBox()
+        for text, data in (
+            (QCoreApplication.translate("RoiDefinitionWidget", "叠加（默认）"), "overlap"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "遮罩原文字"), "mask"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "外置展示框"), "external"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "空白区放置"), "whitespace"),
+        ):
+            self.scene_text_policy_combo.addItem(text, data)
+        self.scene_text_policy_combo.setToolTip(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。",
+            )
+        )
+        roi_layout.addRow(
+            QCoreApplication.translate("RoiDefinitionWidget", "场景文字显示："),
+            self.scene_text_policy_combo,
+        )
 
         # Color-restrict details live in their own container so the form row
         # collapses (hidden) until the checkbox is ticked — keeps the panel short.
@@ -283,6 +305,7 @@ class RoiDefinitionWidget(QGroupBox):
         self.blur_checkbox.setEnabled(enabled)
         self.fade_in_refine_checkbox.setEnabled(enabled)
         self.pose_tags_checkbox.setEnabled(enabled)
+        self.scene_text_policy_combo.setEnabled(enabled)
 
     def get_color_restrict_dict(self) -> Optional[Dict]:
         if not self.color_restrict_checkbox.isChecked():
@@ -303,6 +326,8 @@ class RoiDefinitionWidget(QGroupBox):
             # Default for a NEW ROI: boundary refinement on (frame-accurate timing).
             self.fade_in_refine_checkbox.setChecked(True)
             self.pose_tags_checkbox.setChecked(False)
+            # 新 ROI 复位:场景文字显示策略回到默认「叠加」。
+            self.scene_text_policy_combo.setCurrentIndex(0)
             self._text_bgr = [255, 255, 255]
             self._outline_bgr = [0, 0, 0]
             self._shadow_bgr = [0, 0, 0]
@@ -317,6 +342,11 @@ class RoiDefinitionWidget(QGroupBox):
         # 复选框状态也反映实际行为。
         self.fade_in_refine_checkbox.setChecked(bool(roi.get("fade_in_refine_enabled", True)))
         self.pose_tags_checkbox.setChecked(bool(roi.get("write_pose_tags", False)))
+        # 回填场景文字显示策略(旧配置缺省/未知值 → 叠加)。
+        policy_idx = self.scene_text_policy_combo.findData(
+            str(roi.get("scene_text_policy") or "overlap"))
+        self.scene_text_policy_combo.setCurrentIndex(
+            policy_idx if policy_idx >= 0 else 0)
         if not isinstance(spec, dict) or not spec.get("enabled"):
             self.color_restrict_checkbox.setChecked(False)
             tb = spec.get("text_bgr") if isinstance(spec, dict) else None

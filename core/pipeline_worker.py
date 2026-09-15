@@ -17,6 +17,81 @@ from core.subtitle_llm_polish import SubtitlePolisherConfig
 
 logger = logging.getLogger(__name__)
 
+
+def _roi_analysis_rect(roi: Dict[str, Any]) -> Optional[tuple]:
+    """ROI 几何 → 视频坐标外接矩形 (x1, y1, x2, y2);无法解析时 None。
+
+    rect 型 points=[x, y, w, h];poly 型取顶点 min/max。
+    """
+    rtype = roi.get("type", "rect")
+    points = roi.get("points")
+    try:
+        if rtype == "rect":
+            if not (isinstance(points, (list, tuple)) and len(points) == 4):
+                return None
+            x, y, w, h = (float(v) for v in points)
+            return (int(round(x)), int(round(y)),
+                    int(round(x + w)), int(round(y + h)))
+        if rtype == "poly":
+            if not (isinstance(points, (list, tuple)) and len(points) >= 3):
+                return None
+            xs = [float(p[0]) for p in points]
+            ys = [float(p[1]) for p in points]
+            return (int(round(min(xs))), int(round(min(ys))),
+                    int(round(max(xs))), int(round(max(ys))))
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
+def collect_roi_scene_text_options(
+    roi_data: Optional[List[Dict]],
+    merge_rois: bool = False,
+) -> tuple:
+    """收集每 ROI 场景文字显示策略与外接矩形(传给 OCRToASSOptimizer)。
+
+    - 仅收集非 overlap 策略:缺省/overlap 不传,构造参数缺省 None、行为
+      与旧版本完全一致;外接矩形对全部 ROI 收集(策略分析图裁剪窗口);
+    - ``merge_rois`` 时全部 ROI 合成同一张画布 ``roi_merged``:策略取第一
+      个非 overlap,出现互不相同的策略时 logger.warning;
+    - 返回 ``(policies, rects)`` 两个 dict,可能为空。
+    """
+    policies: Dict[str, str] = {}
+    rects: Dict[str, tuple] = {}
+    for idx, roi in enumerate(roi_data or []):
+        if not isinstance(roi, dict):
+            continue
+        policy = str(roi.get("scene_text_policy") or "overlap")
+        if policy != "overlap":
+            policies[f"roi_{idx}"] = policy
+        rect = _roi_analysis_rect(roi)
+        if rect is not None:
+            rects[f"roi_{idx}"] = rect
+    if not policies:
+        return {}, {}
+    if merge_rois:
+        distinct: List[str] = []
+        for policy in policies.values():
+            if policy not in distinct:
+                distinct.append(policy)
+        if len(distinct) > 1:
+            logger.warning(
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "ROIs merged with differing scene text policies ({}); using the first one ({})."
+                ).format(", ".join(distinct), distinct[0])
+            )
+        if rects:
+            x1 = min(r[0] for r in rects.values())
+            y1 = min(r[1] for r in rects.values())
+            x2 = max(r[2] for r in rects.values())
+            y2 = max(r[3] for r in rects.values())
+            rects = {"roi_merged": (x1, y1, x2, y2)}
+        else:
+            rects = {}
+        policies = {"roi_merged": distinct[0]}
+    return policies, rects
+
 class PipelineWorker(QThread):
     progress_updated = Signal(int, str)
     llm_detail = Signal(str)
@@ -134,9 +209,16 @@ class PipelineWorker(QThread):
 
             # Long-video speedup: split into per-worker windows when the
             # planner says it pays off. visualize/debug per-frame dumps stay
-            # single-process, as does an explicit chunk_workers=1.
+            # single-process, as does an explicit chunk_workers=1; disk-mode
+            # extraction also stays single-process — overlapping windows write
+            # the same per-frame files in the shared work_dir and race.
             plan = None
-            if self.chunk_workers != 1 and not self.visualize:
+            if (
+                self.chunk_workers != 1
+                and not self.visualize
+                and not self.save_intermediate_json
+                and self.in_memory_ocr
+            ):
                 plan = chunk_planner.plan_chunks(
                     self.total_frames, self.fps,
                     cpu_count=os.cpu_count() or 1,
@@ -204,6 +286,10 @@ class PipelineWorker(QThread):
                     else "auto"
                 )
                 roi_text_filter_policies = {"roi_merged": merged_policy}
+            # 场景文字显示策略(仅非 overlap)与 ROI 外接矩形:collect 在
+            # 无策略时返回空 dict → 传 None,优化器行为与旧版本一致。
+            roi_scene_text_policies, roi_analysis_rects = (
+                collect_roi_scene_text_options(self.roi_data, self.merge_rois))
             converter = subtitle_generator.OCRToASSOptimizer(
                 video_path=self.video_path,
                 output_path=self.output_ass_path,
@@ -216,6 +302,8 @@ class PipelineWorker(QThread):
                 roi_pose_tags=roi_pose_tags or None,
                 roi_text_filter_policies=roi_text_filter_policies or None,
                 watermark_filter_config=self.watermark_filter_config,
+                roi_scene_text_policies=roi_scene_text_policies or None,
+                roi_analysis_rects=roi_analysis_rects or None,
             )
             converter.convert_from_memory(
                 iter(restored_results),

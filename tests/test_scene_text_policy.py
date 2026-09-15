@@ -46,6 +46,7 @@ from core.scene_plane_tracker import TrackedQuad  # noqa: E402
 from core.scene_text_policy import (  # noqa: E402
     SceneTextPolicyConfig,
     apply_policy,
+    apply_policy_static,
     find_whitespace_band,
     fit_font_size,
     merge_line_blocks,
@@ -607,3 +608,115 @@ class TestBrightnessBaseColor:
         assert brightness_tag_chain(
             self.CURVE, 0.0, 4.0, use_color=False, use_alpha=False,
             base_color=(250, 100, 20)) == ""
+
+
+# ---------------------------------------------------------------------------
+# apply_policy_static:静态 \pos 路径(主流水线用,不带时间/轨迹)
+# ---------------------------------------------------------------------------
+
+class TestApplyPolicyStatic:
+    def test_overlap_returns_empty_specs(self):
+        specs, applied, notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("overlap"), PLANE_W, PLANE_H)
+        assert specs == [] and applied == "overlap" and notes == []
+
+    def test_mask_static_rect_and_text_layers(self):
+        specs, applied, notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "mask" and notes == []
+        masks = [s for s in specs if s["kind"] == "mask"]
+        texts = [s for s in specs if s["kind"] == "text"]
+        assert len(masks) == 2 and len(texts) == 3  # 两块遮罩 + 三行文本
+        for s in masks:
+            assert s["layer"] == 0 and s["style"] == "Scene"
+            assert "\\move" not in s["tags"]  # 静态路径不含 \move
+            assert s["tags"].startswith("{\\an7\\pos(")
+            assert "\\p1\\bord0" in s["tags"]
+            assert "\\1c&HFAFAFA&" in s["tags"]  # 采样色 = 白底
+            assert s["tags"].endswith("{\\p0}")
+            assert "m 0 0 l " in s["tags"]
+        covered = sorted(i for s in masks for i in s["rows"])
+        assert covered == [0, 1, 2]  # 全部行归属某块(输入序索引)
+        for s in texts:
+            assert s["layer"] == 1 and s["style"] == "Scene"
+            assert s["tags"].startswith("{\\an5\\pos(")
+            assert s["body"] in {"标题", "正文一", "正文二"}
+            assert isinstance(s["row"], int)
+
+    def test_mask_box_top_left_matches_expanded_block(self):
+        # 块 0:行框 (20,20)-(200,36),pad=0.12×16≈1.92 → 外扩框左上角 ≈(18.1,18.1)
+        specs, _applied, _notes = apply_policy_static(
+            ROWS[:1], make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert specs[0]["kind"] == "mask"
+        assert "\\pos(18.1,18.1)" in specs[0]["tags"]
+
+    def test_noisy_background_falls_back_to_external(self):
+        rng = np.random.default_rng(7)
+        noise = rng.integers(0, 256, (PLANE_H, PLANE_W, 3), dtype=np.uint8)
+        specs, applied, notes = apply_policy_static(
+            ROWS, noise, policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert len(notes) == 1 and "mask" in notes[0] and "external" in notes[0]
+        assert len(specs) == 1
+        spec = specs[0]
+        assert spec["kind"] == "note" and spec["style"] == "NoteBox"
+        # 底带居中:\an2\pos(W/2, H-margin)
+        assert spec["tags"].startswith("{\\an2\\pos(150.0,360.0)\\fs")
+        assert spec["body"] == "标题\\N正文一\\N正文二"
+
+    def test_external_single_note_spec(self):
+        specs, applied, notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external" and notes == []
+        assert len(specs) == 1
+        spec = specs[0]
+        assert spec["kind"] == "note" and spec["style"] == "NoteBox"
+        assert spec["tags"] == "{\\an2\\pos(150.0,360.0)\\fs40}"
+
+    def test_whitespace_spec_lands_in_band(self):
+        specs, applied, notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("whitespace"),
+            PLANE_W, PLANE_H)
+        assert applied == "whitespace" and notes == []
+        assert len(specs) == 1
+        spec = specs[0]
+        assert spec["kind"] == "scene_ws" and spec["style"] == "Scene"
+        m = re.search(r"\\pos\(([-\d.]+),([-\d.]+)\)", spec["tags"])
+        assert m
+        x, y = float(m.group(1)), float(m.group(2))
+        assert 0.0 < x < float(PLANE_W)
+        assert y > 100.0  # 原文字最低 y=96,中心落在下方空白带
+        assert "\\fs" in spec["tags"]
+        assert spec["body"] == "标题\\N正文一\\N正文二"
+
+    def test_whitespace_no_band_falls_back_to_mask(self):
+        # 白底 + 全宽横向条纹:无空白带;背景干净 → mask 可用
+        plane = np.full((PLANE_H, PLANE_W, 3), 245, np.uint8)
+        plane[::4, :, :] = 10
+        specs, applied, notes = apply_policy_static(
+            ROWS, plane, policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        assert applied == "mask"
+        assert any(s["kind"] == "mask" for s in specs)
+        assert len(notes) == 1
+        assert "whitespace" in notes[0] and "mask" in notes[0]
+
+    def test_row_indices_follow_input_order(self):
+        rows = [ROWS[2], ROWS[0], ROWS[1]]  # 乱序输入
+        specs, _applied, _notes = apply_policy_static(
+            rows, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        texts = {s["body"]: s["row"] for s in specs if s["kind"] == "text"}
+        assert texts == {"标题": 1, "正文一": 2, "正文二": 0}
+        covered = sorted(i for s in specs if s["kind"] == "mask" for i in s["rows"])
+        assert covered == [0, 1, 2]
+
+    def test_base_font_size_controls_fit(self):
+        specs, _applied, _notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("external"), PLANE_W, PLANE_H,
+            base_font_size=10)
+        assert "\\fs10" in specs[0]["tags"]
+
+    def test_empty_rows_no_crash(self):
+        for mode in ("mask", "external", "whitespace"):
+            specs, applied, _notes = apply_policy_static(
+                [], make_white_plane(), policy_cfg(mode), PLANE_W, PLANE_H)
+            assert specs == [] and applied == mode

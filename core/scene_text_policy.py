@@ -9,6 +9,9 @@
   矢量遮罩盖住原文字(识别文本升到 layer 1);external 把文本挪出原区域、
   底带 ``NoteBox`` 展示框;whitespace 把文本放进原文字空白带(合成行框喂
   :func:`core.motion_ass.build_line_tracks`,轨迹与亮度标签零成本复用);
+- :func:`apply_policy_static` —— 同一回退链的静态 ``\\pos`` 变体(主流水线
+  用):输入行框 + 单帧平面图,输出不带时间的 spec dict(时间由调用方按
+  所属组回填),遮罩为静态 ``\\an7\\pos\\p1`` 矩形;
 - 自动回退链 **whitespace → mask → external**(仅当所选模式为三者之一且
   不可用时降级;overlap 不参与回退),降级原因记录在返回的 notes 里;
 - :func:`sample_background_color` —— 块区域剔除墨水像素后的中位色 +
@@ -53,6 +56,7 @@ __all__ = [
     "wrap_cjk",
     "fit_font_size",
     "apply_policy",
+    "apply_policy_static",
 ]
 
 POLICY_MODES = ("overlap", "mask", "external", "whitespace")
@@ -431,6 +435,42 @@ def _rendered_width(text: str, line_h: float) -> float:
     return units * float(line_h)
 
 
+def _padded_mask_box(
+    rows_slice: Sequence[Row],
+    plane_w: float,
+    plane_h: float,
+    cfg: SceneTextPolicyConfig,
+    analysis_box: Optional[Tuple[int, int, int, int]] = None,
+) -> Tuple[Tuple[float, float, float, float], float]:
+    """单块遮罩外扩框(渲染宽度居中外扩 + pad,裁到平面/分析窗)与平均行高。
+
+    mask 动态/静态路径共用:遮罩须盖住"渲染后的字幕"(替换字体字宽通常
+    大于原 OCR 框),并按 ``mask_pad_ratio`` 外扩行高方向的边距。
+    """
+    union, line_h = _block_union(rows_slice)
+    pad = float(cfg.mask_pad_ratio) * line_h
+    # 渲染宽度外扩:遮罩水平方向取"原框并集"与"最宽渲染行"的较大者
+    # (居中扩展),避免字幕字形悬出补丁
+    need_w = max(
+        _rendered_width(text, max(1.0, float(rbox[3] - rbox[1])))
+        for text, rbox in rows_slice
+    )
+    cx = (union[0] + union[2]) / 2.0
+    half_w = (max(union[2] - union[0], need_w) + 2.0 * pad) / 2.0
+    mbox = (
+        max(0.0, cx - half_w),
+        max(0.0, union[1] - pad),
+        min(float(plane_w), cx + half_w),
+        min(float(plane_h), union[3] + pad),
+    )
+    if analysis_box is not None:  # 遮罩不越出文字平面(quad 窗口)
+        mbox = (max(float(analysis_box[0]), mbox[0]),
+                max(float(analysis_box[1]), mbox[1]),
+                min(float(analysis_box[2]), mbox[2]),
+                min(float(analysis_box[3]), mbox[3]))
+    return mbox, line_h
+
+
 def _apply_mask(
     events: List[Dict],
     rows: List[Row],
@@ -453,27 +493,8 @@ def _apply_mask(
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
     for bi, (s, e) in enumerate(blocks):
-        union, line_h = _block_union(rows[s:e + 1])
-        pad = float(cfg.mask_pad_ratio) * line_h
-        # 渲染宽度外扩:遮罩水平方向取"原框并集"与"最宽渲染行"的较大者
-        # (居中扩展),避免字幕字形悬出补丁
-        need_w = max(
-            _rendered_width(text, max(1.0, float(rbox[3] - rbox[1])))
-            for text, rbox in rows[s:e + 1]
-        )
-        cx = (union[0] + union[2]) / 2.0
-        half_w = (max(union[2] - union[0], need_w) + 2.0 * pad) / 2.0
-        mbox = (
-            max(0.0, cx - half_w),
-            max(0.0, union[1] - pad),
-            min(float(plane_w), cx + half_w),
-            min(float(plane_h), union[3] + pad),
-        )
-        if analysis_box is not None:  # 遮罩不越出文字平面(quad 窗口)
-            mbox = (max(float(analysis_box[0]), mbox[0]),
-                    max(float(analysis_box[1]), mbox[1]),
-                    min(float(analysis_box[2]), mbox[2]),
-                    min(float(analysis_box[3]), mbox[3]))
+        mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
+                                         cfg, analysis_box)
         color, std = sample_background_color(plane_img_bgr, mbox)
         if std > float(cfg.bg_max_std):
             notes.append(
@@ -555,6 +576,25 @@ def _apply_external(
     return out
 
 
+def _analysis_gray(
+    plane_img_bgr: np.ndarray,
+    analysis_box: Optional[Tuple[int, int, int, int]] = None,
+) -> Tuple[np.ndarray, int, int]:
+    """文字平面内的灰度图与窗口原点 (ox, oy)。
+
+    ``analysis_box``(quad 窗口)之外的展开区域是无效画面,不得参与墨迹
+    二值化与空白带候选;返回的灰度图已裁到窗口内,坐标需加回 (ox, oy)。
+    """
+    gray_full = cv2.cvtColor(plane_img_bgr, cv2.COLOR_BGR2GRAY)
+    if analysis_box is None:
+        return gray_full, 0, 0
+    clipped = _clip_box(analysis_box, gray_full.shape[1], gray_full.shape[0])
+    if clipped is None:
+        return gray_full, 0, 0
+    return (gray_full[clipped[1]:clipped[3], clipped[0]:clipped[2]],
+            int(clipped[0]), int(clipped[1]))
+
+
 def _apply_whitespace(
     events: List[Dict],
     rows: List[Row],
@@ -570,19 +610,7 @@ def _apply_whitespace(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """whitespace 模式:全部块文本合并放进原文字空白带(合成行框复用轨迹)。"""
-    gray_full = cv2.cvtColor(plane_img_bgr, cv2.COLOR_BGR2GRAY)
-    # 墨迹/空白带检测限制在文字平面(quad 窗口)内:窗口外的展开区域是
-    # 无效画面,不得参与取色与空白带候选
-    ox, oy = 0, 0
-    if analysis_box is not None:
-        clipped = _clip_box(analysis_box, gray_full.shape[1], gray_full.shape[0])
-        if clipped is not None:
-            ox, oy = clipped[0], clipped[1]
-            gray = gray_full[clipped[1]:clipped[3], clipped[0]:clipped[2]]
-        else:
-            gray = gray_full
-    else:
-        gray = gray_full
+    gray, ox, oy = _analysis_gray(plane_img_bgr, analysis_box)
     line_h = sum(float(b[3]) - float(b[1]) for _t, b in rows) / max(1, len(rows))
     local_boxes = [(float(b[0]) - ox, float(b[1]) - oy,
                     float(b[2]) - ox, float(b[3]) - oy) for _t, b in rows]
@@ -652,6 +680,10 @@ def apply_policy(
         return list(events), "overlap", []
     mcfg = motion_cfg if motion_cfg is not None else MotionAssConfig()
     rows = _sorted_rows(blocks_meta)
+    if not rows:
+        # 无识别行：mask/external/whitespace 都没有可布局的对象，空 rows
+        # 还会让后续行高/取最值计算崩溃；原样返回事件并留痕。
+        return list(events), "overlap", [f"{mode}: no recognized text rows; policy not applied"]
     blocks = merge_line_blocks([b for _t, b in rows],
                                vgap_ratio=float(cfg.block_vgap_ratio))
     if mode == "mask":
@@ -669,3 +701,227 @@ def apply_policy(
     raise ValueError(
         f"unknown scene text policy mode: {mode!r}; "
         f"valid modes: {', '.join(POLICY_MODES)}")
+
+
+# ---------------------------------------------------------------------------
+# 静态 \pos 路径(主流水线):同一回退链,输出不带时间的 spec dict
+# ---------------------------------------------------------------------------
+
+def _static_mask_spec(
+    box: Tuple[float, float, float, float],
+    color_bgr: Tuple[int, int, int],
+    row_indices: Sequence[int],
+) -> Dict:
+    """单块静态遮罩 spec:``\\an7\\pos`` + ``\\p1`` 矩形(无 \\move/\\t)。
+
+    ``tags`` 为平面坐标,由调用方(生成器)按外接框原点平移到视频坐标;
+    ``rows`` 记录块覆盖的行索引(输入序),供时间回填。
+    """
+    x1, y1, x2, y2 = box
+    w = max(1.0, float(x2) - float(x1))
+    h = max(1.0, float(y2) - float(y1))
+    iw, ih = int(round(w)), int(round(h))
+    b, g, r = (int(round(float(c))) for c in color_bgr)
+    # 绘图命令与 {\p0} 必须原样进入 Text 字段;\bord0 压掉样式描边
+    tags = (f"{{\\an7\\pos({_fmt1(float(x1))},{_fmt1(float(y1))})"
+            f"\\p1\\bord0\\1c&H{b:02X}{g:02X}{r:02X}&}}"
+            f"m 0 0 l {iw} 0 {iw} {ih} 0 {ih}{{\\p0}}")
+    return {
+        "kind": "mask",
+        "style": "Scene",
+        "tags": tags,
+        "layer": 0,
+        "rows": [int(i) for i in row_indices],
+        "base_color": (b, g, r),
+    }
+
+
+def _static_external_spec(
+    rows: Sequence[Row],
+    cfg: SceneTextPolicyConfig,
+    video_w: float,
+    video_h: float,
+    base_fs: int,
+) -> Optional[Dict]:
+    """external 静态 spec:全部行折行合并为单条 NoteBox 事件(底/顶带)。
+
+    ``tags`` 直接用视频坐标(与行框坐标系无关)。
+    """
+    margin = float(cfg.external_margin)
+    band_w = max(1.0, float(video_w) - 2.0 * margin)
+    band_h = max(1.0, float(video_h) - margin)
+    max_chars = max(1, int(band_w) // max(1, int(base_fs)))
+    parts: List[str] = []
+    for text, _box in rows:  # 行序自上而下
+        parts.extend(wrap_cjk(text, max_chars))
+    if not parts:
+        return None
+    longest = max(len(p) for p in parts)
+    fs = fit_font_size(len(parts), band_h, longest, band_w, base=base_fs)
+    an, pos_y = ((8, margin) if str(cfg.external_pos).lower() == "top"
+                 else (2, float(video_h) - margin))
+    return {
+        "kind": "note",
+        "style": _NOTE_STYLE,
+        "tags": (f"{{\\an{an}\\pos({_fmt1(float(video_w) / 2.0)},"
+                 f"{_fmt1(pos_y)})\\fs{fs}}}"),
+        "body": "\\N".join(parts),
+    }
+
+
+def _apply_static_mask(
+    rows: List[Row],
+    blocks: List[Tuple[int, int]],
+    plane_img_bgr: np.ndarray,
+    cfg: SceneTextPolicyConfig,
+    video_w: float,
+    video_h: float,
+    notes: List[str],
+    orig_indices: Sequence[int],
+    *,
+    analysis_box: Optional[Tuple[int, int, int, int]] = None,
+    base_fs: int = _WRAP_BASE_FS,
+) -> Tuple[List[Dict], str, List[str]]:
+    """mask 静态路径:每块一条静态矩形 + 全部原行(layer 1)。
+
+    取色/背景杂色检查/外扩框与 motion 版共用;任一块背景 std 超限 →
+    回退 external(单条 NoteBox spec)。
+    """
+    plane_h, plane_w = plane_img_bgr.shape[:2]
+    out: List[Dict] = []
+    for bi, (s, e) in enumerate(blocks):
+        mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
+                                         cfg, analysis_box)
+        color, std = sample_background_color(plane_img_bgr, mbox)
+        if std > float(cfg.bg_max_std):
+            notes.append(
+                f"mask->external: block {bi} background channel std "
+                f"{std:.1f} > bg_max_std {float(cfg.bg_max_std):g}")
+            spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
+            return ([spec] if spec else []), "external", notes
+        out.append(_static_mask_spec(mbox, color, orig_indices[s:e + 1]))
+    for i, (text, box) in enumerate(rows):
+        cx = int((float(box[0]) + float(box[2])) / 2.0)
+        cy = int((float(box[1]) + float(box[3])) / 2.0)
+        out.append({
+            "kind": "text",
+            "style": "Scene",
+            "tags": f"{{\\an5\\pos({cx},{cy})}}",
+            "body": text,
+            "layer": 1,
+            "row": int(orig_indices[i]),
+        })
+    return out, "mask", notes
+
+
+def _apply_static_whitespace(
+    rows: List[Row],
+    plane_img_bgr: np.ndarray,
+    cfg: SceneTextPolicyConfig,
+    video_w: float,
+    video_h: float,
+    notes: List[str],
+    *,
+    analysis_box: Optional[Tuple[int, int, int, int]] = None,
+    base_fs: int = _WRAP_BASE_FS,
+) -> Optional[List[Dict]]:
+    """whitespace 静态路径:全部行文本合并放进空白带(单条 \\an5\\pos spec)。
+
+    带检测与 motion 版共用 :func:`find_whitespace_band`;无带时记录原因并
+    返回 None(由 :func:`apply_policy_static` 沿回退链降级到 mask)。
+    """
+    gray, ox, oy = _analysis_gray(plane_img_bgr, analysis_box)
+    line_h = sum(float(b[3]) - float(b[1]) for _t, b in rows) / max(1, len(rows))
+    local_boxes = [(float(b[0]) - ox, float(b[1]) - oy,
+                    float(b[2]) - ox, float(b[3]) - oy) for _t, b in rows]
+    band = find_whitespace_band(
+        gray, local_boxes, line_h=line_h,
+        min_lines=int(cfg.ws_min_lines),
+        min_width_ratio=float(cfg.ws_min_width_ratio))
+    if band is None:
+        notes.append(
+            f"whitespace->mask: no whitespace band "
+            f"(need >= {int(cfg.ws_min_lines)} x line_h {line_h:.1f}px, "
+            f"width >= {float(cfg.ws_min_width_ratio):g} x plane width)")
+        return None
+    band = (band[0] + ox, band[1] + oy, band[2] + ox, band[3] + oy)
+    band_w = float(band[2] - band[0])
+    band_h = float(band[3] - band[1])
+    max_chars = max(1, int(band_w) // max(1, int(base_fs)))
+    parts: List[str] = []
+    for text, _box in rows:  # 行序自上而下
+        parts.extend(wrap_cjk(text, max_chars))
+    fs = fit_font_size(len(parts), band_h, max(len(p) for p in parts), band_w,
+                       base=base_fs)
+    tags = (f"{{\\an5\\pos({_fmt1((float(band[0]) + float(band[2])) / 2.0)},"
+            f"{_fmt1((float(band[1]) + float(band[3])) / 2.0)})\\fs{fs}}}")
+    return [{
+        "kind": "scene_ws",
+        "style": "Scene",
+        "tags": tags,
+        "body": "\\N".join(parts),
+    }]
+
+
+def apply_policy_static(
+    rows_meta: Sequence[Row],
+    plane_img_bgr: np.ndarray,
+    cfg: SceneTextPolicyConfig,
+    video_w: float,
+    video_h: float,
+    *,
+    analysis_box: Optional[Tuple[int, int, int, int]] = None,
+    base_font_size: Optional[int] = None,
+) -> Tuple[List[Dict], str, List[str]]:
+    """对静态 ``\\pos`` 路径的识别行应用场景文字显示策略(静态变体)。
+
+    与 :func:`apply_policy` 同一回退链(whitespace → mask → external)与
+    取色/并块/空白带/折行实现,但不读轨迹、不产时间:输入 ``rows_meta`` 为
+    ``[(文本, (x1, y1, x2, y2)), ...]]``(行框与 ``plane_img_bgr`` 同一平面
+    坐标系);输出为**不带时间**的 spec dict 列表,时间由调用方按所属组回填:
+
+    - ``{"kind": "mask", "tags", "layer": 0, "rows": [行索引], ...}`` ——
+      每块一条静态 ``\\an7\\pos\\p1`` 矩形(平面坐标);
+    - ``{"kind": "text", "tags", "body", "layer": 1, "row": 行索引}`` ——
+      原识别行(平面坐标 ``\\an5\\pos`` 中心);
+    - ``{"kind": "note", "style": "NoteBox", "tags", "body"}`` —— external
+      单条展示框(``tags`` 已是视频坐标);
+    - ``{"kind": "scene_ws", "tags", "body"}`` —— whitespace 单条空白带放置
+      (平面坐标)。
+
+    ``base_font_size`` 为折行/字号适配的基准字号(缺省 40;主流水线传
+    Scene 样式字号)。overlap 原样返回空 spec 列表。
+    """
+    mode = cfg.mode
+    if mode == "overlap":
+        return [], "overlap", []
+    base_fs = int(base_font_size) if base_font_size else _WRAP_BASE_FS
+    notes: List[str] = []
+    rows = _sorted_rows(rows_meta)
+    if not rows:
+        return [], mode, notes
+    # 行序 = 阅读序;orig_indices 把排序后位置映射回输入行索引
+    orig_indices = sorted(
+        range(len(rows_meta)),
+        key=lambda i: (float(rows_meta[i][1][1]), float(rows_meta[i][1][0])))
+    blocks = merge_line_blocks([b for _t, b in rows],
+                               vgap_ratio=float(cfg.block_vgap_ratio))
+    while True:
+        if mode == "mask":
+            return _apply_static_mask(
+                rows, blocks, plane_img_bgr, cfg, video_w, video_h, notes,
+                orig_indices, analysis_box=analysis_box, base_fs=base_fs)
+        if mode == "external":
+            spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
+            return ([spec] if spec else []), "external", notes
+        if mode == "whitespace":
+            specs = _apply_static_whitespace(
+                rows, plane_img_bgr, cfg, video_w, video_h, notes,
+                analysis_box=analysis_box, base_fs=base_fs)
+            if specs is not None:
+                return specs, "whitespace", notes
+            mode = "mask"  # 回退链:whitespace → mask
+            continue
+        raise ValueError(
+            f"unknown scene text policy mode: {mode!r}; "
+            f"valid modes: {', '.join(POLICY_MODES)}")

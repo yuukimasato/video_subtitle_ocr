@@ -74,6 +74,11 @@ class _EventMergeMixin:
             return []
         out: List[Dict[str, str]] = []
         for ev in events:
+            if ev.get("policy"):
+                # 场景文字策略事件:结构由策略决定(遮罩无正文/合并文本),
+                # 不适用 Scene 噪声过滤(与轨迹事件 Name=motion 豁免同哲学)。
+                out.append(ev)
+                continue
             body = ev.get("body", "")
             style = str(ev.get("style", ""))
             if style == "Scene":
@@ -153,6 +158,10 @@ class _EventMergeMixin:
                 if (
                     prev["roi"] != cur["roi"]
                     or prev["style"] != cur["style"]
+                    # 策略事件不参与合并:合并会重建 dict,丢掉 policy/layer
+                    # 标记(遮罩与文本的图层关系随之丢失)。
+                    or prev.get("policy")
+                    or cur.get("policy")
                 ):
                     break
                 # Scene: allow small position jitter when merging.
@@ -214,6 +223,9 @@ class _EventMergeMixin:
         )
         for prev, cur in zip(events_sorted, events_sorted[1:]):
             if prev.get("roi") != cur.get("roi") or prev.get("style") != cur.get("style"):
+                continue
+            if prev.get("policy") or cur.get("policy"):
+                # 策略事件的时间由所属组推导,不做端点齐平(避免遮罩被截短)。
                 continue
             prev_end = self._parse_ass_time_to_seconds(prev["end_time"])
             cur_start = self._parse_ass_time_to_seconds(cur["start_time"])

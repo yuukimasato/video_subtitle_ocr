@@ -420,12 +420,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+459"/>
+        <location line="+460"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>使用 API Key 和 Base URL 拉取 /v1/models。</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-458"/>
         <source>清除已存密钥</source>
         <translation>清除已存金鑰</translation>
     </message>
@@ -460,7 +460,7 @@
         <translation>返回一鍵簡潔檢視，隱藏進階設定。所有選項保持不變。</translation>
     </message>
     <message>
-        <location line="+178"/>
+        <location line="+179"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 文字來源過濾已關閉，將保留所有辨識到的文字。</translation>
     </message>
@@ -649,12 +649,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="+192"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+201"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+109"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+147"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -669,7 +669,42 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location line="+29"/>
+        <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Scene text policy: failed to read frame {} for analysis; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Scene text policy: analysis rect {} outside video bounds; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Scene text policy: unknown mode {!r} for {}; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location line="+10"/>
+        <source>Scene text policy: no analysis rect for {}; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>Scene text policy: {} (ROI {}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Scene text policy for {}: {} applied ({} spec(s)).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+56"/>
         <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -689,7 +724,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+56"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -734,7 +769,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -774,7 +809,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/source_classification.py" line="+109"/>
+        <location filename="../core/subtitle_generator/source_classification.py" line="+105"/>
         <source>Text source classification: {} OVERLAY, {} SCENE, {} UNKNOWN. Filtered {} -&gt; {} text lines (keep_overlay={}, keep_scene={}, keep_unknown={}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -784,7 +819,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+121"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+133"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -797,7 +832,7 @@
 <context>
     <name>RoiDefinitionWidget</name>
     <message>
-        <location filename="../components/roi_definition.py" line="+31"/>
+        <location filename="../components/roi_definition.py" line="+32"/>
         <source>ROI 定义</source>
         <translation>ROI 定義</translation>
     </message>
@@ -880,7 +915,37 @@
         <translation>開啟後，該 ROI 辨識出的字幕事件將附帶位置與旋轉標籤：多邊形 ROI 自動計算中心點(\pos)與長邊傾角(\frz)；\frx/\fry 儲存為 0，可手動微調透視。適合實拍場景文字的原位重鋪。</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+12"/>
+        <source>叠加（默认）</source>
+        <translation>疊加（預設）</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>遮罩原文字</source>
+        <translation>遮罩原文字</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>外置展示框</source>
+        <translation>外顯展示框</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>空白区放置</source>
+        <translation>空白區放置</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。</source>
+        <translation>僅作用於場景文字（畫面文字）事件；所選模式不可用時按 空白區→遮罩→外顯 自動回退。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>场景文字显示：</source>
+        <translation>場景文字顯示：</translation>
+    </message>
+    <message>
+        <location line="+13"/>
         <source>文字颜色…</source>
         <translation>文字顏色…</translation>
     </message>
@@ -948,7 +1013,7 @@
 <context>
     <name>RoiListWidget</name>
     <message>
-        <location filename="../components/roi_list.py" line="+18"/>
+        <location filename="../components/roi_list.py" line="+17"/>
         <source>ROI 列表</source>
         <translation>ROI 清單</translation>
     </message>
@@ -1026,7 +1091,7 @@
 <context>
     <name>ScanReviewDialog</name>
     <message>
-        <location filename="../components/scan_review_dialog.py" line="+61"/>
+        <location filename="../components/scan_review_dialog.py" line="+60"/>
         <source>深度扫描复核</source>
         <translation>深度掃描複核</translation>
     </message>
@@ -1245,7 +1310,7 @@
         <location line="+4"/>
         <location filename="../main_window/roi_config_io.py" line="-52"/>
         <location line="+85"/>
-        <location filename="../main_window/roi_editing.py" line="+53"/>
+        <location filename="../main_window/roi_editing.py" line="+56"/>
         <location filename="../main_window/scan_control.py" line="+322"/>
         <location filename="../main_window/video_playback.py" line="+28"/>
         <source>错误</source>
@@ -1325,7 +1390,7 @@
         <translation>ASS 字幕檔案 (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_editing.py" line="-163"/>
+        <location filename="../main_window/roi_editing.py" line="-166"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
         <translation>已新增 ROI，影格範圍：{}-{}</translation>
     </message>
@@ -1360,7 +1425,7 @@
         <translation>開始時間不能晚於結束時間。</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+53"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>建立 ROI 項目時發生錯誤：{}</translation>
     </message>
@@ -1606,7 +1671,7 @@
 <context>
     <name>VideoFrameLabel</name>
     <message>
-        <location filename="../components/video_display.py" line="+431"/>
+        <location filename="../components/video_display.py" line="+430"/>
         <source>绘制错误：{}</source>
         <translation>繪製錯誤：{}</translation>
     </message>
@@ -1685,7 +1750,7 @@
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="+117"/>
+        <location filename="../core/ocr_optimizer.py" line="+346"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1695,12 +1760,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+67"/>
         <source>Sampled frames disagree on line count; keeping base frame OCR result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+115"/>
+        <location line="+134"/>
         <source>VLM refine returned {0} lines for {1} expected; keeping original result.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1879,7 +1944,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+105"/>
+        <location filename="../core/pipeline_worker.py" line="+79"/>
+        <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+101"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1914,7 +1984,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+56"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation type="unfinished"></translation>
     </message>

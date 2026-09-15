@@ -193,6 +193,13 @@ DICT = {
         "Write positioning tags (\\pos \\frz \\frx \\fry; polygons compute position and angle automatically)",
     "开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\\pos)与长边倾角(\\frz)；\\frx/\\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。":
         "When on, subtitle events from this ROI carry position and rotation tags: polygon ROIs compute the center (\\pos) and long-edge angle (\\frz) automatically; \\frx/\\fry are saved as 0 and can be tweaked manually for perspective. Ideal for re-laying in-scene text in place.",
+    "场景文字显示：": "Scene text display:",
+    "叠加（默认）": "Overlay (default)",
+    "遮罩原文字": "Mask original text",
+    "外置展示框": "External note box",
+    "空白区放置": "Place in whitespace",
+    "仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。":
+        "Applies to in-scene (picture text) events only; if the chosen mode is unavailable it falls back automatically: whitespace → mask → external.",
     "文字颜色…": "Text color…",
     "描边颜色…": "Outline color…",
     "阴影颜色…": "Shadow color…",

@@ -1,10 +1,18 @@
 # core/subtitle_generator/generator.py
 import logging
+import re
 from pathlib import Path
-from typing import Callable, Dict, Generator, List, Optional
+from typing import Callable, Dict, Generator, List, Optional, Tuple
 
+import cv2
+import numpy as np
 from PySide6.QtCore import QCoreApplication
 
+from core.scene_text_policy import (
+    POLICY_MODES,
+    SceneTextPolicyConfig,
+    apply_policy_static,
+)
 from core.subtitle_llm_polish import (
     SubtitlePolisherConfig,
     polish_subtitle_texts,
@@ -35,6 +43,27 @@ def _sanitize_ass_body(body: str) -> str:
     """
     text = str(body or "").replace("\r", " ").replace("\n", " ").replace("\t", " ")
     return text.replace("{", "｛").replace("}", "｝")
+
+
+_POS_TAG_RE = re.compile(r"\\pos\(([-\d.]+),\s*([-\d.]+)\)")
+
+
+def _shift_pos_tag(tags: str, dx: float, dy: float) -> str:
+    """把策略 spec 标签里的 \\pos(x,y) 平移 (dx, dy)(平面坐标 → 视频坐标)。
+
+    策略 spec 的 mask/text/scene_ws 标签各含且仅含一个 \\pos;note 标签用
+    视频坐标、由调用方跳过,不经此函数。平移后整数值省略小数位,与既有
+    SCENE 行的 ``\\pos(160,100)`` 格式一致。
+    """
+
+    def _fmt(value: float) -> str:
+        return str(int(value)) if float(value).is_integer() else f"{value:.1f}"
+
+    return _POS_TAG_RE.sub(
+        lambda m: "\\pos({},{})".format(
+            _fmt(float(m.group(1)) + dx), _fmt(float(m.group(2)) + dy)),
+        tags)
+
 
 class OCRToASSOptimizer(
     _DataGroupingMixin,
@@ -86,6 +115,8 @@ class OCRToASSOptimizer(
         roi_pose_tags: Optional[Dict[str, Dict]] = None,
         roi_text_filter_policies: Optional[Dict[str, str]] = None,
         watermark_filter_config: Optional[Dict] = None,
+        roi_scene_text_policies: Optional[Dict[str, str]] = None,
+        roi_analysis_rects: Optional[Dict[str, Tuple]] = None,
     ):
         self.video_path = Path(video_path)
         self.output_path = Path(output_path)
@@ -106,12 +137,175 @@ class OCRToASSOptimizer(
         # written with {\pos} / {\frz} / {\frx} / {\fry} placement tags so the
         # text lands where (and at the angle) the original picture text was.
         self.roi_pose_tags = roi_pose_tags or {}
+        # roi_id -> 场景文字显示策略(overlap/mask/external/whitespace)。
+        # 非 overlap 时该 ROI 的 SCENE 组事件被策略事件替换(场景文字重排,
+        # 消除原字重影);缺省/overlap 保持原路径,输出逐事件一致。
+        self.roi_scene_text_policies = roi_scene_text_policies or {}
+        # roi_id -> ROI 外接矩形 (x1, y1, x2, y2)(视频坐标),策略分析图
+        # (最大组中间帧)的裁剪窗口。
+        self.roi_analysis_rects = roi_analysis_rects or {}
         logger.info(_tr("OCRToASSOptimizer", "Subtitle generator initialized: {}x{} @ {:.2f} FPS").format(self.width, self.height, self.fps))
         if self.template_path and self.template_path.exists():
             logger.info(_tr("OCRToASSOptimizer", "Using style template: {}").format(self.template_path))
         else:
             logger.info(_tr("OCRToASSOptimizer", "No style template used, generating a rich set of default styles."))
         self.subtitle_polisher = subtitle_polisher
+
+    # ------------------------------------------------------------------
+    # 场景文字显示策略(静态 \pos 路径;overlap 缺省不改变任何行为)
+    # ------------------------------------------------------------------
+
+    def _group_is_scene(self, group) -> bool:
+        """组中心是否落在场景区(与 styling 的 BOTTOM/TOP 判定同一阈值)。"""
+        avg_box = group.get_avg_box()
+        if not avg_box:
+            return False
+        y_center = (avg_box[1] + avg_box[3]) / 2
+        return not (y_center > self.height * self.VIDEO_BOTTOM_AREA
+                    or y_center < self.height * self.VIDEO_TOP_AREA)
+
+    def _grab_frame_crop(self, frame_num: int, rect) -> Tuple[Optional[np.ndarray], Optional[Tuple[int, int]]]:
+        """读取单帧并按外接矩形裁剪,返回 (平面图, 平面原点(视频坐标))。
+
+        每 ROI 策略仅取一帧(VideoCapture seek 一次);视频打不开/读帧失败/
+        矩形完全出界时返回 (None, None),由调用方回退 overlap。
+        """
+        try:
+            x1, y1, x2, y2 = (int(round(float(v))) for v in rect)
+        except (TypeError, ValueError):
+            return None, None
+        cap = cv2.VideoCapture(str(self.video_path))
+        if not cap.isOpened():
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: cannot open video {} for analysis frame; keeping original placement."
+                    ).format(self.video_path))
+            return None, None
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_num))
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok or frame is None:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: failed to read frame {} for analysis; keeping original placement."
+                    ).format(frame_num))
+            return None, None
+        fh, fw = frame.shape[:2]
+        ox1, oy1 = max(0, x1), max(0, y1)
+        ox2, oy2 = min(fw, x2), min(fh, y2)
+        if ox2 - ox1 < 1 or oy2 - oy1 < 1:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: analysis rect {} outside video bounds; keeping original placement."
+                    ).format(rect))
+            return None, None
+        return frame[oy1:oy2, ox1:ox2].copy(), (ox1, oy1)
+
+    def _prepare_scene_policy_context(self, roi_id: str, groups) -> Optional[Dict]:
+        """为该 ROI 构建策略上下文;不适用/不可用时返回 None(走原路径)。"""
+        policy = str(self.roi_scene_text_policies.get(roi_id) or "overlap")
+        if policy == "overlap":
+            return None
+        if policy not in POLICY_MODES:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: unknown mode {!r} for {}; keeping original placement."
+                    ).format(policy, roi_id))
+            return None
+        scene_groups = [g for g in groups if g.lines and self._group_is_scene(g)]
+        if not scene_groups:
+            return None
+        rect = self.roi_analysis_rects.get(roi_id)
+        if rect is None:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: no analysis rect for {}; keeping original placement."
+                    ).format(roi_id))
+            return None
+        # 分析图:最大 SCENE 组(帧跨度)的中间帧,每 ROI 仅 seek 一次。
+        anchor = max(scene_groups,
+                     key=lambda g: (g.duration_frames, len(g.frames)))
+        mid_frame = (anchor.start_frame + anchor.end_frame) // 2
+        plane_img, origin = self._grab_frame_crop(mid_frame, rect)
+        if plane_img is None:
+            return None
+        return {
+            "policy": policy,
+            "plane": plane_img,
+            "origin": origin,
+            "rows": [],        # [(text, 视频坐标行框)],行序 = 收集序(组内自上而下)
+            "row_times": [],   # 与 rows 对齐的 (start_time, end_time)
+        }
+
+    def _finish_scene_policy_events(self, ctx: Dict, roi_id: str) -> List[Dict]:
+        """收集完成后生成策略事件,替换该 ROI 的原 SCENE styled 事件。"""
+        rows_video = ctx["rows"]
+        row_times = ctx["row_times"]
+        if not rows_video:
+            return []
+        ox, oy = ctx["origin"]
+        # 行框:视频坐标 − 外接框原点 → 平面坐标,与纯函数对接
+        rows = [(text, (x1 - ox, y1 - oy, x2 - ox, y2 - oy))
+                for text, (x1, y1, x2, y2) in rows_video]
+        cfg = SceneTextPolicyConfig(mode=ctx["policy"])
+        specs, applied, notes = apply_policy_static(
+            rows, ctx["plane"], cfg, float(self.width), float(self.height),
+            base_font_size=int(self.height * 0.04))
+        for note in notes:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: {} (ROI {}).").format(note, roi_id))
+        logger.info(
+            _tr("OCRToASSOptimizer",
+                "Scene text policy for {}: {} applied ({} spec(s)).").format(
+                    roi_id, applied, len(specs)))
+
+        def _ts(value: str) -> float:
+            try:
+                return self._parse_ass_time_to_seconds(value)
+            except Exception:
+                return 0.0
+
+        # note/scene_ws 单条事件的时间 = 全部 SCENE 组跨度的并集
+        union_start = min((s for s, _e in row_times), key=_ts)
+        union_end = max((e for _s, e in row_times), key=_ts)
+        events: List[Dict] = []
+        for spec in specs:
+            kind = spec["kind"]
+            if kind == "mask":
+                times = [row_times[i] for i in spec.get("rows", [])]
+                start = min((s for s, _e in times), key=_ts) if times else union_start
+                end = max((e for _s, e in times), key=_ts) if times else union_end
+                tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                events.append({
+                    "roi": roi_id, "start_time": start, "end_time": end,
+                    "style": "Scene", "tags": tags, "body": "",
+                    "layer": int(spec.get("layer", 0)), "policy": True,
+                })
+            elif kind == "text":
+                start, end = row_times[spec["row"]]
+                tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                events.append({
+                    "roi": roi_id, "start_time": start, "end_time": end,
+                    "style": "Scene", "tags": tags, "body": spec.get("body", ""),
+                    "layer": int(spec.get("layer", 0)), "policy": True,
+                })
+            elif kind == "note":
+                events.append({
+                    "roi": roi_id, "start_time": union_start, "end_time": union_end,
+                    "style": spec.get("style", "NoteBox"), "tags": spec["tags"],
+                    "body": spec.get("body", ""), "policy": True,
+                })
+            elif kind == "scene_ws":
+                events.append({
+                    "roi": roi_id, "start_time": union_start, "end_time": union_end,
+                    "style": spec.get("style", "Scene"),
+                    "tags": _shift_pos_tag(spec["tags"], float(ox), float(oy)),
+                    "body": spec.get("body", ""), "policy": True,
+                })
+        return events
 
     def convert_from_memory(
         self,
@@ -146,6 +340,9 @@ class OCRToASSOptimizer(
                 groups = self._filter_groups_by_roi_profile(groups)
                 logger.info(_tr("OCRToASSOptimizer", "ROI: {} generated {} subtitle groups.").format(roi_id, len(groups)))
 
+                # 场景文字显示策略(仅非 overlap 生效;准备失败回退原路径)。
+                policy_ctx = self._prepare_scene_policy_context(str(roi_id), groups)
+
                 for group in groups:
                     # Prefer real timestamps when available. group.frames was
                     # collected during grouping — no O(N*G) rescan needed.
@@ -161,6 +358,16 @@ class OCRToASSOptimizer(
                         start_time = self._format_time(group.start_frame)
                         end_time = self._format_time(group.end_frame + 1)
                     styled_lines = self._determine_style_and_position(group)
+                    is_scene = bool(styled_lines) and all(
+                        line["style"] == "Scene" for line in styled_lines)
+                    if policy_ctx is not None and is_scene:
+                        # 策略接管:收集行与时间,原 SCENE styled 事件被策略
+                        # 事件替换(在 ROI 分组循环末尾统一生成)。
+                        for line in sorted(group.lines, key=lambda ln: ln.box[1]):
+                            policy_ctx["rows"].append(
+                                (line.text, tuple(float(v) for v in line.box)))
+                            policy_ctx["row_times"].append((start_time, end_time))
+                        continue
                     pose = self.roi_pose_tags.get(str(roi_id))
                     if pose:
                         styled_lines = self._apply_roi_pose_tags(styled_lines, pose)
@@ -175,6 +382,10 @@ class OCRToASSOptimizer(
                                 "body": line_info["text"],
                             }
                         )
+
+                if policy_ctx is not None:
+                    subtitle_events.extend(
+                        self._finish_scene_policy_events(policy_ctx, str(roi_id)))
 
             subtitle_events_pre_merge = [dict(e) for e in subtitle_events]
             subtitle_events_pre_merge = self._filter_events(subtitle_events_pre_merge)
@@ -322,7 +533,10 @@ class OCRToASSOptimizer(
             all_dialogue_entries = []
             for ev in subtitle_events:
                 text = ev["tags"] + _sanitize_ass_body(ev["body"])
-                entry = f"Dialogue: 0,{ev['start_time']},{ev['end_time']},{ev['style']},,0,0,0,,{text}"
+                # 事件可选 layer(策略事件:遮罩 0、文本 1);缺省 0,与既有
+                # 输出逐字节一致。
+                layer = int(ev.get("layer", 0) or 0)
+                entry = f"Dialogue: {layer},{ev['start_time']},{ev['end_time']},{ev['style']},,0,0,0,,{text}"
                 all_dialogue_entries.append(entry)
 
             if not all_dialogue_entries:

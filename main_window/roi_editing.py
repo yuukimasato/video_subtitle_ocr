@@ -185,6 +185,9 @@ class RoiEditingMixin:
             roi_entry["blur_enabled"] = bool(self.roi_def_widget.blur_checkbox.isChecked())
             roi_entry["fade_in_refine_enabled"] = bool(self.roi_def_widget.fade_in_refine_checkbox.isChecked())
             roi_entry["write_pose_tags"] = bool(self.roi_def_widget.pose_tags_checkbox.isChecked())
+            # 场景文字显示策略(仅作用于场景文字事件;缺省 overlap)。
+            roi_entry["scene_text_policy"] = (
+                self.roi_def_widget.scene_text_policy_combo.currentData() or "overlap")
             # 手动绘制的 ROI（矩形/多边形/全宽带）永不参与文字来源过滤：
             # 场景字是本项目的核心产出，只有自动检测的"主字幕带"ROI 才按
             # 场景预设过滤（text_filter_policy="auto"）。

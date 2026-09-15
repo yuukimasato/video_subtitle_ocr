@@ -769,12 +769,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="+192"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+201"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+109"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+147"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -789,7 +789,42 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location line="+29"/>
+        <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Scene text policy: failed to read frame {} for analysis; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Scene text policy: analysis rect {} outside video bounds; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Scene text policy: unknown mode {!r} for {}; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location line="+10"/>
+        <source>Scene text policy: no analysis rect for {}; keeping original placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>Scene text policy: {} (ROI {}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Scene text policy for {}: {} applied ({} spec(s)).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+56"/>
         <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -809,7 +844,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+56"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -854,7 +889,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -904,7 +939,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+121"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+133"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -961,7 +996,7 @@
         <translation type="vanished">選択した対象領域(ROI)を削除</translation>
     </message>
     <message>
-        <location filename="../components/roi_definition.py" line="+31"/>
+        <location filename="../components/roi_definition.py" line="+32"/>
         <source>ROI 定义</source>
         <translation>ROI 定義</translation>
     </message>
@@ -1044,7 +1079,37 @@
         <translation>有効にすると、この ROI から書き出される字幕イベントに位置と回転のタグが付きます。多角形 ROI では中心点(\pos)と長辺の傾き(\frz)を自動計算し、\frx/\fry は 0 として保存されるため手動調整が可能です。実写シーン文字の原位置再配置に適します。</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+12"/>
+        <source>叠加（默认）</source>
+        <translation>重ねて表示（既定）</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>遮罩原文字</source>
+        <translation>元の文字をマスク</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>外置展示框</source>
+        <translation>外側ボックスで表示</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>空白区放置</source>
+        <translation>空白領域に配置</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。</source>
+        <translation>シーン文字（画面内テキスト）イベントのみに適用されます。選択したモードが利用できない場合は 空白領域→マスク→外側ボックス の順に自動でフォールバックします。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>场景文字显示：</source>
+        <translation>シーン文字表示：</translation>
+    </message>
+    <message>
+        <location line="+13"/>
         <source>文字颜色…</source>
         <translation>文字色…</translation>
     </message>
@@ -1594,7 +1659,7 @@
         <translation>すべて保持（フィルタなし）</translation>
     </message>
     <message>
-        <location line="+206"/>
+        <location line="+209"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
@@ -1604,7 +1669,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="-1"/>
-        <location filename="../main_window/roi_editing.py" line="-150"/>
+        <location filename="../main_window/roi_editing.py" line="-153"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1616,7 +1681,7 @@
         <translation>開始時刻を終了時刻より後にすることはできません。</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+53"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>ROI 項目の作成中にエラー：{}</translation>
     </message>
@@ -2195,7 +2260,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+105"/>
+        <location filename="../core/pipeline_worker.py" line="+180"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中間ファイルは以下に保存されます: {}</translation>
     </message>
@@ -2346,7 +2411,12 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+12"/>
+        <location filename="../core/pipeline_worker.py" line="-112"/>
+        <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+124"/>
         <source>Step 1-3/4: Processing chunks in parallel...</source>
         <translation>ステップ 1-3/4: チャンクを並列処理中...</translation>
     </message>
@@ -2361,7 +2431,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>ステップ4/4: ASS字幕ファイル生成を開始中...</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+56"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation>ステップ4/4: ASS字幕生成完了。</translation>
     </message>
