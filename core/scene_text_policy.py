@@ -21,9 +21,16 @@
 - 自动回退链 **whitespace → mask → external**(仅当所选模式为三者之一且
   不可用时降级;overlap 不参与回退),降级原因记录在返回的 notes 里;
 - :func:`sample_background_color` —— 块区域剔除墨水像素后的中位色 +
-  通道标准差(mask 可用性判据);
+  通道标准差(mask 可用性判据);:func:`sample_background_stats` 是其加强
+  版:额外给出稳健离散(MAD/IQR 的 σ 等价)、采样像素数与置信度,并以
+  ``background_mode="robust"`` 启用双向墨剔除 + MAD/IQR 判定(默认
+  ``"std"`` 与旧阈值规则完全一致,置信度只作诊断不参与判定);
 - :func:`merge_line_blocks` —— 段落块合并(整段一次盖住,行距缝隙不露字);
 - :func:`find_whitespace_band` —— 墨迹二值化 + 行占用剖面找空白带;
+  :func:`find_whitespace_band_scored` 额外返回候选带的 confidence 评分
+  (面积/宽高/背景均匀性/可排版长度)与逐项分量,并支持 ``threshold_mode``
+  = ``percentile``(行内百分位,适应渐变)/``otsu``(默认 ``global`` 与
+  旧行为一致);低置信度带由调用方沿既定回退链降级并在 diagnostics 留痕;
 - :func:`wrap_cjk` / :func:`fit_font_size` —— CJK 折行(行首禁则)与字号适配。
 
 轨迹生成完全复用 :mod:`core.motion_ass`(块/合成行框角点经
@@ -58,9 +65,12 @@ from core.motion_ass import (
 __all__ = [
     "SceneTextPolicyConfig",
     "PolicyResult",
+    "BackgroundStats",
     "sample_background_color",
+    "sample_background_stats",
     "merge_line_blocks",
     "find_whitespace_band",
+    "find_whitespace_band_scored",
     "wrap_cjk",
     "fit_font_size",
     "apply_policy",
@@ -68,6 +78,17 @@ __all__ = [
 ]
 
 POLICY_MODES = ("overlap", "mask", "external", "whitespace")
+
+# sample_background_stats 的 background_mode 取值:
+# "std"    —— 旧规则:非墨像素逐通道 std 的最大值 vs bg_max_std(默认,兼容);
+# "robust" —— 双向墨剔除 + MAD/IQR σ 等价离散 + 样本数/置信度判定。
+BACKGROUND_MODES = ("std", "robust")
+
+# find_whitespace_band 的 threshold_mode 取值:
+# "global"     —— 旧规则:全图中位灰 − ink 阈值(默认,兼容);
+# "percentile" —— 行内百分位阈值(逐行自适应,适应纵向渐变);
+# "otsu"       —— 全图 Otsu 二值化阈值。
+WS_THRESHOLD_MODES = ("global", "percentile", "otsu")
 
 # diagnostics["ref_frame_source"] 取值:显式传入 / 由 tracks[0] 推断 / 不适用
 _REF_EXPLICIT, _REF_INFERRED, _REF_NONE = "explicit", "inferred", "none"
@@ -90,16 +111,31 @@ class SceneTextPolicyConfig:
     mask_pad_ratio: float = 0.12   # 遮罩外扩(×行高)
     block_vgap_ratio: float = 0.35 # 并块的垂直间距阈值(×两行平均行高)
     bg_max_std: float = 18.0       # 遮罩降级的背景通道标准差上限
+    background_mode: str = "std"   # std(旧规则) | robust(MAD/IQR+置信度)
+    bg_min_samples: int = 512      # robust:采样充足度分母(少于则置信度降)
+    bg_min_confidence: float = 0.2  # robust:mask 置信度下限(不足→降级)
     external_pos: str = "bottom"   # external 位置 bottom/top
     external_margin: int = 40      # external 边距(px)
     ws_min_lines: int = 2          # 空白带最小高度(行)
     ws_min_width_ratio: float = 0.6  # 空白带最小宽度(×平面宽)
+    ws_threshold_mode: str = "global"  # global(旧规则) | percentile | otsu
+    ws_percentile: float = 25.0    # percentile 模式的行内百分位
+    ws_min_confidence: float = 0.0  # 候选带置信度下限(0=不筛,旧行为)
 
     def __post_init__(self) -> None:
         if self.mode not in POLICY_MODES:
             raise ValueError(
                 f"unknown scene text policy mode: {self.mode!r}; "
                 f"valid modes: {', '.join(POLICY_MODES)}")
+        if self.background_mode not in BACKGROUND_MODES:
+            raise ValueError(
+                f"unknown background mode: {self.background_mode!r}; "
+                f"valid modes: {', '.join(BACKGROUND_MODES)}")
+        if self.ws_threshold_mode not in WS_THRESHOLD_MODES:
+            raise ValueError(
+                f"unknown whitespace threshold mode: "
+                f"{self.ws_threshold_mode!r}; "
+                f"valid modes: {', '.join(WS_THRESHOLD_MODES)}")
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +220,14 @@ def _validate_rows(
     return valid, indices, stats
 
 
+def _merge_bg_diag(diag: Dict[str, object],
+                   diag_extra: Dict[str, object]) -> Dict[str, object]:
+    """把背景/空白带诊断(mask 逐块统计、候选带与 confidence)并入 diag。"""
+    diag["background_blocks"] = list(diag_extra.get("background_blocks", []))
+    diag["whitespace_band"] = diag_extra.get("whitespace_band")
+    return diag
+
+
 def _result_diagnostics(
     requested_mode: str,
     applied_mode: str,
@@ -221,6 +265,117 @@ def _clip_box(box: Sequence[float], width: int, height: int) -> Optional[Tuple[i
     return x1, y1, x2, y2
 
 
+@dataclass(frozen=True)
+class BackgroundStats:
+    """背景取色统计(:func:`sample_background_stats` 的返回值)。
+
+    ``color_bgr`` / ``std_max_channel`` 与 :func:`sample_background_color`
+    的旧二元组语义一致;其余字段为 Task 3 加固新增——``robust_spread_mad``
+    = ``1.4826 × MAD``、``robust_spread_iqr`` = ``IQR / 1.349``(均为逐通道
+    最大值的 σ 等价离散),``n_samples`` 为剔除墨水后的采样像素数,
+    ``confidence`` ∈ [0, 1] = 均匀度 × 采样充足度,``uniform`` 为当前模式
+    下的可用性判定(std 模式即旧 ``std <= bg_max_std`` 规则)。
+    """
+
+    color_bgr: Tuple[int, int, int]
+    std_max_channel: float
+    robust_spread_mad: float
+    robust_spread_iqr: float
+    n_samples: int
+    confidence: float
+    mode: str
+    uniform: bool
+
+    @property
+    def robust_spread(self) -> float:
+        """robust 模式的判定值:MAD 与 IQR 两种 σ 估计的较大者。"""
+        return max(self.robust_spread_mad, self.robust_spread_iqr)
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def sample_background_stats(
+    plane_img_bgr: np.ndarray,
+    box: Sequence[float],
+    *,
+    ink_drop_delta: int = _INK_DROP_DELTA,
+    background_mode: str = "std",
+    bg_max_std: float = 18.0,
+    bg_min_samples: int = 512,
+    bg_min_confidence: float = 0.2,
+) -> BackgroundStats:
+    """块区域背景取色的完整统计(旧 :func:`sample_background_color` 的加强版)。
+
+    区域内灰度中位值 ``m``;``background_mode="std"``(默认)沿用旧规则:
+    灰度 < ``m - ink_drop_delta`` 判墨剔除,剩余像素按通道取中位 → 遮罩色,
+    ``std_max_channel`` = 非墨像素逐通道 std 的最大值,``uniform`` = 旧
+    ``std <= bg_max_std`` 判定(默认配置下与旧行为完全一致)。
+    ``background_mode="robust"``:墨剔除改为双向(偏离中位超过
+    ``ink_drop_delta``,暗底反白字的亮笔画同样剔除),并统计 MAD/IQR 的
+    σ 等价离散、采样像素数;``confidence`` = ``clamp01(1 - spread/threshold)``
+    × ``min(1, n_samples/bg_min_samples)``,``uniform`` 要求 robust spread
+    ≤ ``bg_max_std`` 且 confidence ≥ ``bg_min_confidence``。
+
+    剔除后无像素(std 模式的全墨防御)→ 全区域中位色、std=0;空区域
+    (框在图外)→ ``n_samples=0``、confidence=0、``uniform=False``
+    (旧接口仍返回 ``((0, 0, 0), 0.0)`` 不变)。``background_mode`` 非法时
+    抛 :class:`ValueError`。
+    """
+    if background_mode not in BACKGROUND_MODES:
+        raise ValueError(
+            f"unknown background mode: {background_mode!r}; "
+            f"valid modes: {', '.join(BACKGROUND_MODES)}")
+    h, w = plane_img_bgr.shape[:2]
+    clipped = _clip_box(box, w, h)
+    if clipped is None:
+        return BackgroundStats((0, 0, 0), 0.0, 0.0, 0.0, 0, 0.0,
+                               background_mode, False)
+    x1, y1, x2, y2 = clipped
+    region = plane_img_bgr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY).astype(np.float64)
+    med_gray = float(np.median(gray))
+    if background_mode == "robust":
+        # 双向墨剔除:暗笔画与暗底上的反白亮字都算「墨」
+        keep = np.abs(gray - med_gray) <= float(ink_drop_delta)
+    else:
+        keep = gray >= med_gray - float(ink_drop_delta)
+    if not bool(keep.any()):
+        # 全为墨(std 模式的数学边界,防御):退回全区域中位色
+        flat = region.reshape(-1, 3)
+        med = np.median(flat, axis=0)
+        color = (int(round(float(med[0]))), int(round(float(med[1]))),
+                 int(round(float(med[2]))))
+        total = int(gray.size)
+        confidence = min(1.0, total / max(1, int(bg_min_samples)))
+        return BackgroundStats(color, 0.0, 0.0, 0.0, total, confidence,
+                               background_mode, True)
+    pixels = region[keep].astype(np.float64)
+    med = np.median(pixels, axis=0)
+    color = (int(round(float(med[0]))), int(round(float(med[1]))),
+             int(round(float(med[2]))))
+    std = float(np.max(np.std(pixels, axis=0)))
+    n_samples = int(keep.sum())
+    mad = np.median(np.abs(pixels - med), axis=0)
+    robust_mad = float(np.max(1.4826 * mad))
+    q1, q3 = np.percentile(pixels, (25.0, 75.0), axis=0)
+    robust_iqr = float(np.max((q3 - q1) / 1.349))
+    threshold = float(bg_max_std)
+    spread = std if background_mode == "std" else max(robust_mad, robust_iqr)
+    uniformity = (_clamp01(1.0 - spread / threshold) if threshold > 0.0
+                  else (1.0 if spread <= 0.0 else 0.0))
+    sufficiency = min(1.0, n_samples / max(1, int(bg_min_samples)))
+    confidence = uniformity * sufficiency
+    if background_mode == "robust":
+        uniform = (spread <= threshold and n_samples > 0
+                   and confidence >= float(bg_min_confidence))
+    else:
+        uniform = std <= threshold  # 旧判定规则,逐字保留
+    return BackgroundStats(color, std, robust_mad, robust_iqr, n_samples,
+                           confidence, background_mode, uniform)
+
+
 def sample_background_color(
     plane_img_bgr: np.ndarray,
     box: Sequence[float],
@@ -229,30 +384,16 @@ def sample_background_color(
 ) -> Tuple[Tuple[int, int, int], float]:
     """块区域内剔除墨水像素后的背景色 (B, G, R) 与均匀性(最大通道 std)。
 
-    区域内灰度中位值 ``m``,灰度 < ``m - ink_drop_delta`` 判为墨水剔除
-    (识别文字笔画);剩余像素按通道取中位 → 遮罩色,同时返回非墨像素的
-    通道标准差(最大通道,> ``bg_max_std`` 视为背景杂色、mask 降级)。
-    剔除后无像素 → 全区域中位色,std=0;空区域(框在图外)→ ((0,0,0), 0.0)。
+    旧接口的兼容包装(语义与加固前完全一致):区域内灰度中位值 ``m``,
+    灰度 < ``m - ink_drop_delta`` 判为墨水剔除;剩余像素按通道取中位 →
+    遮罩色,同时返回非墨像素的通道标准差(最大通道,> ``bg_max_std`` 视为
+    背景杂色、mask 降级)。剔除后无像素 → 全区域中位色,std=0;空区域 →
+    ``((0, 0, 0), 0.0)``。需要 MAD/IQR、样本数与置信度时改用
+    :func:`sample_background_stats`。
     """
-    h, w = plane_img_bgr.shape[:2]
-    clipped = _clip_box(box, w, h)
-    if clipped is None:
-        return (0, 0, 0), 0.0
-    x1, y1, x2, y2 = clipped
-    region = plane_img_bgr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-    keep = gray >= float(np.median(gray)) - float(ink_drop_delta)
-    if not bool(keep.any()):
-        # 全为墨(数学上罕见,防御):退回全区域中位色
-        flat = region.reshape(-1, 3)
-        med = np.median(flat, axis=0)
-        return (int(round(float(med[0]))), int(round(float(med[1]))),
-                int(round(float(med[2])))), 0.0
-    pixels = region[keep].astype(np.float64)
-    med = np.median(pixels, axis=0)
-    std = float(np.max(np.std(pixels, axis=0)))
-    return (int(round(float(med[0]))), int(round(float(med[1]))),
-            int(round(float(med[2])))), std
+    stats = sample_background_stats(plane_img_bgr, box,
+                                    ink_drop_delta=ink_drop_delta)
+    return stats.color_bgr, stats.std_max_channel
 
 
 def merge_line_blocks(
@@ -289,26 +430,75 @@ def merge_line_blocks(
     return blocks
 
 
-def find_whitespace_band(
+def _ink_mask(
+    gray: np.ndarray,
+    threshold_mode: str,
+    ws_percentile: float,
+) -> np.ndarray:
+    """墨迹二值化(布尔阵列,``True`` = 墨)。
+
+    ``global``(默认)= 全图中位灰 − 阈值(旧行为);``percentile`` =
+    逐行百分位 − 阈值(行内自适应,纵向渐变不再整块误判墨迹);``otsu``
+    = 全图 Otsu 阈值。非法模式抛 :class:`ValueError`。
+    """
+    if threshold_mode not in WS_THRESHOLD_MODES:
+        raise ValueError(
+            f"unknown whitespace threshold mode: {threshold_mode!r}; "
+            f"valid modes: {', '.join(WS_THRESHOLD_MODES)}")
+    gray_f = gray.astype(np.float64)
+    if threshold_mode == "percentile":
+        row_thr = np.percentile(gray_f, float(ws_percentile), axis=1,
+                                keepdims=True)
+        return gray_f < row_thr - _INK_DROP_DELTA
+    if threshold_mode == "otsu":
+        otsu_thr, _bin = cv2.threshold(gray_f.astype(np.uint8), 0, 255,
+                                       cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # cv2 的 Otsu 在直方图间隙上取下沿(如暗类 20/亮类 240 → 阈值 20),
+        # 因此暗类判定用 <=;常数图 Otsu 返回 0 → 无墨(整面即为空白带)
+        return gray_f <= float(otsu_thr)
+    return gray_f < float(np.median(gray_f)) - _INK_DROP_DELTA
+
+
+def _band_confidence(components: Dict[str, float], layout_score: float) -> float:
+    """候选空白带 confidence = 面积/宽高/均匀性/可排版长度四项等权平均。"""
+    return 0.25 * (float(components["c_area"]) + float(components["c_size"])
+                   + float(components["c_uniformity"])
+                   + _clamp01(layout_score))
+
+
+def find_whitespace_band_scored(
     plane_img_gray: np.ndarray,
     occupied_boxes: Sequence[Sequence[float]],
     *,
     line_h: float,
     min_lines: int = 2,
     min_width_ratio: float = 0.6,
-) -> Optional[Tuple[int, int, int, int]]:
-    """在平面展开图上找可放文本的空白带,返回平面坐标 (x1, y1, x2, y2);无则 None。
+    threshold_mode: str = "global",
+    ws_percentile: float = 25.0,
+) -> Tuple[Optional[Tuple[int, int, int, int]], float, Dict[str, object]]:
+    """:func:`find_whitespace_band` 的评分版:返回 ``(band, confidence, info)``。
 
-    墨迹 = 灰度 < (全图中位灰 - 40),膨胀(核 ≈ ``line_h``/4)后得行占用
-    剖面;``occupied_boxes`` 所在行同样算占用。候选带 = 连续未占用行段
-    (首块上方/块间空隙/末块下方),高 ≥ ``min_lines``×``line_h``、宽 ≥
-    ``min_width_ratio``×平面宽;取面积最大者。
+    候选带选择与旧规则一致(面积最大者);confidence ∈ [0,1] 按「面积占比、
+    宽高达标度、背景均匀性、可排版长度」四项等权平均——可排版长度一项需
+    要实际折行结果,此处取满分 1.0,由调用方(:func:`_apply_whitespace` /
+    :func:`_apply_static_whitespace`)在折行后用 :func:`_band_confidence`
+    按真实 ``c_layout`` 重算。``info`` 携带阈值模式、候选带数量与各项分量
+    (``c_area`` / ``c_size`` / ``c_uniformity`` / ``robust_sigma``),
+    ``band`` 为 None 时 confidence = 0。
     """
     gray = np.asarray(plane_img_gray)
     h, w = gray.shape[:2]
+    info: Dict[str, object] = {
+        "threshold_mode": str(threshold_mode),
+        "n_candidates": 0,
+        "c_area": 0.0,
+        "c_size": 0.0,
+        "c_uniformity": 0.0,
+        "robust_sigma": 0.0,
+    }
     if h < 1 or w < 1:
-        return None
-    ink = (gray.astype(np.float64) < float(np.median(gray)) - _INK_DROP_DELTA)
+        return None, 0.0, info
+    ink = _ink_mask(gray, threshold_mode, ws_percentile)
     ink = ink.astype(np.uint8)
     k = max(1, int(round(float(line_h) / 4.0)))
     if k > 1:
@@ -320,8 +510,7 @@ def find_whitespace_band(
         if clipped is not None:
             row_occupied[clipped[1]:clipped[3]] = True
 
-    best: Optional[Tuple[int, int, int, int]] = None
-    best_area = 0
+    candidates: List[Tuple[int, int, int, int]] = []
     y = 0
     while y < h:
         if row_occupied[y]:
@@ -342,11 +531,61 @@ def find_whitespace_band(
             while x < w and col_free[x]:
                 x += 1
             if (x - x0) >= float(min_width_ratio) * float(w):
-                area = (x - x0) * (y - y0)
-                if area > best_area:
-                    best_area = area
-                    best = (x0, y0, x, y)
-    return best
+                candidates.append((x0, y0, x, y))
+    if not candidates:
+        return None, 0.0, info
+    # 与旧实现一致:面积最大者(并列取扫描序先出现者)
+    band = max(candidates, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+    x1, y1, x2, y2 = band
+    band_w = float(x2 - x1)
+    band_h = float(y2 - y1)
+    plane_area = float(h) * float(w)
+    band_gray = gray[y1:y2, x1:x2].astype(np.float64)
+    med = float(np.median(band_gray))
+    robust_sigma = float(1.4826 * np.median(np.abs(band_gray - med)))
+    c_area = _clamp01((band_w * band_h) / plane_area)
+    c_size = 0.5 * (
+        _clamp01(band_h / (float(min_lines) * float(line_h)))
+        + _clamp01(band_w / (float(min_width_ratio) * float(w))))
+    # 带内灰度稳健 σ 达到墨迹阈值即视为完全不均匀(与 _INK_DROP_DELTA 同锚)
+    c_uniformity = _clamp01(1.0 - robust_sigma / float(_INK_DROP_DELTA))
+    confidence = _band_confidence(
+        {"c_area": c_area, "c_size": c_size, "c_uniformity": c_uniformity},
+        1.0)
+    info.update({
+        "n_candidates": len(candidates),
+        "c_area": c_area,
+        "c_size": c_size,
+        "c_uniformity": c_uniformity,
+        "robust_sigma": robust_sigma,
+    })
+    return band, confidence, info
+
+
+def find_whitespace_band(
+    plane_img_gray: np.ndarray,
+    occupied_boxes: Sequence[Sequence[float]],
+    *,
+    line_h: float,
+    min_lines: int = 2,
+    min_width_ratio: float = 0.6,
+    threshold_mode: str = "global",
+    ws_percentile: float = 25.0,
+) -> Optional[Tuple[int, int, int, int]]:
+    """在平面展开图上找可放文本的空白带,返回平面坐标 (x1, y1, x2, y2);无则 None。
+
+    墨迹 = :func:`_ink_mask`(默认「全图中位灰 − 40」,与旧行为一致),
+    膨胀(核 ≈ ``line_h``/4)后得行占用剖面;``occupied_boxes`` 所在行同样
+    算占用。候选带 = 连续未占用行段(首块上方/块间空隙/末块下方),高 ≥
+    ``min_lines``×``line_h``、宽 ≥ ``min_width_ratio``×平面宽;取面积最大者。
+    ``threshold_mode``/``ws_percentile`` 见 :func:`_ink_mask`;需要
+    confidence 评分时改用 :func:`find_whitespace_band_scored`。
+    """
+    band, _confidence, _info = find_whitespace_band_scored(
+        plane_img_gray, occupied_boxes, line_h=line_h, min_lines=min_lines,
+        min_width_ratio=min_width_ratio, threshold_mode=threshold_mode,
+        ws_percentile=ws_percentile)
+    return band
 
 
 # 行首禁则字符(不得出现在折行后行首)
@@ -613,15 +852,20 @@ def _apply_mask(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     ref_frame: Optional[int] = None,
     orig_indices: Optional[Sequence[int]] = None,
+    diag_extra: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """mask 模式:低层纯色遮罩盖住原文字(layer 0)+ 原文本事件(layer 1)。
 
-    每块取色并检查背景均匀性:任一块非墨像素通道 std > ``bg_max_std``
-    (背景杂色,纯色补丁观感突兀)→ 整体回退 external。``ref_frame`` 透传
-    给遮罩轨迹重建(缺省隐式 ``tracks[0].frame_num``,旧行为);行尾标点
-    补偿按行计算,遮罩取「按行补偿后求 union」。``orig_indices`` 为排序后
-    行位置 → ``blocks_meta`` 输入序下标的映射,供 external 回退时按
-    ``line_idx`` 建立事件归属。
+    每块取色并检查背景均匀性:默认 ``background_mode="std"`` 任一块非墨
+    像素通道 std > ``bg_max_std`` → 整体回退 external(旧规则不变);
+    ``background_mode="robust"`` 用 :func:`sample_background_stats` 的
+    MAD/IQR 离散、样本数与置信度判定。``diag_extra``(可选)就地累加
+    ``background_blocks`` 逐块统计(std/robust spread/样本数/置信度),
+    由入口合并进 ``PolicyResult.diagnostics``。``ref_frame`` 透传给遮罩
+    轨迹重建(缺省隐式 ``tracks[0].frame_num``,旧行为);行尾标点补偿按行
+    计算,遮罩取「按行补偿后求 union」。``orig_indices`` 为排序后行位置 →
+    ``blocks_meta`` 输入序下标的映射,供 external 回退时按 ``line_idx``
+    建立事件归属。
     """
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
@@ -638,16 +882,46 @@ def _apply_mask(
             for text, rbox in rows[s:e + 1]]
         mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
                                          cfg, analysis_box, row_dx=row_dx)
-        color, std = sample_background_color(plane_img_bgr, mbox)
-        if std > float(cfg.bg_max_std):
-            notes.append(
-                f"mask->external: block {bi} background channel std "
-                f"{std:.1f} > bg_max_std {float(cfg.bg_max_std):g}")
+        stats = sample_background_stats(
+            plane_img_bgr, mbox,
+            background_mode=cfg.background_mode,
+            bg_max_std=float(cfg.bg_max_std),
+            bg_min_samples=int(cfg.bg_min_samples),
+            bg_min_confidence=float(cfg.bg_min_confidence))
+        if diag_extra is not None:
+            diag_extra.setdefault("background_blocks", []).append({
+                "block": int(bi),
+                "box": [round(float(v), 2) for v in mbox],
+                "mode": stats.mode,
+                "std": round(stats.std_max_channel, 2),
+                "robust_spread_mad": round(stats.robust_spread_mad, 2),
+                "robust_spread_iqr": round(stats.robust_spread_iqr, 2),
+                "n_samples": int(stats.n_samples),
+                "confidence": round(stats.confidence, 4),
+                "uniform": bool(stats.uniform),
+            })
+        if not stats.uniform:
+            if stats.mode == "robust":
+                if stats.n_samples <= 0:
+                    reason = "no background samples"
+                elif stats.robust_spread > float(cfg.bg_max_std):
+                    reason = (f"background robust spread "
+                              f"{stats.robust_spread:.1f} > bg_max_std "
+                              f"{float(cfg.bg_max_std):g}")
+                else:
+                    reason = (f"background confidence "
+                              f"{stats.confidence:.2f} < bg_min_confidence "
+                              f"{float(cfg.bg_min_confidence):g}")
+            else:
+                reason = (f"background channel std {stats.std_max_channel:.1f} "
+                          f"> bg_max_std {float(cfg.bg_max_std):g}")
+            notes.append(f"mask->external: block {bi} {reason}")
             ext = _apply_external(events, rows, blocks, tracks, cfg,
                                   video_w, video_h, motion_cfg, style, notes,
                                   orig_indices=orig_indices)
             return ext, "external", notes
-        out.extend(_mask_events_for_block(mbox, color, tracks, motion_cfg,
+        out.extend(_mask_events_for_block(mbox, stats.color_bgr, tracks,
+                                          motion_cfg,
                                           ref_frame=ref_frame, style=style))
     # 所有识别行都归属某块 → 文本事件整体升到 layer 1(遮罩之下)
     out.extend(dict(ev, layer=1) for ev in events)
@@ -771,21 +1045,27 @@ def _apply_whitespace(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     ref_frame: Optional[int] = None,
     orig_indices: Optional[Sequence[int]] = None,
+    diag_extra: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """whitespace 模式:全部块文本合并放进原文字空白带(合成行框复用轨迹)。
 
     ``ref_frame`` 为行框所在平面坐标系的参考帧;缺省回退旧行为
     (隐式 ``tracks[0].frame_num``,由入口在 diagnostics 注明)。
     ``orig_indices`` 供回退链(mask → external)建立事件归属。
+    候选带 confidence(面积/宽高/均匀性/可排版长度)低于
+    ``ws_min_confidence`` 时按既定回退链降级 mask,候选带与置信度先写入
+    ``diag_extra["whitespace_band"]`` 留痕。
     """
     gray, ox, oy = _analysis_gray(plane_img_bgr, analysis_box)
     line_h = sum(float(b[3]) - float(b[1]) for _t, b in rows) / max(1, len(rows))
     local_boxes = [(float(b[0]) - ox, float(b[1]) - oy,
                     float(b[2]) - ox, float(b[3]) - oy) for _t, b in rows]
-    band = find_whitespace_band(
+    band, _scored_conf, binfo = find_whitespace_band_scored(
         gray, local_boxes, line_h=line_h,
         min_lines=int(cfg.ws_min_lines),
-        min_width_ratio=float(cfg.ws_min_width_ratio))
+        min_width_ratio=float(cfg.ws_min_width_ratio),
+        threshold_mode=cfg.ws_threshold_mode,
+        ws_percentile=float(cfg.ws_percentile))
     if band is None:
         notes.append(
             f"whitespace->mask: no whitespace band "
@@ -794,7 +1074,7 @@ def _apply_whitespace(
         return _apply_mask(events, rows, blocks, plane_img_bgr, tracks, cfg,
                            video_w, video_h, motion_cfg, style, notes,
                            analysis_box=analysis_box, ref_frame=ref_frame,
-                           orig_indices=orig_indices)
+                           orig_indices=orig_indices, diag_extra=diag_extra)
     band = (band[0] + ox, band[1] + oy, band[2] + ox, band[3] + oy)
 
     band_w = float(band[2] - band[0])
@@ -805,6 +1085,32 @@ def _apply_whitespace(
         parts.extend(wrap_cjk(text, max_chars))
     longest = max(len(p) for p in parts)
     fs = fit_font_size(len(parts), band_h, longest, band_w)
+    # 可排版长度评分:折行后的总行高/最长行宽与带尺寸之比(不足则降分)
+    need_h = max(1.0, float(fs) * len(parts))
+    need_w = max(1.0, float(fs) * max(1, longest))
+    c_layout = _clamp01(min(band_h / need_h, band_w / need_w))
+    confidence = _band_confidence(binfo, c_layout)
+    if diag_extra is not None:
+        diag_extra["whitespace_band"] = {
+            "box": [int(v) for v in band],
+            "confidence": round(confidence, 4),
+            "threshold_mode": str(binfo["threshold_mode"]),
+            "n_candidates": int(binfo["n_candidates"]),
+            "c_area": round(float(binfo["c_area"]), 4),
+            "c_size": round(float(binfo["c_size"]), 4),
+            "c_uniformity": round(float(binfo["c_uniformity"]), 4),
+            "c_layout": round(c_layout, 4),
+            "uniformity_sigma": round(float(binfo["robust_sigma"]), 2),
+        }
+    if confidence < float(cfg.ws_min_confidence):
+        notes.append(
+            f"whitespace->mask: whitespace band confidence "
+            f"{confidence:.2f} < ws_min_confidence "
+            f"{float(cfg.ws_min_confidence):g}")
+        return _apply_mask(events, rows, blocks, plane_img_bgr, tracks, cfg,
+                           video_w, video_h, motion_cfg, style, notes,
+                           analysis_box=analysis_box, ref_frame=ref_frame,
+                           orig_indices=orig_indices, diag_extra=diag_extra)
 
     # 合成行框(带内垂直居中、左对齐,行高 = 字号)直接喂 build_line_tracks
     y0 = float(band[1]) + (band_h - fs * len(parts)) / 2.0
@@ -855,7 +1161,10 @@ def apply_policy(
     返回 :class:`PolicyResult`:兼容 ``(events, applied_policy, notes)``
     三元组解包;notes 记录回退原因(whitespace→mask→external,仅所选模式
     不可用时降级;overlap 不回退),由 CLI 打 warn 日志。diagnostics 携带
-    requested/applied mode、参考帧与行框有效性统计。``tracks`` 为空时
+    requested/applied mode、参考帧、行框有效性统计,以及逐块背景统计
+    (``background_blocks``:std、robust spread、样本数、confidence)与
+    候选空白带(``whitespace_band``:box、confidence 及评分分量)。
+    ``tracks`` 为空时
     mask/whitespace 沿回退链降级 external(记录原因),overlap 原样返回
     事件(不修改输入)。
     """
@@ -863,6 +1172,7 @@ def apply_policy(
     plane_h, plane_w = plane_img_bgr.shape[:2]
     rows_kept, valid_indices, row_stats = _validate_rows(
         blocks_meta, plane_w, plane_h)
+    diag_extra: Dict[str, object] = {}
     if ref_frame is not None:
         ref, ref_source = int(ref_frame), _REF_EXPLICIT
     elif len(tracks):
@@ -872,7 +1182,8 @@ def apply_policy(
     diag = _result_diagnostics(mode, mode, ref_frame=ref,
                                ref_source=ref_source, row_stats=row_stats)
     if mode == "overlap":
-        return PolicyResult(list(events), "overlap", [], mode, diag)
+        return PolicyResult(list(events), "overlap", [], mode,
+                            _merge_bg_diag(diag, diag_extra))
     mcfg = motion_cfg if motion_cfg is not None else MotionAssConfig()
     rows = _sorted_rows(rows_kept)
     if not rows:
@@ -885,7 +1196,8 @@ def apply_policy(
         else:
             note = f"{mode}: no recognized text rows; policy not applied"
         diag["applied_mode"] = "overlap"
-        return PolicyResult(list(events), "overlap", [note], mode, diag)
+        return PolicyResult(list(events), "overlap", [note], mode,
+                            _merge_bg_diag(diag, diag_extra))
     blocks = merge_line_blocks([b for _t, b in rows],
                                vgap_ratio=float(cfg.block_vgap_ratio))
     # 行 ID:排序后行位置 → blocks_meta 输入序下标(行框校验保持输入序,
@@ -903,12 +1215,13 @@ def apply_policy(
                               video_w, video_h, mcfg, style, notes,
                               orig_indices=orig_indices)
         diag["applied_mode"] = "external"
-        return PolicyResult(out, "external", notes, mode, diag)
+        return PolicyResult(out, "external", notes, mode,
+                            _merge_bg_diag(diag, diag_extra))
     if mode == "mask":
         out, applied, notes = _apply_mask(
             list(events), rows, blocks, plane_img_bgr, tracks, cfg,
             video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
-            ref_frame=ref, orig_indices=orig_indices)
+            ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra)
     elif mode == "external":
         out, applied, notes = (_apply_external(list(events), rows, blocks,
                                                tracks, cfg, video_w, video_h,
@@ -919,13 +1232,14 @@ def apply_policy(
         out, applied, notes = _apply_whitespace(
             list(events), rows, blocks, plane_img_bgr, tracks, cfg,
             video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
-            ref_frame=ref, orig_indices=orig_indices)
+            ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra)
     else:
         raise ValueError(
             f"unknown scene text policy mode: {mode!r}; "
             f"valid modes: {', '.join(POLICY_MODES)}")
     diag["applied_mode"] = applied
-    return PolicyResult(out, applied, notes, mode, diag)
+    return PolicyResult(out, applied, notes, mode,
+                        _merge_bg_diag(diag, diag_extra))
 
 
 # ---------------------------------------------------------------------------
@@ -1009,26 +1323,58 @@ def _apply_static_mask(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     base_fs: int = _WRAP_BASE_FS,
     style: str = "Scene",
+    diag_extra: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """mask 静态路径:每块一条静态矩形 + 全部原行(layer 1)。
 
-    取色/背景杂色检查/外扩框与 motion 版共用(按行外扩后求 union);任一
-    块背景 std 超限 → 回退 external(单条 NoteBox spec)。
+    取色/背景杂色检查/外扩框与 motion 版共用(按行外扩后求 union);默认
+    ``background_mode="std"`` 任一块背景 std 超限 → 回退 external(旧规则
+    不变),robust 模式按 MAD/IQR + 样本数 + 置信度判定;逐块统计经
+    ``diag_extra`` 累加供入口并入 diagnostics。
     """
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
     for bi, (s, e) in enumerate(blocks):
         mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
                                          cfg, analysis_box)
-        color, std = sample_background_color(plane_img_bgr, mbox)
-        if std > float(cfg.bg_max_std):
-            notes.append(
-                f"mask->external: block {bi} background channel std "
-                f"{std:.1f} > bg_max_std {float(cfg.bg_max_std):g}")
+        stats = sample_background_stats(
+            plane_img_bgr, mbox,
+            background_mode=cfg.background_mode,
+            bg_max_std=float(cfg.bg_max_std),
+            bg_min_samples=int(cfg.bg_min_samples),
+            bg_min_confidence=float(cfg.bg_min_confidence))
+        if diag_extra is not None:
+            diag_extra.setdefault("background_blocks", []).append({
+                "block": int(bi),
+                "box": [round(float(v), 2) for v in mbox],
+                "mode": stats.mode,
+                "std": round(stats.std_max_channel, 2),
+                "robust_spread_mad": round(stats.robust_spread_mad, 2),
+                "robust_spread_iqr": round(stats.robust_spread_iqr, 2),
+                "n_samples": int(stats.n_samples),
+                "confidence": round(stats.confidence, 4),
+                "uniform": bool(stats.uniform),
+            })
+        if not stats.uniform:
+            if stats.mode == "robust":
+                if stats.n_samples <= 0:
+                    reason = "no background samples"
+                elif stats.robust_spread > float(cfg.bg_max_std):
+                    reason = (f"background robust spread "
+                              f"{stats.robust_spread:.1f} > bg_max_std "
+                              f"{float(cfg.bg_max_std):g}")
+                else:
+                    reason = (f"background confidence "
+                              f"{stats.confidence:.2f} < bg_min_confidence "
+                              f"{float(cfg.bg_min_confidence):g}")
+            else:
+                reason = (f"background channel std {stats.std_max_channel:.1f} "
+                          f"> bg_max_std {float(cfg.bg_max_std):g}")
+            notes.append(f"mask->external: block {bi} {reason}")
             spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
             return ([spec] if spec else []), "external", notes
-        out.append(_static_mask_spec(mbox, color, orig_indices[s:e + 1],
-                                     style=style))
+        out.append(_static_mask_spec(mbox, stats.color_bgr,
+                                     orig_indices[s:e + 1], style=style))
     for i, (text, box) in enumerate(rows):
         cx = int((float(box[0]) + float(box[2])) / 2.0)
         cy = int((float(box[1]) + float(box[3])) / 2.0)
@@ -1057,20 +1403,25 @@ def _apply_static_whitespace(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     base_fs: int = _WRAP_BASE_FS,
     style: str = "Scene",
+    diag_extra: Optional[Dict[str, object]] = None,
 ) -> Optional[List[Dict]]:
     """whitespace 静态路径:全部行文本合并放进空白带(单条 \\an5\\pos spec)。
 
-    带检测与 motion 版共用 :func:`find_whitespace_band`;无带时记录原因并
-    返回 None(由 :func:`apply_policy_static` 沿回退链降级到 mask)。
+    带检测与 motion 版共用 :func:`find_whitespace_band_scored`(含
+    threshold_mode / 候选带 confidence 评分);无带或带 confidence 低于
+    ``ws_min_confidence`` 时记录原因(候选带先写入 ``diag_extra`` 留痕)
+    并返回 None(由 :func:`apply_policy_static` 沿回退链降级到 mask)。
     """
     gray, ox, oy = _analysis_gray(plane_img_bgr, analysis_box)
     line_h = sum(float(b[3]) - float(b[1]) for _t, b in rows) / max(1, len(rows))
     local_boxes = [(float(b[0]) - ox, float(b[1]) - oy,
                     float(b[2]) - ox, float(b[3]) - oy) for _t, b in rows]
-    band = find_whitespace_band(
+    band, _scored_conf, binfo = find_whitespace_band_scored(
         gray, local_boxes, line_h=line_h,
         min_lines=int(cfg.ws_min_lines),
-        min_width_ratio=float(cfg.ws_min_width_ratio))
+        min_width_ratio=float(cfg.ws_min_width_ratio),
+        threshold_mode=cfg.ws_threshold_mode,
+        ws_percentile=float(cfg.ws_percentile))
     if band is None:
         notes.append(
             f"whitespace->mask: no whitespace band "
@@ -1086,6 +1437,29 @@ def _apply_static_whitespace(
         parts.extend(wrap_cjk(text, max_chars))
     fs = fit_font_size(len(parts), band_h, max(len(p) for p in parts), band_w,
                        base=base_fs)
+    # 可排版长度评分(motion 版同一公式)
+    need_h = max(1.0, float(fs) * len(parts))
+    need_w = max(1.0, float(fs) * max(1, max(len(p) for p in parts)))
+    c_layout = _clamp01(min(band_h / need_h, band_w / need_w))
+    confidence = _band_confidence(binfo, c_layout)
+    if diag_extra is not None:
+        diag_extra["whitespace_band"] = {
+            "box": [int(v) for v in band],
+            "confidence": round(confidence, 4),
+            "threshold_mode": str(binfo["threshold_mode"]),
+            "n_candidates": int(binfo["n_candidates"]),
+            "c_area": round(float(binfo["c_area"]), 4),
+            "c_size": round(float(binfo["c_size"]), 4),
+            "c_uniformity": round(float(binfo["c_uniformity"]), 4),
+            "c_layout": round(c_layout, 4),
+            "uniformity_sigma": round(float(binfo["robust_sigma"]), 2),
+        }
+    if confidence < float(cfg.ws_min_confidence):
+        notes.append(
+            f"whitespace->mask: whitespace band confidence "
+            f"{confidence:.2f} < ws_min_confidence "
+            f"{float(cfg.ws_min_confidence):g}")
+        return None
     tags = (f"{{\\an5\\pos({_fmt1((float(band[0]) + float(band[2])) / 2.0)},"
             f"{_fmt1((float(band[1]) + float(band[3])) / 2.0)})\\fs{fs}}}")
     return [{
@@ -1130,17 +1504,20 @@ def apply_policy_static(
     (非有限/非正宽高/完全越界剔除,部分越界裁剪到平面边界);全部行无效时
     返回空 spec 并留痕。返回 :class:`PolicyResult`(兼容
     ``(specs, applied, notes)`` 三元组解包),diagnostics 携带
-    requested/applied mode 与行框有效性统计(静态路径无轨迹,
-    ``ref_frame`` 为 None)。
+    requested/applied mode、行框有效性统计(静态路径无轨迹,
+    ``ref_frame`` 为 None)、逐块背景统计(``background_blocks``)与候选
+    空白带(``whitespace_band``)。
     """
     mode = cfg.mode
     plane_h, plane_w = plane_img_bgr.shape[:2]
     rows_kept, kept_ids, row_stats = _validate_rows(
         rows_meta, plane_w, plane_h)
+    diag_extra: Dict[str, object] = {}
     diag = _result_diagnostics(mode, mode, ref_frame=None,
                                ref_source=_REF_NONE, row_stats=row_stats)
     if mode == "overlap":
-        return PolicyResult([], "overlap", [], mode, diag)
+        return PolicyResult([], "overlap", [], mode,
+                            _merge_bg_diag(diag, diag_extra))
     base_fs = int(base_font_size) if base_font_size else _WRAP_BASE_FS
     notes: List[str] = []
     rows = _sorted_rows(rows_kept)
@@ -1149,7 +1526,8 @@ def apply_policy_static(
             notes.append(
                 f"{mode}: all {row_stats['total_rows']} text rows invalid "
                 f"after box validation; policy not applied")
-        return PolicyResult([], mode, notes, mode, diag)
+        return PolicyResult([], mode, notes, mode,
+                            _merge_bg_diag(diag, diag_extra))
     # 行序 = 阅读序;orig_indices 把排序后位置映射回输入行索引
     # (rows_kept 保持输入序,kept_ids[j] = rows_kept[j] 的原始输入索引)
     order = sorted(
@@ -1163,21 +1541,25 @@ def apply_policy_static(
             out, applied, notes = _apply_static_mask(
                 rows, blocks, plane_img_bgr, cfg, video_w, video_h, notes,
                 orig_indices, analysis_box=analysis_box, base_fs=base_fs,
-                style=style)
+                style=style, diag_extra=diag_extra)
             diag["applied_mode"] = applied
-            return PolicyResult(out, applied, notes, cfg.mode, diag)
+            return PolicyResult(out, applied, notes, cfg.mode,
+                                _merge_bg_diag(diag, diag_extra))
         if mode == "external":
             spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
             diag["applied_mode"] = "external"
             return (PolicyResult([spec] if spec else [], "external", notes,
-                                 cfg.mode, diag))
+                                 cfg.mode,
+                                 _merge_bg_diag(diag, diag_extra)))
         if mode == "whitespace":
             specs = _apply_static_whitespace(
                 rows, plane_img_bgr, cfg, video_w, video_h, notes,
-                analysis_box=analysis_box, base_fs=base_fs, style=style)
+                analysis_box=analysis_box, base_fs=base_fs, style=style,
+                diag_extra=diag_extra)
             if specs is not None:
                 diag["applied_mode"] = "whitespace"
-                return PolicyResult(specs, "whitespace", notes, cfg.mode, diag)
+                return PolicyResult(specs, "whitespace", notes, cfg.mode,
+                                    _merge_bg_diag(diag, diag_extra))
             mode = "mask"  # 回退链:whitespace → mask
             continue
         raise ValueError(

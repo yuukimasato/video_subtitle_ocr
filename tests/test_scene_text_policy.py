@@ -21,7 +21,13 @@
   applied mode、notes、diagnostics(参考帧、行框有效性统计);行框校验
   (NaN/inf 剔除、非正宽高剔除、越界裁剪、全无效行降级留痕);
 - brightness_tag_chain 的 base_color 扩展:给定 BGR 基色时按通道缩放、
-  缺省保持灰色行为(回归由 test_motion_ass 既有用例保证)。
+  缺省保持灰色行为(回归由 test_motion_ass 既有用例保证);
+- 背景取色加固:sample_background_stats 的 robust 统计(MAD/IQR)、采样
+  像素数与 confidence;暗底反白字/压缩振铃/彩色纯色/低对比渐变/极少背景
+  像素;默认 std 模式判定与旧规则一致;
+- 空白带加固:find_whitespace_band_scored 的 confidence 评分(面积/宽高/
+  背景均匀性/可排版长度)与局部百分位/Otsu 阈值选项;低置信度按既定回退链
+  降级;diagnostics 携带逐块背景统计与候选带信息。
 
 轨迹用合成单应(平移)构造,与 test_motion_ass 同一模式;不读视频、不加载模型。
 """
@@ -48,13 +54,16 @@ from core.motion_ass import (  # noqa: E402
 )
 from core.scene_plane_tracker import TrackedQuad  # noqa: E402
 from core.scene_text_policy import (  # noqa: E402
+    BackgroundStats,
     SceneTextPolicyConfig,
     apply_policy,
     apply_policy_static,
     find_whitespace_band,
+    find_whitespace_band_scored,
     fit_font_size,
     merge_line_blocks,
     sample_background_color,
+    sample_background_stats,
     wrap_cjk,
 )
 
@@ -1153,3 +1162,399 @@ class TestMaskPerLineUnion:
         # 垂直方向覆盖两行(含 pad)
         assert y1 <= 20.0 - 1.92 + 0.5
         assert y1 + h >= 56.0 + 1.92 - 0.5
+
+
+# ---------------------------------------------------------------------------
+# Task 3:背景取色 robust 统计(先红后绿)
+# ---------------------------------------------------------------------------
+
+def make_dark_plane() -> np.ndarray:
+    """暗底反白字:背景灰 30,行框内 4px 高浅色笔画(230)。"""
+    plane = np.full((PLANE_H, PLANE_W, 3), 30, np.uint8)
+    for _text, (x1, y1, x2, _y2) in ROWS:
+        plane[int(y1) + 4:int(y1) + 8, int(x1) + 4:int(x2) - 4] = 230
+    return plane
+
+
+def make_ringing_plane() -> np.ndarray:
+    """近纯色背景(灰 128)+ 稀疏亮色压缩振铃(每 13 像素 1 个亮斑 ≈7.7%)。"""
+    plane = np.full((PLANE_H, PLANE_W, 3), 128, np.uint8)
+    yy, xx = np.mgrid[0:PLANE_H, 0:PLANE_W]
+    plane[(yy * PLANE_W + xx) % 13 == 0] = 250
+    return plane
+
+
+def make_solid_color_plane() -> np.ndarray:
+    """彩色纯色背景(青 BGR 80,160,160)+ 深色笔画。"""
+    plane = np.zeros((PLANE_H, PLANE_W, 3), np.uint8)
+    plane[:] = (80, 160, 160)
+    for _text, (x1, y1, x2, _y2) in ROWS:
+        plane[int(y1) + 4:int(y1) + 8, int(x1) + 4:int(x2) - 4] = (10, 10, 10)
+    return plane
+
+
+def make_gradient_gray(h: int, w: int, top: float, bottom: float) -> np.ndarray:
+    """垂直线性渐变灰度图(逐行常值,float64)。"""
+    rows = top + (bottom - top) * (np.arange(h, dtype=np.float64) / max(1, h - 1))
+    return np.repeat(rows[:, None], w, axis=1)
+
+
+class TestBackgroundRobustStats:
+    """sample_background_stats:MAD/IQR、样本数、confidence;默认模式等价旧规则。"""
+
+    def test_dark_bg_light_text_default_mode_degrades(self):
+        # 旧墨剔除只认「比中位暗」:反白字全部留在背景样本里 → std 爆炸
+        img = np.full((80, 120, 3), 30, np.uint8)
+        img[10:30, 10:60] = 230  # 1000/9600 像素笔画
+        stats = sample_background_stats(img, (0, 0, 120, 80))
+        assert stats.mode == "std"
+        assert stats.std_max_channel > 18.0
+        assert stats.uniform is False
+        assert stats.confidence == 0.0
+
+    def test_dark_bg_light_text_robust_mode_recovers(self):
+        img = np.full((80, 120, 3), 30, np.uint8)
+        img[10:30, 10:60] = 230
+        stats = sample_background_stats(
+            img, (0, 0, 120, 80), background_mode="robust")
+        assert isinstance(stats, BackgroundStats)
+        assert stats.mode == "robust"
+        assert stats.color_bgr == (30, 30, 30)
+        assert stats.std_max_channel < 2.0
+        assert stats.robust_spread_mad < 2.0
+        assert stats.robust_spread_iqr < 2.0
+        assert stats.n_samples == 8600  # 亮字被双向墨剔除
+        assert stats.confidence > 0.9
+        assert stats.uniform is True
+
+    def test_compression_ringing_default_vs_robust(self):
+        img = np.full((80, 120, 3), 128, np.uint8)
+        yy, xx = np.mgrid[0:80, 0:120]
+        img[(yy * 120 + xx) % 13 == 0] = 250
+        legacy = sample_background_stats(img, (0, 0, 120, 80))
+        assert legacy.std_max_channel > 18.0  # 旧规则误判为杂色
+        assert legacy.uniform is False
+        robust = sample_background_stats(
+            img, (0, 0, 120, 80), background_mode="robust")
+        assert robust.std_max_channel < 2.0
+        assert robust.robust_spread_mad < 2.0
+        assert robust.robust_spread_iqr < 2.0
+        assert robust.color_bgr == (128, 128, 128)
+        assert robust.n_samples > 0
+        assert robust.confidence > 0.9
+        assert robust.uniform is True
+
+    def test_colored_solid_background_both_modes(self):
+        img = np.full((80, 120, 3), 160, np.uint8)
+        img[:, :, 0] = 80  # BGR 青色 (80,160,160)
+        img[10:30, 10:60] = 10
+        for mode in ("std", "robust"):
+            stats = sample_background_stats(
+                img, (0, 0, 120, 80), background_mode=mode)
+            assert stats.color_bgr == (80, 160, 160), mode
+            assert stats.uniform is True, mode
+            assert stats.confidence > 0.9, mode
+        robust = sample_background_stats(
+            img, (0, 0, 120, 80), background_mode="robust")
+        assert robust.robust_spread_mad == pytest.approx(0.0, abs=1e-6)
+        assert robust.robust_spread_iqr == pytest.approx(0.0, abs=1e-6)
+        assert robust.n_samples == 8600
+
+    def test_low_contrast_gradient_stats(self):
+        # 均匀分布渐变:std = R/√12,σ 等价 MAD = 1.4826·R/4,IQR σ = (R/2)/1.349
+        img = np.zeros((80, 120, 3), np.uint8)
+        img[:] = make_gradient_gray(80, 120, 140.0, 184.0)[..., None]
+        stats = sample_background_stats(img, (0, 0, 120, 80))
+        assert stats.std_max_channel == pytest.approx(
+            44.0 / np.sqrt(12.0), abs=0.6)
+        assert stats.robust_spread_mad == pytest.approx(
+            44.0 * 1.4826 / 4.0, abs=1.2)
+        assert stats.robust_spread_iqr == pytest.approx(
+            22.0 / 1.349, abs=1.2)
+        assert stats.uniform is True  # 两种 spread 均低于旧阈值 18
+        assert 0.0 < stats.confidence < 0.5
+        robust = sample_background_stats(
+            img, (0, 0, 120, 80), background_mode="robust")
+        assert robust.robust_spread_mad == pytest.approx(
+            44.0 * 1.4826 / 4.0, abs=1.2)
+        assert robust.robust_spread_iqr == pytest.approx(
+            22.0 / 1.349, abs=1.2)
+        # robust spread 16.3 虽低于 18,但均匀度 0.09 × 置信度后低于默认
+        # 下限 0.2 → robust 模式对渐变更保守(判为不可用)
+        assert robust.uniform is False
+        assert robust.confidence < 0.2
+
+    def test_few_background_pixels_report_sample_starvation(self):
+        # 采样窗几乎被文字占满:窗 40×15,墨行 y%5∈{0,1} → 背景 360/600 像素
+        img = np.full((30, 60, 3), 245, np.uint8)
+        for y in range(30):
+            if y % 5 in (0, 1):
+                img[y, :] = 10
+        stats = sample_background_stats(
+            img, (0, 0, 40, 15), background_mode="robust")
+        assert stats.n_samples == 360
+        assert stats.confidence == pytest.approx(360 / 512, rel=1e-3)
+        assert stats.uniform is True  # 默认置信度下限 0.2 之内
+        strict = sample_background_stats(
+            img, (0, 0, 40, 15), background_mode="robust",
+            bg_min_confidence=0.8)
+        assert strict.confidence == pytest.approx(360 / 512, rel=1e-3)
+        assert strict.uniform is False  # 置信度不足 → 判定不均匀
+
+    def test_empty_region_stats_guard(self):
+        img = np.full((50, 50, 3), 245, np.uint8)
+        stats = sample_background_stats(img, (60, 60, 90, 90))
+        assert stats.n_samples == 0
+        assert stats.confidence == 0.0
+        assert stats.uniform is False
+        # 旧接口行为不变
+        assert sample_background_color(img, (60, 60, 90, 90)) == ((0, 0, 0), 0.0)
+
+    def test_legacy_wrapper_matches_std_mode(self):
+        img = make_white_plane()
+        color, std = sample_background_color(img, (0, 0, PLANE_W, 200))
+        stats = sample_background_stats(img, (0, 0, PLANE_W, 200))
+        assert (color, std) == (stats.color_bgr, stats.std_max_channel)
+
+    def test_unknown_mode_raises(self):
+        img = np.full((10, 10, 3), 128, np.uint8)
+        with pytest.raises(ValueError):
+            sample_background_stats(
+                img, (0, 0, 10, 10), background_mode="bogus")
+
+    def test_config_validates_new_modes(self):
+        with pytest.raises(ValueError):
+            policy_cfg("overlap", background_mode="bogus")
+        with pytest.raises(ValueError):
+            policy_cfg("overlap", ws_threshold_mode="bogus")
+
+
+# ---------------------------------------------------------------------------
+# Task 3:空白带 confidence 评分与局部百分位/Otsu 选项
+# ---------------------------------------------------------------------------
+
+class TestWhitespaceBandScoring:
+    """find_whitespace_band_scored:面积/宽高/均匀性/可排版长度评分。"""
+
+    def test_flat_plane_band_confidence_value(self):
+        img = np.full((300, 200), 240, np.uint8)
+        band, conf, info = find_whitespace_band_scored(
+            img, [(0.0, 0.0, 200.0, 100.0)], line_h=20.0)
+        assert band == (0, 100, 200, 300)
+        # c_area = 40000/60000 = 2/3,c_size = c_uniformity = c_layout = 1
+        assert conf == pytest.approx(0.25 * (2 / 3 + 1 + 1 + 1), abs=1e-3)
+        assert info["threshold_mode"] == "global"
+        assert info["n_candidates"] == 1
+        assert info["c_area"] == pytest.approx(2 / 3, abs=1e-3)
+        assert 0.0 <= info["c_uniformity"] <= 1.0
+
+    def test_gradient_global_truncates_percentile_recovers(self):
+        # 渐变下部灰度低于「全图中位 − 40」→ 全局阈值把带截短;
+        # 行内百分位逐行自适应 → 带延伸到底
+        gray = make_gradient_gray(300, 200, 180.0, 60.0)
+        boxes = [(10.0, 20.0, 190.0, 100.0)]
+        g_band, g_conf, g_info = find_whitespace_band_scored(
+            gray, boxes, line_h=20.0)
+        assert g_band is not None
+        # median ≈ 120,thr = 80 → y ≥ 250 判墨;膨胀核 5×5 再上扩 2 行
+        assert g_band[3] == 248
+        assert g_info["threshold_mode"] == "global"
+        p_band, p_conf, p_info = find_whitespace_band_scored(
+            gray, boxes, line_h=20.0, threshold_mode="percentile")
+        assert p_band == (0, 100, 200, 300)
+        assert p_info["threshold_mode"] == "percentile"
+        assert 0.0 < g_conf <= 1.0 and 0.0 < p_conf <= 1.0
+
+    def test_otsu_mode_finds_band(self):
+        img = np.full((300, 200), 240, np.uint8)
+        img[20:120, 10:190] = 20
+        band, conf, info = find_whitespace_band_scored(
+            img, [], line_h=20.0, threshold_mode="otsu")
+        assert band is not None
+        _x1, y1, _x2, y2 = band
+        assert y1 >= 120 - 10
+        assert y2 >= 290
+        assert info["threshold_mode"] == "otsu"
+        assert 0.0 < conf <= 1.0
+
+    def test_no_band_zero_confidence(self):
+        img = np.full((300, 200), 240, np.uint8)
+        for y in range(0, 300, 6):
+            img[y:y + 3, :] = 20
+        band, conf, info = find_whitespace_band_scored(img, [], line_h=20.0)
+        assert band is None and conf == 0.0
+        assert info["n_candidates"] == 0
+
+    def test_unknown_threshold_mode_raises(self):
+        img = np.full((50, 50), 240, np.uint8)
+        with pytest.raises(ValueError):
+            find_whitespace_band(
+                img, [], line_h=10.0, threshold_mode="bogus")
+
+
+# ---------------------------------------------------------------------------
+# Task 3:背景/空白带加固的策略端到端(动态 + 静态)
+# ---------------------------------------------------------------------------
+
+class TestBackgroundPolicyIntegration:
+    """background_mode / ws 阈值与置信度在 apply_policy(_static) 的表现。"""
+
+    def _events(self):
+        return [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+
+    def test_dark_bg_default_mask_falls_back_external(self):
+        res = apply_policy(self._events(), ROWS, make_dark_plane(),
+                           make_translation_tracks(), policy_cfg("mask"),
+                           PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "external"
+        assert "mask" in notes[0] and "external" in notes[0]
+        assert res.diagnostics["background_blocks"][0]["mode"] == "std"
+        assert res.diagnostics["background_blocks"][0]["uniform"] is False
+
+    def test_dark_bg_robust_mask_applied_with_diagnostics(self):
+        res = apply_policy(
+            self._events(), ROWS, make_dark_plane(),
+            make_translation_tracks(),
+            policy_cfg("mask", background_mode="robust"),
+            PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert len(masks) == 2
+        assert all("\\1c&H1E1E1E&" in ev["tags"] for ev in masks)  # 30=0x1E
+        bg = res.diagnostics["background_blocks"]
+        assert len(bg) == 2
+        for entry in bg:
+            assert entry["mode"] == "robust"
+            assert entry["uniform"] is True
+            assert entry["n_samples"] > 0
+            assert entry["confidence"] > 0.9
+            assert entry["robust_spread_mad"] < 2.0
+
+    def test_ringing_noise_default_external_robust_mask(self):
+        events = self._events()
+        legacy = apply_policy(events, ROWS, make_ringing_plane(),
+                              make_translation_tracks(), policy_cfg("mask"),
+                              PLANE_W, PLANE_H)
+        assert legacy[1] == "external"  # 默认模式行为与旧规则一致
+        robust = apply_policy(events, ROWS, make_ringing_plane(),
+                              make_translation_tracks(),
+                              policy_cfg("mask", background_mode="robust"),
+                              PLANE_W, PLANE_H)
+        out, applied, notes = robust
+        assert applied == "mask" and notes == []
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert masks
+        assert all("\\1c&H808080&" in ev["tags"] for ev in masks)
+
+    def test_colored_solid_background_mask_color(self):
+        res = apply_policy(
+            self._events(), ROWS, make_solid_color_plane(),
+            make_translation_tracks(),
+            policy_cfg("mask", background_mode="robust"),
+            PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert masks
+        assert all("\\1c&H50A0A0&" in ev["tags"] for ev in masks)
+
+    def test_gradient_whitespace_percentile_extends_band(self):
+        plane = np.zeros((PLANE_H, PLANE_W, 3), np.uint8)
+        plane[:] = make_gradient_gray(PLANE_H, PLANE_W, 180.0, 20.0)[..., None]
+        global_res = apply_policy(
+            self._events(), ROWS, plane, make_translation_tracks(),
+            policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        assert global_res[1] == "whitespace"
+        pct_res = apply_policy(
+            self._events(), ROWS, plane, make_translation_tracks(),
+            policy_cfg("whitespace", ws_threshold_mode="percentile"),
+            PLANE_W, PLANE_H)
+        out, applied, notes = pct_res
+        assert applied == "whitespace" and notes == []
+        g_band = global_res.diagnostics["whitespace_band"]
+        p_band = pct_res.diagnostics["whitespace_band"]
+        assert g_band is not None and p_band is not None
+        assert g_band["threshold_mode"] == "global"
+        assert p_band["threshold_mode"] == "percentile"
+        assert g_band["box"][3] < p_band["box"][3] == PLANE_H
+
+    def test_whitespace_band_diagnostics_and_low_confidence_fallback(self):
+        events = self._events()
+        res = apply_policy(events, ROWS, make_white_plane(),
+                           make_translation_tracks(),
+                           policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        assert res[1] == "whitespace"
+        band_info = res.diagnostics["whitespace_band"]
+        assert band_info is not None
+        assert len(band_info["box"]) == 4
+        assert 0.0 < band_info["confidence"] <= 1.0
+        assert band_info["threshold_mode"] == "global"
+        # 置信度下限抬高 → 候选带判为不足 → 沿回退链降到 mask,带留痕
+        strict = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("whitespace", ws_min_confidence=0.999),
+            PLANE_W, PLANE_H)
+        out, applied, notes = strict
+        assert applied == "mask"
+        assert "confidence" in notes[0] and "mask" in notes[0]
+        assert strict.diagnostics["whitespace_band"] is not None
+        assert sum(1 for ev in out if "\\p1" in ev["tags"]) == 2
+
+    def test_starved_window_diagnostics_and_configurable_fallback(self):
+        # 行框 40×6,外扩采样窗 ≈42×8:窗内墨行(y%3==0)占 2/8 → 背景样本稀少
+        rows = [("字", (20.0, 20.0, 60.0, 26.0))]
+        events = [simple_event("字", 0.0, 9 / FPS)]
+        plane = np.full((PLANE_H, PLANE_W, 3), 245, np.uint8)
+        plane[::3, :, :] = 10
+        default = apply_policy(events, rows, plane, make_translation_tracks(),
+                               policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = default
+        assert applied == "mask" and notes == []  # 旧规则 std=0 → 可用(不变)
+        assert default.diagnostics["background_blocks"][0]["n_samples"] < 512
+        strict = apply_policy(
+            events, rows, plane, make_translation_tracks(),
+            policy_cfg("mask", background_mode="robust",
+                       bg_min_confidence=0.5),
+            PLANE_W, PLANE_H)
+        out, applied, notes = strict
+        assert applied == "external"
+        assert "confidence" in notes[0]
+
+    def test_static_mask_robust_mode_and_diagnostics(self):
+        res = apply_policy_static(
+            ROWS, make_dark_plane(),
+            policy_cfg("mask", background_mode="robust"), PLANE_W, PLANE_H)
+        specs, applied, notes = res
+        assert applied == "mask" and notes == []
+        assert any("\\1c&H1E1E1E&" in s["tags"]
+                   for s in specs if s["kind"] == "mask")
+        bg = res.diagnostics["background_blocks"]
+        assert bg and bg[0]["mode"] == "robust" and bg[0]["uniform"] is True
+
+    def test_static_default_dark_bg_still_degrades(self):
+        # 默认模式在暗底反白字上保持旧行为:回退 external
+        _specs, applied, _notes = apply_policy_static(
+            ROWS, make_dark_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "external"
+
+    def test_static_whitespace_band_diagnostics(self):
+        res = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("whitespace"),
+            PLANE_W, PLANE_H)
+        specs, applied, _notes = res
+        assert applied == "whitespace"
+        info = res.diagnostics["whitespace_band"]
+        assert info is not None and len(info["box"]) == 4
+        assert 0.0 < info["confidence"] <= 1.0
+
+    def test_static_low_confidence_band_falls_back_to_mask(self):
+        res = apply_policy_static(
+            ROWS, make_white_plane(),
+            policy_cfg("whitespace", ws_min_confidence=0.999),
+            PLANE_W, PLANE_H)
+        specs, applied, notes = res
+        assert applied == "mask"
+        assert "confidence" in notes[0]
+        assert res.diagnostics["whitespace_band"] is not None
