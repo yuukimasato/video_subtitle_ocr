@@ -1,0 +1,33 @@
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 43%]
+........................................................................ [ 53%]
+........................................................................ [ 64%]
+........................................................................ [ 75%]
+........................................................................ [ 86%]
+..........s............................................................. [ 97%]
+...................                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_chunk_equivalence.py::test_chunk_parallel_equivalence
+  /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/paddle/utils/cpp_extension/extension_utils.py:718: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+    warnings.warn(warning_message)
+
+tests/test_chunk_equivalence.py::test_chunk_parallel_equivalence
+  /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/core/ocr_engine_paddle.py:263: UserWarning: `lang` and `ocr_version` will be ignored when model names or model directories are not `None`.
+    return PaddleOCR(**attempt)
+
+tests/test_chunk_parallel_runner.py::test_happy_path_merges_records_and_progress_reaches_90
+tests/test_chunk_parallel_runner.py::test_happy_path_merges_records_and_progress_reaches_90
+tests/test_chunk_parallel_runner.py::test_progress_weighting_two_equal_windows
+tests/test_chunk_parallel_runner.py::test_progress_weighting_two_equal_windows
+tests/test_chunk_parallel_runner.py::test_error_retried_then_sequential_fallback
+tests/test_chunk_parallel_runner.py::test_error_retried_then_sequential_fallback
+tests/test_chunk_parallel_runner.py::test_error_retried_then_sequential_fallback
+tests/test_chunk_parallel_runner.py::test_cancel_propagates_and_kills_children
+tests/test_chunk_parallel_runner.py::test_cancel_propagates_and_kills_children
+  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=1625980) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+666 passed, 1 skipped, 11 warnings in 63.81s (0:01:03)

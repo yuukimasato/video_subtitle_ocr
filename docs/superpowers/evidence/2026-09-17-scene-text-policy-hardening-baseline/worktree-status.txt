@@ -1,0 +1,19 @@
+# git status --short
+?? docs/superpowers/evidence/2026-09-17-scene-text-policy-hardening-baseline/
+?? optimization_plan_2.5.0.md
+?? optimization_plan_main.md
+
+# git rev-parse HEAD
+5de594a4582808bf7faaa671cedddf13ae993726
+# git log -1
+commit 5de594a4582808bf7faaa671cedddf13ae993726
+Author: yuukimasato <yuukimasato@users.noreply.github.com>
+Commit: yuukimasato <yuukimasato@users.noreply.github.com>
+
+    docs: audit and plan scene text policy hardening
+# python --version
+Python 3.12.3
+# pytest --version
+pytest 8.4.2
+# date
+2026-09-17T03:36:02+08:00

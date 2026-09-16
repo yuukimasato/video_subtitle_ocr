@@ -1,0 +1,36 @@
+{
+  "date": "2026-09-17",
+  "head": "5de594a4582808bf7faaa671cedddf13ae993726",
+  "head_subject": "docs: audit and plan scene text policy hardening",
+  "worktree_clean": true,
+  "untracked": [
+    "optimization_plan_2.5.0.md",
+    "optimization_plan_main.md"
+  ],
+  "python": "3.12.3",
+  "pytest": "8.4.2",
+  "pytest_command": ".venv/bin/pytest -q",
+  "pytest_result": {
+    "passed": 666,
+    "failed": 0,
+    "skipped": 1,
+    "warnings": 11,
+    "summary_line": "666 passed, 1 skipped, 11 warnings"
+  },
+  "files": {
+    "worktree_status": "worktree-status.txt",
+    "pytest_output": "pytest-output.txt",
+    "pytest_junit_xml": "pytest-junit.xml",
+    "source_hashes": "source-hashes.txt"
+  },
+  "key_source_sha256": {
+    "core/scene_text_policy.py": "6bf06938d89a32864e0b973e9b53ea48749b9580013be78ab0eee3fa7c481df1",
+    "core/motion_ass.py": "df8f64be23ecab47fa6f11baa76fa8f2ab9ca941511f573f9e0d8b79f56000d7",
+    "scripts/motion_ass.py": "ba73780fcf8cb89c120ddfc137e4762e977000d68aa17058d8741d8dfcb9eace",
+    "core/pipeline_worker.py": "6af61e14afa08e6b9b4f2271ba7aec5bd01cff281795dd08faff0acb95a9792d",
+    "core/subtitle_generator/generator.py": "6edcecc8abc281adc1a854fec7a53d03ce70effb7d5d90de3e52d85c475260b8",
+    "tests/test_scene_text_policy.py": "b75d31d94bb14b503e4d827709b6a267e71789d898aed34118fd51263a090a23",
+    "tests/test_motion_ass.py": "b823976b8a253bf1192d00194aa5a200483c6b2b6efb3eba640ea4b727059915",
+    "tests/test_scene_text_policy_gui.py": "93cd6725cb9a1a9ba9d0110982d11082c60154df5a47eb6237470ba743bbb8da"
+  }
+}
