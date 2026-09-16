@@ -590,6 +590,7 @@ def build_motion_events(
             diff_tol=cfg.occlusion_diff_tol,
             min_area_px=cfg.occlusion_min_area_px,
             min_line_overlap=cfg.occlusion_min_line_overlap,
+            max_coverage=cfg.occlusion_max_coverage,
             sample_max_frames=cfg.occlusion_sample_max_frames)
         anchor_gray = _cv2.cvtColor(anchor_window, _cv2.COLOR_BGR2GRAY)
         occlusions = collect_occlusions(
