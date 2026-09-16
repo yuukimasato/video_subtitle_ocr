@@ -171,6 +171,22 @@ class PipelineControlMixin:
             # 兜底恢复：finished/error 回调解锁时 worker 线程可能尚未退出，
             # update_ui_state 会按 _panel_busy 维持锁定；线程真正结束后统一恢复。
             self._set_panel_busy(False)
+            # 取消路径没有 finished/error 回调（worker 静默返回），在此兜底：
+            # 销毁进度对话框（autoClose 只隐藏，不销毁，会跨运行累积），
+            # 复位 LLM 面板状态，避免取消后残留过期内容。正常完成/失败路径
+            # 的处理器先于本回调执行并已清理，此处重复调用是幂等的。
+            if getattr(self, "_pipeline_llm_active", False):
+                self._pipeline_llm_active = False
+                llm_panel = getattr(self, "deepseek_progress_panel", None)
+                if llm_panel is not None:
+                    llm_panel.append_line(
+                        QCoreApplication.translate(
+                            "SubtitleOCRGUI",
+                            "[LLM] 已取消 —— 未生成字幕文件。",
+                        )
+                    )
+                    llm_panel.set_panel_visible(False)
+            self._dismiss_progress_dialog()
 
     def _on_pipeline_progress(self, value: int, message: str):
         panel = getattr(self, "control_panel_widget", None)

@@ -95,6 +95,36 @@ class RoiEditingMixin:
             )
         )
 
+    @Slot(bool)
+    def on_pose_tags_toggled(self, checked: bool):
+        """「写入画面位置标签」勾选变化：立即写回当前选中的 ROI。
+
+        此前该设置只在 添加新 ROI / 更新选中 ROI 时随条目重建写入，勾选后
+        直接开始识别会静默丢失；且回填（set_color_restrict_from_roi）会在
+        重新选中时把勾选框重置回 ROI 保存值，状态看起来"勾了却不生效"。
+        回填触发的 toggled 信号写入的是刚读出的同值，幂等无害。
+        """
+        current_item = self.roi_list_widget.roi_list_widget.currentItem()
+        if not current_item:
+            return
+        index = self.roi_list_widget.roi_list_widget.row(current_item)
+        if not (0 <= index < len(self.roi_data)):
+            return
+        roi = self.roi_data[index]
+        roi["write_pose_tags"] = bool(checked)
+        if checked:
+            pose = self._compute_roi_pose(roi.get("type", "rect"), roi.get("points"))
+            if pose:
+                roi["pose"] = pose
+            else:
+                roi.pop("pose", None)
+        self.logger.info(
+            QCoreApplication.translate(
+                "SubtitleOCRGUI", "ROI {} 画面位置标签已{}"
+            ).format(index, QCoreApplication.translate("SubtitleOCRGUI", "开启") if checked
+                     else QCoreApplication.translate("SubtitleOCRGUI", "关闭"))
+        )
+
     @staticmethod
     def _compute_roi_pose(roi_type: str, points) -> Optional[Dict]:
         """Derive picture pose (position + in-plane tilt) from ROI geometry.
@@ -185,6 +215,9 @@ class RoiEditingMixin:
             roi_entry["blur_enabled"] = bool(self.roi_def_widget.blur_checkbox.isChecked())
             roi_entry["fade_in_refine_enabled"] = bool(self.roi_def_widget.fade_in_refine_checkbox.isChecked())
             roi_entry["write_pose_tags"] = bool(self.roi_def_widget.pose_tags_checkbox.isChecked())
+            # 轨迹字幕亮度自适应(pose + 四点多边形走轨迹管线时生效)。
+            roi_entry["motion_auto_brightness"] = bool(
+                self.roi_def_widget.motion_brightness_checkbox.isChecked())
             # 场景文字显示策略(仅作用于场景文字事件;缺省 overlap)。
             roi_entry["scene_text_policy"] = (
                 self.roi_def_widget.scene_text_policy_combo.currentData() or "overlap")

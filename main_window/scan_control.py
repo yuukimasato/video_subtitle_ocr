@@ -28,17 +28,33 @@ class ScanControlMixin:
         sender = self.sender()
         if sender is not None:
             sender.deleteLater()
+        # 换视频时被取消的扫描已收尾：为新视频补跑自动 ROI 扫描
+        # （load_video 里第一次调用会因 isRunning() 静默跳过）；
+        # 自动加载的 ROI 配置已就位时无需再扫。
+        if getattr(self, "_pending_auto_roi_scan", False):
+            self._pending_auto_roi_scan = False
+            if not self.roi_data:
+                self._start_auto_roi_suggest(on_load=True)
 
     def _cancel_active_scan(self) -> None:
         """Cancel a running scan and detach its result signals so a stale
-        report cannot be applied to the newly loaded video."""
+        report cannot be applied to the newly loaded video.
+
+        cancel() 只置位标记，线程要到下一个进度回调点（当次全帧 OCR 结束后）
+        才真正退出；期间 isRunning() 仍为 True。若调用方随后要为换装后的
+        新视频补一次自动扫描，可置 ``_pending_auto_roi_scan`` 并由
+        :meth:`_on_scan_thread_finished` 在线程收尾后触发——与旧线程保持
+        串行，避免两个扫描并发争用全局 OCR 引擎单例。
+        """
         t = getattr(self, "_scan_thread", None)
         if t is None:
             return
+        was_running = t.isRunning()
         t.cancel()
         self._discard_thread_signals(
             t, ("scan_progress", "scan_finished", "scan_error")
         )
+        self._pending_auto_roi_scan = was_running
 
     def _begin_scan_thread(self, scan_thread: "ScanWorkerThread") -> None:
         """Install a new scan thread, discarding any stale one first."""

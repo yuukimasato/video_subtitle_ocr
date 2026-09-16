@@ -184,6 +184,7 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
         self.roi_def_widget.add_roi_requested.connect(self.add_roi)
         self.roi_def_widget.update_roi_requested.connect(self.update_selected_roi)
         self.roi_def_widget.delete_roi_requested.connect(self.delete_selected_roi)
+        self.roi_def_widget.pose_tags_toggled.connect(self.on_pose_tags_toggled)
 
         self.roi_list_widget.selection_changed.connect(self.on_roi_selection_changed)
         self.roi_list_widget.copy_requested.connect(self.copy_roi)

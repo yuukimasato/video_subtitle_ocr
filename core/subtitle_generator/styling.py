@@ -28,7 +28,11 @@ class _StylingMixin:
             elif 0x0400 <= code <= 0x04FF: counts['RU'] += 1
             elif 0x0020 <= code <= 0x007E: counts['EN'] += 1
         
-        if counts['JP'] > 0: return 'JP'
+        # defaultdict 取值会物化键，须用 .get：否则查 'JP' 会把 JP:0 塞进
+        # counts，下方 `if not counts` 永远不成立——全字符都在已知范围外
+        # 的文本（希腊/阿拉伯/泰文等）会被误判成 'JP' 而套用日文字体，
+        # 缺字形整行渲染成豆腐块。
+        if counts.get('JP', 0) > 0: return 'JP'
         if not counts: return 'EN'
         return max(counts, key=counts.get)
 
@@ -53,23 +57,26 @@ class _StylingMixin:
         - Bottom/Top lines are re-pinned to the ROI pose center ({\\an5\\pos})
           with rotation, replacing their margin-based placement.
         """
-        rotation = ""
         frz = float(pose.get("frz", 0.0) or 0.0)
         frx = float(pose.get("frx", 0.0) or 0.0)
         fry = float(pose.get("fry", 0.0) or 0.0)
-        if abs(frz) > 1e-3:
-            rotation += "\\frz({:.1f})".format(frz)
-        if abs(frx) > 1e-3:
-            rotation += "\\frx({:.1f})".format(frx)
-        if abs(fry) > 1e-3:
-            rotation += "\\fry({:.1f})".format(fry)
+        # pose 启用即整体写入旋转块(含 0 值):与选项提示「附带 \pos \frz
+        # \frx \fry」一致;零倾角(正放矩形 ROI)此前不追加任何标签,勾选
+        # 前后输出完全相同,用户无法确认选项已生效。
+        rotation = "\\frz({:.1f})\\frx({:.1f})\\fry({:.1f})".format(frz, frx, fry)
 
         out = []
         for line in styled_lines:
             tags = line.get("tags") or ""
             if "\\pos(" in tags:
                 # Keep the line's own detected position, add rotation only.
-                line["tags"] = tags + rotation
+                # 旋转必须并入既有 override 块内部:ASS 的 \frz 等标签写在
+                # `}` 之外会被当作字幕字面文本渲染出来(此前 tags + rotation
+                # 直接拼接,倾斜多边形的输出会显示 "\frz(8.0)" 字样)。
+                if tags.endswith("}"):
+                    line["tags"] = tags[:-1] + rotation + "}"
+                else:  # 防御:无块可并入时包成独立 override 块
+                    line["tags"] = tags + "{" + rotation + "}"
             else:
                 # Re-pin to the ROI pose (pos + rotation).
                 line["tags"] = self._format_pose_tag(pose)
@@ -135,11 +142,16 @@ class _StylingMixin:
             except Exception as e:
                 logger.error(_tr("OCRToASSOptimizer", "Failed to read template file {}: {}. Using default styles.").format(self.template_path, e))
 
-        # 任一 ROI 配置了非 overlap 的场景文字策略 → 追加 NoteBox 样式行
+        # 任一 ROI 配置了非 overlap 的场景文字策略,或轨迹事件里存在
+        # NoteBox 样式(轨迹管线策略回退链产出)→ 追加 NoteBox 样式行
         # (样式行不是事件,不触碰逐事件一致性;缺省路径头部逐字节不变)。
         note_style = ""
-        if any(str(p) != "overlap"
-               for p in getattr(self, "roi_scene_text_policies", {}).values()):
+        if (
+            any(str(p) != "overlap"
+                for p in getattr(self, "roi_scene_text_policies", {}).values())
+            or any(ev.get("style") == "NoteBox"
+                   for ev in getattr(self, "motion_events", []))
+        ):
             note_style = self._note_box_style_line() + "\n"
 
         return f"""[Script Info]

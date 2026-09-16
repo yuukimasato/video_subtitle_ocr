@@ -125,8 +125,27 @@ def test_scene_lines_keep_own_pos_and_gain_rotation(tmp_path):
     conv.convert_from_memory(iter(items))
 
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
-    assert "\\pos(300,325)" in text  # own detected position preserved
-    assert "\\frz(8.0)" in text      # rotation appended
+    # rotation goes INSIDE the override block (outside `}` it would render
+    # as literal on-screen text)
+    assert "{\\an5\\pos(300,325)\\frz(8.0)\\frx(0.0)\\fry(0.0)}" in text
+
+
+def test_zero_tilt_rect_pose_still_writes_rotation_tags(tmp_path):
+    """Pose enabled on an upright rect ROI: scene lines keep their detected
+    \\pos but the full rotation block (zeros included) must be written, so
+    the checkbox has a visible effect in the output (regression: a zero
+    tilt used to append an empty string and the output was unchanged)."""
+    conv = _build_converter(
+        tmp_path,
+        {"roi_0": {"pos": [960.5, 680.0], "frz": 0.0, "frx": 0.0, "fry": 0.0}},
+    )
+    items = [_make_ocr_item(f, "店铺招牌", (200, 300, 400, 350)) for f in range(10, 21)]
+    conv.convert_from_memory(iter(items))
+
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+    assert "{\\an5\\pos(300,325)\\frz(0.0)\\frx(0.0)\\fry(0.0)}" in text
+    # ... and nothing leaks outside the override block as literal text
+    assert "}\\frz" not in text and "}\\frx" not in text
 
 
 def test_no_pose_tags_when_disabled(tmp_path):
@@ -136,6 +155,78 @@ def test_no_pose_tags_when_disabled(tmp_path):
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
     assert "\\frz" not in text
     assert "学成归来" in text
+
+
+# ── Checkbox applies to the selected ROI immediately ────────────
+
+class _StubListItem:
+    pass
+
+
+class _StubListView:
+    def __init__(self, count: int, current_index: int):
+        self._count = count
+        self._current_index = current_index
+
+    def currentItem(self):
+        if 0 <= self._current_index < self._count:
+            return _StubListItem()
+        return None
+
+    def row(self, _item):
+        return self._current_index
+
+
+class _StubLogger:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, message):
+        self.messages.append(str(message))
+
+
+def _make_mixin_host(rois, current_index):
+    """Bare RoiEditingMixin instance with just the attributes the toggle
+    handler touches (no QWidget instantiation — headless safe)."""
+    from main_window.roi_editing import RoiEditingMixin
+
+    class _StubListPanel:
+        roi_list_widget = _StubListView(len(rois), current_index)
+
+    host = RoiEditingMixin.__new__(RoiEditingMixin)
+    host.roi_data = rois
+    host.roi_list_widget = _StubListPanel()
+    host.logger = _StubLogger()
+    return host
+
+
+def test_pose_toggle_writes_selected_roi_immediately():
+    roi = {"type": "rect", "points": [100, 200, 400, 80]}
+    host = _make_mixin_host([roi], 0)
+
+    host.on_pose_tags_toggled(True)
+    assert roi["write_pose_tags"] is True
+    assert roi["pose"]["pos"] == [300.0, 240.0]
+
+    host.on_pose_tags_toggled(False)
+    assert roi["write_pose_tags"] is False
+
+
+def test_pose_toggle_poly_recomputes_tilt():
+    pts = _rotated_poly_points(500, 400, 300, 60, 10.0, falling_right=True)
+    roi = {"type": "poly", "points": pts}
+    host = _make_mixin_host([roi], 0)
+
+    host.on_pose_tags_toggled(True)
+    assert abs(roi["pose"]["frz"] - (-10.0)) < 0.5
+
+
+def test_pose_toggle_without_selection_is_noop():
+    roi = {"type": "rect", "points": [100, 200, 400, 80]}
+    host = _make_mixin_host([roi], -1)  # nothing selected in the list
+
+    host.on_pose_tags_toggled(True)  # must not raise nor mutate
+    assert "write_pose_tags" not in roi
 
 
 # ── Merge keeps rotation tags ───────────────────────────────────

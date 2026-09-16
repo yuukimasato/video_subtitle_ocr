@@ -2,6 +2,7 @@
 """HSV-based heuristic: detect likely subtitle-colored pixels inside ROI (optional prefilter)."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -71,6 +72,38 @@ def get_roi_crop_and_mask(frame_bgr: np.ndarray, roi_entry: Dict) -> Tuple[Optio
     return None, None
 
 
+def _circular_hue_mean_deg(hues: np.ndarray) -> float:
+    """OpenCV 色相（0-179，周期 180）的环形均值。
+
+    色相是环形量：红色系样本横跨 0/179 边界时（如 [178,179,1,2]），
+    算术均值会落到完全无关的色相区间，校准出的 inRange 范围随之失配。
+    这里用倍角法（θ=2h，周期 360）求平均方向再折回 0-180。
+    """
+    theta = hues.astype(np.float64) * (2.0 * math.pi / 180.0)
+    sin_mean = float(np.mean(np.sin(theta)))
+    cos_mean = float(np.mean(np.cos(theta)))
+    if abs(sin_mean) < 1e-12 and abs(cos_mean) < 1e-12:
+        return float(np.mean(hues))
+    return math.degrees(math.atan2(sin_mean, cos_mean)) / 2.0 % 180.0
+
+
+def _hue_bounds_to_inrange_pairs(
+    center_hue: float, margin: float,
+) -> List[Tuple[float, float]]:
+    """色相中心 ± margin → 一或两段 (lo, hi) inRange 区间。
+
+    区间跨 0/179 边界时单段 [lo, hi]（lo>hi）无法表达环绕，拆成
+    [0, hi] 与 [lo, 179] 两段；否则返回单段（钳制到 [0, 179]）。
+    """
+    lo = center_hue - margin
+    hi = center_hue + margin
+    if lo < 0.0 or hi > 179.0:
+        wlo = lo % 180.0
+        whi = hi % 180.0
+        return [(0.0, whi), (wlo, 179.0)]
+    return [(max(0.0, lo), min(179.0, hi))]
+
+
 def calibrate_hsv_from_crop(
     bgr: np.ndarray,
     mask: Optional[np.ndarray] = None,
@@ -79,6 +112,10 @@ def calibrate_hsv_from_crop(
     """
     Derive HSV inRange bounds from one ROI crop (representative frame).
     Uses union of "white/light" and "saturated color" clusters inside mask.
+
+    色相按环形量处理：红色/品红等横跨 0/179 边界的颜色也能得到正确
+    范围（必要时输出 ``orange_lower2``/``orange_upper2`` 第二段区间，
+    由 :func:`presence_ratio_masked` 取并集）。
     """
     if bgr is None or bgr.size == 0:
         raise ValueError("empty crop")
@@ -101,31 +138,46 @@ def calibrate_hsv_from_crop(
     white_lower = np.array([0, 0, 170], dtype=np.uint8)
     white_upper = np.array([180, 55, 255], dtype=np.uint8)
 
+    orange_lower = np.array([0, 90, 90], dtype=np.uint8)
+    orange_upper = np.array([35, 255, 255], dtype=np.uint8)
+    hue_pairs: List[Tuple[float, float]] = []
     if np.count_nonzero(colored_mask) >= 8:
         ch = h_ch[colored_mask]
         cs = s_ch[colored_mask]
         cvv = v_ch[colored_mask]
-        mh, ms, mv = float(np.mean(ch)), float(np.mean(cs)), float(np.mean(cvv))
+        mh = _circular_hue_mean_deg(ch)
+        ms, mv = float(np.mean(cs)), float(np.mean(cvv))
+        hue_pairs = _hue_bounds_to_inrange_pairs(mh, float(margin))
         lo = np.array(
-            [max(0.0, mh - margin), max(40.0, ms - margin), max(40.0, mv - margin)],
+            [hue_pairs[0][0], max(40.0, ms - margin), max(40.0, mv - margin)],
             dtype=np.float32,
         )
         hi = np.array(
-            [min(179.0, mh + margin), min(255.0, ms + margin), min(255.0, mv + margin)],
+            [hue_pairs[0][1], min(255.0, ms + margin), min(255.0, mv + margin)],
             dtype=np.float32,
         )
         orange_lower = np.clip(lo, [0, 0, 0], [179, 255, 255]).astype(np.uint8)
         orange_upper = np.clip(hi, [0, 0, 0], [179, 255, 255]).astype(np.uint8)
-    else:
-        orange_lower = np.array([0, 90, 90], dtype=np.uint8)
-        orange_upper = np.array([35, 255, 255], dtype=np.uint8)
 
-    return {
+    out: Dict[str, np.ndarray] = {
         "orange_lower": orange_lower,
         "orange_upper": orange_upper,
         "white_lower": white_lower,
         "white_upper": white_upper,
     }
+    if len(hue_pairs) > 1:
+        # 环绕区间第二段（如红色 [0,5] ∪ [160,179]）；无第二段时缺省。
+        lo2 = np.array(
+            [hue_pairs[1][0], max(40.0, ms - margin), max(40.0, mv - margin)],
+            dtype=np.float32,
+        )
+        hi2 = np.array(
+            [hue_pairs[1][1], min(255.0, ms + margin), min(255.0, mv + margin)],
+            dtype=np.float32,
+        )
+        out["orange_lower2"] = np.clip(lo2, [0, 0, 0], [179, 255, 255]).astype(np.uint8)
+        out["orange_upper2"] = np.clip(hi2, [0, 0, 0], [179, 255, 255]).astype(np.uint8)
+    return out
 
 
 def presence_ratio_masked(bgr: np.ndarray, mask: Optional[np.ndarray], bounds: Dict[str, np.ndarray]) -> float:
@@ -133,6 +185,9 @@ def presence_ratio_masked(bgr: np.ndarray, mask: Optional[np.ndarray], bounds: D
         return 0.0
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     mo = cv2.inRange(hsv, bounds["orange_lower"], bounds["orange_upper"])
+    if bounds.get("orange_lower2") is not None and bounds.get("orange_upper2") is not None:
+        # 环绕色相区间的第二段（见 calibrate_hsv_from_crop）。
+        mo = cv2.bitwise_or(mo, cv2.inRange(hsv, bounds["orange_lower2"], bounds["orange_upper2"]))
     mw = cv2.inRange(hsv, bounds["white_lower"], bounds["white_upper"])
     uni = cv2.bitwise_or(mo, mw)
     if mask is not None and mask.shape[:2] == bgr.shape[:2]:
@@ -239,6 +294,10 @@ def build_gate_spec(
         "preview_keep_ratio": float(preview_keep_ratio),
         "calibration_frame": int(calibration_frame),
     }
+    if bounds.get("orange_lower2") is not None and bounds.get("orange_upper2") is not None:
+        # 环绕色相区间的第二段；老 spec 无此键时保持原样。
+        out["orange_lower2"] = bounds["orange_lower2"].copy()
+        out["orange_upper2"] = bounds["orange_upper2"].copy()
     return out
 
 

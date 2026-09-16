@@ -48,23 +48,28 @@ class SubtitleAligner:
     ) -> Tuple[List[str], List[str]]:
         source_lines = []
         target_lines = []
-        flag = 0
 
+        # 占位行（"\n"）直接落到自己的一侧：源占位对应目标多出的插入行，
+        # 目标占位对应源多出的行。此前用 flag 让占位"跳过下一条目标行"，
+        # 会在连续插入（run ≥ 2）时把真实目标行顶掉（等长但内容错位丢行）。
         for source_line, target_line, _ in self._line_iterator(diff_iterator):
             if source_line is not None:
-                if source_line[1] == "\n":
-                    flag += 1
-                    continue
                 source_lines.append(source_line[1])
             if target_line is not None:
-                if flag > 0:
-                    flag -= 1
-                    continue
                 target_lines.append(target_line[1])
 
-        for i in range(1, len(target_lines)):
+        # 保险：极端 diff 窗口组合可能使两侧计数相差 1；补齐短侧，
+        # 维持"返回等长列表"的类约定（下游按位置配对）。
+        delta = len(source_lines) - len(target_lines)
+        if delta > 0:
+            target_lines.extend(["\n"] * delta)
+        elif delta < 0:
+            source_lines.extend(["\n"] * (-delta))
+
+        # 目标占位用前一项填充；行首占位无前项，填空串。
+        for i in range(len(target_lines)):
             if target_lines[i] == "\n":
-                target_lines[i] = target_lines[i - 1]
+                target_lines[i] = target_lines[i - 1] if i > 0 else ""
 
         return source_lines, target_lines
 
@@ -137,6 +142,11 @@ class SubtitleAligner:
                     self._format_line(lines, None, 1),
                     False,
                 )
+                continue
+            elif diff_type.startswith("?"):
+                # ndiff 语法里提示行总与相邻真实行成对消费；防御性兜底，
+                # 单独出现时丢弃该行，避免落到底部 else 无限复产出旧对。
+                lines.pop(0)
                 continue
 
             while blank_lines_to_yield < 0:

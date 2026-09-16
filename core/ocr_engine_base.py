@@ -60,6 +60,16 @@ class BaseOCREngine(ABC):
         """Initialize the engine and load models. Called once per process."""
         ...
 
+    def is_initialized(self) -> bool:
+        """True when this instance is ready for predict() calls.
+
+        The engine manager consults this to detect a cached instance that was
+        cleaned up behind its back and rebuild it instead of returning a dead
+        engine. Default True keeps unknown engine implementations behaving as
+        before.
+        """
+        return True
+
     @abstractmethod
     def predict(self, img_input):
         """Run OCR on a single image.

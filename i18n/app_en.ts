@@ -654,7 +654,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+147"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+156"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -694,7 +694,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+30"/>
+        <source>Scene text policy: analysis frame probes (frame, luma) = {} for {}; picked luma {:.1f}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+36"/>
+        <source>Scene text policy: text moves more than {:.0f}px in {}; static {} would misalign, falling back to external.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
         <source>Scene text policy: {} (ROI {}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -709,7 +719,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+13"/>
+        <source>No valid OCR data found; writing motion-trajectory events only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>No valid OCR data found, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -720,11 +735,16 @@
     </message>
     <message>
         <location line="+5"/>
+        <source>ROI {} handled by motion-trajectory pipeline; static events skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>ROI: {} generated {} subtitle groups.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+61"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -769,12 +789,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+31"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="-27"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -819,7 +839,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+133"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+140"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -832,7 +852,7 @@
 <context>
     <name>RoiDefinitionWidget</name>
     <message>
-        <location filename="../components/roi_definition.py" line="+32"/>
+        <location filename="../components/roi_definition.py" line="+36"/>
         <source>ROI 定义</source>
         <translation>ROI definition</translation>
     </message>
@@ -910,12 +930,26 @@
         <translation>Write positioning tags (\pos \frz \frx \fry; polygons compute position and angle automatically)</translation>
     </message>
     <message>
-        <location line="+7"/>
         <source>开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\pos)与长边倾角(\frz)；\frx/\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。</source>
-        <translation>When on, subtitle events from this ROI carry position and rotation tags: polygon ROIs compute the center (\pos) and long-edge angle (\frz) automatically; \frx/\fry are saved as 0 and can be tweaked manually for perspective. Ideal for re-laying in-scene text in place.</translation>
+        <translation type="vanished">When on, subtitle events from this ROI carry position and rotation tags: polygon ROIs compute the center (\pos) and long-edge angle (\frz) automatically; \frx/\fry are saved as 0 and can be tweaked manually for perspective. Ideal for re-laying in-scene text in place.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\pos)与长边倾角(\frz)；\frx/\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。四点多边形 ROI 会走移动文字轨迹管线：逐帧跟踪平面并合成 \move 运动字幕，静态标签跟不动的画面由轨迹跟随。</source>
+        <translation>When enabled, subtitle events from this ROI carry placement and rotation tags: polygon ROIs auto-compute the center (\pos) and long-edge tilt (\frz); \frx/\fry are saved as 0 for manual perspective tuning. Ideal for re-laying live-action on-screen text in place. Four-point polygon ROIs go through the moving-text trajectory pipeline: the plane is tracked frame by frame and \move motion subtitles are synthesized — movement that static tags cannot follow is handled by the trajectory.</translation>
     </message>
     <message>
         <location line="+12"/>
+        <source>亮度自适应（轨迹字幕跟随屏幕明暗）</source>
+        <translation>Brightness adaptive (trajectory subtitles follow screen dimming)</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>需勾选「写入画面位置标签」且 ROI 为四点多边形（此时走移动文字轨迹管线）。开启后逐帧测量文字平面亮度，为轨迹事件追加 \1c/\alpha \t 标签链，字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。默认关闭。</source>
+        <translation>Requires “Write picture position tags” and a four-point polygon ROI (which runs the moving-text trajectory pipeline). Measures the text-plane brightness frame by frame and appends \1c/\alpha \t tag chains to trajectory events, so subtitle color and opacity faithfully follow the screen dimming/brightening (e.g. a phone screen turning off). Off by default.</translation>
+    </message>
+    <message>
+        <location line="+15"/>
         <source>叠加（默认）</source>
         <translation>Overlay (default)</translation>
     </message>
@@ -995,7 +1029,7 @@
         <translation>Delete selected ROI</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+71"/>
         <source>字幕文字颜色</source>
         <translation>Subtitle text color</translation>
     </message>
@@ -1204,7 +1238,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
-        <location filename="../main_window/roi_editing.py" line="+150"/>
+        <location filename="../main_window/roi_editing.py" line="+180"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1277,7 +1311,12 @@
         <translation>Recognizing…</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+17"/>
+        <source>[LLM] 已取消 —— 未生成字幕文件。</source>
+        <translation>[LLM] Cancelled - no subtitle file was generated.</translation>
+    </message>
+    <message>
+        <location line="+50"/>
         <source>[LLM] 完成 —— 已写入 ASS 文件。</source>
         <translation>[LLM] Done — ASS file written.</translation>
     </message>
@@ -1310,8 +1349,8 @@
         <location line="+4"/>
         <location filename="../main_window/roi_config_io.py" line="-52"/>
         <location line="+85"/>
-        <location filename="../main_window/roi_editing.py" line="+56"/>
-        <location filename="../main_window/scan_control.py" line="+322"/>
+        <location filename="../main_window/roi_editing.py" line="+59"/>
+        <location filename="../main_window/scan_control.py" line="+338"/>
         <location filename="../main_window/video_playback.py" line="+28"/>
         <source>错误</source>
         <translation>Error</translation>
@@ -1390,7 +1429,7 @@
         <translation>ASS subtitle files (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_editing.py" line="-166"/>
+        <location filename="../main_window/roi_editing.py" line="-199"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
         <translation>New ROI added, frame range: {}-{}</translation>
     </message>
@@ -1420,12 +1459,27 @@
         <translation>Keep all (no filtering)</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+28"/>
+        <source>ROI {} 画面位置标签已{}</source>
+        <translation>ROI {} picture position tags {}</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>开启</source>
+        <translation>enabled</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>关闭</source>
+        <translation>disabled</translation>
+    </message>
+    <message>
+        <location line="+56"/>
         <source>开始时间不能晚于结束时间。</source>
         <translation>Start time cannot be after end time.</translation>
     </message>
     <message>
-        <location line="+53"/>
+        <location line="+56"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>Error creating ROI entry: {}</translation>
     </message>
@@ -1643,7 +1697,7 @@ Cancel: abort this detection.</translation>
         <translation>Video Subtitle OCR Tool</translation>
     </message>
     <message>
-        <location line="+106"/>
+        <location line="+107"/>
         <source>正在深度扫描…</source>
         <translation>Deep scan in progress…</translation>
     </message>
@@ -1750,12 +1804,12 @@ Cancel: abort this detection.</translation>
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="+346"/>
+        <location filename="../core/ocr_optimizer.py" line="+349"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+262"/>
+        <location line="+279"/>
         <source>Batch OCR prediction failed; falling back to per-frame OCR.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1949,7 +2003,22 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+101"/>
+        <location line="+151"/>
+        <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+24"/>
+        <source>Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Motion trajectory for {0} failed ({1}); falling back to static pose tags.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1974,7 +2043,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+29"/>
         <source>Chunk-parallel OCR: {} workers, {} windows.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1984,7 +2053,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+68"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2052,7 +2121,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+53"/>
         <source>Color restriction produced an empty mask for ROI; skipping mask for this frame crop.</source>
         <translation type="unfinished"></translation>
     </message>

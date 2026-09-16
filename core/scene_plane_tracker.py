@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import math
+import itertools
 from dataclasses import dataclass, asdict
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -343,14 +344,23 @@ def track_plane(
         if fps <= 0:
             fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0) or 30.0
         start = max(0, int(start_frame))
-        end = min(int(end_frame) if end_frame is not None else (total - 1), total - 1)
-        if end < start:
-            raise ValueError(f"empty frame range: [{start}, {end}]")
+        # 容器帧数不可靠（部分 MKV/WebM 报 0 或负值）：此时不把 end 钳到 -1，
+        # 显式 end_frame 仍受尊重，否则顺序解码读到 EOF（下方循环 break）。
+        end: Optional[int]
+        if total > 0:
+            end = min(int(end_frame) if end_frame is not None else (total - 1), total - 1)
+            if end < start:
+                raise ValueError(f"empty frame range: [{start}, {end}]")
+        else:
+            end = int(end_frame) if end_frame is not None else None
+            if end is not None and end < start:
+                raise ValueError(f"empty frame range: [{start}, {end}]")
 
         cap.set(cv2.CAP_PROP_POS_FRAMES, start)
         frames: List[np.ndarray] = []
         times: List[float] = []
-        for frame_num in range(start, end + 1):
+        frame_nums = range(start, end + 1) if end is not None else itertools.count(start)
+        for frame_num in frame_nums:
             ok, frame = cap.read()
             if not ok or frame is None:
                 logger.warning("Plane tracker: cannot decode frame %d; stop at %d.", frame_num, frame_num - 1)
@@ -427,5 +437,9 @@ def unwarp_canonical(
     """按轨迹里保存的逆单应（当前帧 → 关键帧平面）展开到统一坐标。"""
     w, h = int(out_size[0]), int(out_size[1])
     h_inv = np.asarray(homography_inv, dtype=np.float64)
-    h_inv = h_inv / h_inv[2, 2]
+    if h_inv.shape != (3, 3) or not np.isfinite(h_inv).all() or abs(float(h_inv[2, 2])) < 1e-12:
+        # 退化单应（如手改的轨迹 JSON）：h22 归一化会除零产生 NaN，
+        # 输出垃圾展开图，宁可显式报错。
+        raise ValueError("degenerate homography_inv: cannot unwarp plane")
+    h_inv = h_inv / float(h_inv[2, 2])
     return cv2.warpPerspective(frame_bgr, h_inv, (w, h))

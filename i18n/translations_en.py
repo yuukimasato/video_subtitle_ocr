@@ -359,4 +359,13 @@ DICT = {
 
     # ── VideoFrameLabel ──
     "绘制错误：{}": "Drawing error: {}",
+
+    # ── 移动文字轨迹管线集成(pose 绑定 + 亮度自适应) ──
+    '开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\\pos)与长边倾角(\\frz)；\\frx/\\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。四点多边形 ROI 会走移动文字轨迹管线：逐帧跟踪平面并合成 \\move 运动字幕，静态标签跟不动的画面由轨迹跟随。': 'When enabled, subtitle events from this ROI carry placement and rotation tags: polygon ROIs auto-compute the center (\\pos) and long-edge tilt (\\frz); \\frx/\\fry are saved as 0 for manual perspective tuning. Ideal for re-laying live-action on-screen text in place. Four-point polygon ROIs go through the moving-text trajectory pipeline: the plane is tracked frame by frame and \\move motion subtitles are synthesized — movement that static tags cannot follow is handled by the trajectory.',
+    '亮度自适应（轨迹字幕跟随屏幕明暗）': 'Brightness adaptive (trajectory subtitles follow screen dimming)',
+    '需勾选「写入画面位置标签」且 ROI 为四点多边形（此时走移动文字轨迹管线）。开启后逐帧测量文字平面亮度，为轨迹事件追加 \\1c/\\alpha \\t 标签链，字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。默认关闭。': 'Requires “Write picture position tags” and a four-point polygon ROI (which runs the moving-text trajectory pipeline). Measures the text-plane brightness frame by frame and appends \\1c/\\alpha \\t tag chains to trajectory events, so subtitle color and opacity faithfully follow the screen dimming/brightening (e.g. a phone screen turning off). Off by default.',
+    'ROI {} 画面位置标签已{}': 'ROI {} picture position tags {}',
+    '开启': 'enabled',
+    '关闭': 'disabled',
+    '[LLM] 已取消 —— 未生成字幕文件。': '[LLM] Cancelled - no subtitle file was generated.',
 }

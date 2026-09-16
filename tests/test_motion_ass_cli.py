@@ -744,7 +744,7 @@ def test_whitespace_policy_places_text_in_band(tmp_path, capsys):
         assert bars_bottom < y1 < card_bottom  # 落在原文字下方的空白带
         assert x2 - x1 == pytest.approx(TX_STEP * 13, abs=4.0)  # 随轨迹平移
     bodies = {re.sub(r"^\{[^}]*\}", "", l.split(",", 9)[9]) for l in dialogue}
-    assert bodies == {"LIN", "E0", "LIN", "E1"}
+    assert bodies == {"LIN", "E0", "E1"}
 
 
 def test_whitespace_without_band_falls_back_to_mask(tmp_path, capsys):
@@ -787,3 +787,82 @@ def test_full_fallback_chain_whitespace_mask_external(tmp_path, capsys):
     assert "NoteBox,motion," in dialogue[0]
     assert re.sub(r"^\{[^}]*\}", "",
                   dialogue[0].split(",", 9)[9]) == "LINE0\\NLINE1"
+
+
+# ---------------------------------------------------------------------------
+# _default_ocr_fn:指定引擎不可用时优雅回退(安装版未带 rapidocr 等场景)
+# ---------------------------------------------------------------------------
+
+class _UnavailableEngineCls:
+    @staticmethod
+    def is_available():
+        return False
+
+
+class _AvailableEngineCls:
+    @staticmethod
+    def is_available():
+        return True
+
+
+class _FakeEngine:
+    def normalize_result(self, raw):
+        return raw
+
+    def predict(self, img):
+        return img
+
+    def cleanup(self):
+        pass
+
+
+def test_default_ocr_fn_falls_back_when_engine_unavailable(monkeypatch, capsys):
+    """--ocr-engine 指定的引擎依赖缺失 → 告警并回退注册表默认引擎,
+    而不是 ImportError 让整条任务链退出。"""
+    import core.ocr_engine_base as engine_base
+    import core.ocr_engine_manager as engine_manager
+
+    monkeypatch.setattr(
+        engine_base.OCREngineRegistry, "get",
+        classmethod(lambda cls, eid: _UnavailableEngineCls if eid == "rapid" else None))
+    monkeypatch.setattr(
+        engine_base.OCREngineRegistry, "get_default",
+        classmethod(lambda cls: "paddle"))
+
+    captured = {}
+
+    def _fake_build(engine_id, options=None):
+        captured["engine_id"] = engine_id
+        return _FakeEngine()
+
+    monkeypatch.setattr(engine_manager, "build_standalone_engine", _fake_build)
+
+    ocr_fn, engine = motion_cli._default_ocr_fn("rapid")
+    assert captured["engine_id"] == "paddle"
+    assert engine.predict("x") == "x"
+    assert "falling back to 'paddle'" in capsys.readouterr().err
+
+
+def test_default_ocr_fn_keeps_available_engine(monkeypatch, capsys):
+    """指定引擎可用 → 原样使用,不产生回退告警。"""
+    import core.ocr_engine_base as engine_base
+    import core.ocr_engine_manager as engine_manager
+
+    monkeypatch.setattr(
+        engine_base.OCREngineRegistry, "get",
+        classmethod(lambda cls, eid: _AvailableEngineCls if eid == "rapid" else None))
+    monkeypatch.setattr(
+        engine_base.OCREngineRegistry, "get_default",
+        classmethod(lambda cls: "paddle"))
+
+    captured = {}
+
+    def _fake_build(engine_id, options=None):
+        captured["engine_id"] = engine_id
+        return _FakeEngine()
+
+    monkeypatch.setattr(engine_manager, "build_standalone_engine", _fake_build)
+
+    motion_cli._default_ocr_fn("rapid")
+    assert captured["engine_id"] == "rapid"
+    assert "falling back" not in capsys.readouterr().err

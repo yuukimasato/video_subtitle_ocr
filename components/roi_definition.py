@@ -27,6 +27,10 @@ class RoiDefinitionWidget(QGroupBox):
     add_roi_requested = Signal()
     update_roi_requested = Signal()
     delete_roi_requested = Signal()
+    # 「写入画面位置标签」勾选变化(立即写回当前选中的 ROI,见
+    # RoiEditingMixin.on_pose_tags_toggled;此前只有 添加/更新 按钮会保存,
+    # 勾选后直接开始识别会静默丢失设置)。
+    pose_tags_toggled = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(QCoreApplication.translate("RoiDefinitionWidget", "ROI 定义"), parent)
@@ -132,10 +136,33 @@ class RoiDefinitionWidget(QGroupBox):
             QCoreApplication.translate(
                 "RoiDefinitionWidget",
                 "开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\\pos)与"
-                "长边倾角(\\frz)；\\frx/\\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。",
+                "长边倾角(\\frz)；\\frx/\\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。"
+                "四点多边形 ROI 会走移动文字轨迹管线：逐帧跟踪平面并合成 \\move 运动字幕，静态标签跟不动的画面由轨迹跟随。",
             )
         )
         roi_layout.addRow(self.pose_tags_checkbox)
+
+        # 轨迹字幕亮度自适应:仅在 pose 勾选且 ROI 为四点多边形(轨迹模式)
+        # 时生效;随 ROI json(motion_auto_brightness 键)持久化。
+        self.motion_brightness_checkbox = QCheckBox(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "亮度自适应（轨迹字幕跟随屏幕明暗）",
+            )
+        )
+        self.motion_brightness_checkbox.setChecked(False)
+        self.motion_brightness_checkbox.setEnabled(False)
+        self.motion_brightness_checkbox.setToolTip(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "需勾选「写入画面位置标签」且 ROI 为四点多边形（此时走移动文字轨迹管线）。"
+                "开启后逐帧测量文字平面亮度，为轨迹事件追加 \\1c/\\alpha \\t 标签链，"
+                "字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。默认关闭。",
+            )
+        )
+        self.pose_tags_checkbox.toggled.connect(
+            self.motion_brightness_checkbox.setEnabled)
+        roi_layout.addRow(self.motion_brightness_checkbox)
 
         # 场景文字显示策略(每 ROI 独立):仅作用于场景文字(画面文字)事件;
         # 所选模式不可用时按 空白区 → 遮罩 → 外置 自动回退。
@@ -229,6 +256,7 @@ class RoiDefinitionWidget(QGroupBox):
         self.add_roi_btn.clicked.connect(self.add_roi_requested)
         self.update_roi_btn.clicked.connect(self.update_roi_requested)
         self.delete_roi_btn.clicked.connect(self.delete_roi_requested)
+        self.pose_tags_checkbox.toggled.connect(self.pose_tags_toggled.emit)
 
         self.color_restrict_checkbox.toggled.connect(self._on_color_restrict_toggled)
         self.text_color_btn.clicked.connect(self._pick_text_color)
@@ -305,6 +333,9 @@ class RoiDefinitionWidget(QGroupBox):
         self.blur_checkbox.setEnabled(enabled)
         self.fade_in_refine_checkbox.setEnabled(enabled)
         self.pose_tags_checkbox.setEnabled(enabled)
+        # 亮度自适应随 pose 联动:总开关关闭时必然不可用;pose 关闭时也不可用。
+        self.motion_brightness_checkbox.setEnabled(
+            enabled and self.pose_tags_checkbox.isChecked())
         self.scene_text_policy_combo.setEnabled(enabled)
 
     def get_color_restrict_dict(self) -> Optional[Dict]:
@@ -326,6 +357,8 @@ class RoiDefinitionWidget(QGroupBox):
             # Default for a NEW ROI: boundary refinement on (frame-accurate timing).
             self.fade_in_refine_checkbox.setChecked(True)
             self.pose_tags_checkbox.setChecked(False)
+            # 新 ROI 复位:亮度自适应回到默认关(pose 联动会同时禁用)。
+            self.motion_brightness_checkbox.setChecked(False)
             # 新 ROI 复位:场景文字显示策略回到默认「叠加」。
             self.scene_text_policy_combo.setCurrentIndex(0)
             self._text_bgr = [255, 255, 255]
@@ -342,6 +375,11 @@ class RoiDefinitionWidget(QGroupBox):
         # 复选框状态也反映实际行为。
         self.fade_in_refine_checkbox.setChecked(bool(roi.get("fade_in_refine_enabled", True)))
         self.pose_tags_checkbox.setChecked(bool(roi.get("write_pose_tags", False)))
+        # 回填轨迹亮度自适应(旧配置缺省关;勾选状态受 pose 联动启用)。
+        self.motion_brightness_checkbox.setChecked(
+            bool(roi.get("motion_auto_brightness", False)))
+        self.motion_brightness_checkbox.setEnabled(
+            self.pose_tags_checkbox.isChecked())
         # 回填场景文字显示策略(旧配置缺省/未知值 → 叠加)。
         policy_idx = self.scene_text_policy_combo.findData(
             str(roi.get("scene_text_policy") or "overlap"))

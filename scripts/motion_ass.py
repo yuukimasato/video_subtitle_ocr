@@ -121,6 +121,27 @@ def validate_quad(quad: Sequence[Sequence[float]]) -> List[List[float]]:
     return [[float(px), float(py)] for px, py in pts]
 
 
+def normalize_quad_winding(quad: Sequence[Sequence[float]]) -> List[List[float]]:
+    """顶点顺序自动纠正为顺时针(TL,TR,BR,BL),返回新列表。
+
+    手绘多边形(GUI 画布/CLI 手输)不保证旋向;逆时针 quad 会被
+    :func:`validate_quad` 拒绝并使展开图镜像——集成路径(主流水线/项目
+    CLI)对用户输入先做此处纠正,鞋带面积为负时反转顶点序,再交给
+    ``validate_quad`` 做结构/面积/凸性校验。
+    """
+    import numpy as np
+
+    pts = [[float(p[0]), float(p[1])] for p in quad]
+    arr = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+    if arr.shape[0] != 4:
+        return pts
+    x, y = arr[:, 0], arr[:, 1]
+    signed2 = float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+    if signed2 < 0:
+        pts.reverse()
+    return pts
+
+
 # ---------------------------------------------------------------------------
 # 配置
 # ---------------------------------------------------------------------------
@@ -280,10 +301,26 @@ def _default_ocr_fn(engine_id: Optional[str]) -> Tuple[OcrFn, Any]:
 
     图像 → 统一 OCR dict(rec_texts/rec_scores/rec_boxes/rec_polys/dt_polys),
     与 ``ocr_engine_manager.run_batch_ocr`` 的取数方式一致。
+
+    指定的引擎依赖缺失时(如安装版未带 rapidocr)不直接失败:告警后回退到
+    注册表默认可用引擎,保持任务链可用;完全无可用引擎才抛错退出。
     """
+    from core.ocr_engine_base import OCREngineRegistry
     from core.ocr_engine_manager import build_standalone_engine
 
-    engine = build_standalone_engine(engine_id)
+    resolved = engine_id
+    if resolved:
+        engine_cls = OCREngineRegistry.get(resolved)
+        if engine_cls is not None and not engine_cls.is_available():
+            fallback = OCREngineRegistry.get_default()
+            if fallback and fallback != resolved:
+                print(
+                    f"warning: OCR engine '{resolved}' is not available "
+                    f"(dependency missing?); falling back to '{fallback}'",
+                    file=sys.stderr,
+                )
+                resolved = fallback
+    engine = build_standalone_engine(resolved)
 
     def _predict(img):
         return engine.normalize_result(engine.predict(img))
@@ -381,14 +418,12 @@ def write_ass(
 # 端到端管线
 # ---------------------------------------------------------------------------
 
-def run_pipeline(
+def build_motion_events(
     video_path: str,
-    out_path: str,
     quad: Sequence[Sequence[float]],
     *,
     start_frame: int = 0,
     end_frame: Optional[int] = None,
-    trajectory_json: Optional[str] = None,
     config_data: Optional[Dict[str, Any]] = None,
     ocr_engine: Optional[str] = None,
     keyframe_count: int = 3,
@@ -397,21 +432,34 @@ def run_pipeline(
     auto_brightness: bool = False,
     scene_text_policy: str = "overlap",
     ocr_fn: Optional[OcrFn] = None,
-    quiet: bool = False,
-) -> Dict[str, Any]:
-    """全链路:跟踪 → 关键帧 → OCR → 融合 → 合成 → 写 .ass(± 轨迹 JSON)。
+    log: Optional[Callable[[str], None]] = None,
+) -> Tuple[List[Dict[str, str]], Dict[str, Any]]:
+    """全链路:跟踪 → 关键帧 → OCR → 融合 → 合成事件(± 策略/亮度标签)。
 
-    ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``--ocr-engine`` 指定的
+    与 :func:`run_pipeline` 相同的管线,但不写任何文件,返回
+    ``(events, summary)`` 供调用方(项目 CLI / 主流水线 worker)把轨迹
+    事件合并进自己的 .ass 输出。``quad`` 顶点顺序不保证时先经
+    :func:`normalize_quad_winding` 纠正。
+
+    ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``ocr_engine`` 指定的
     引擎(未指定时取注册表默认)构造独立实例并在结束时清理。
     ``auto_brightness`` 开启时,合成事件后逐 ok 帧测量文字平面亮度,对每条
     事件追加独立的亮度 override 块(``{原有tags}{\\1c/\\alpha \\t 链}body``,
     不改动既有标签);无 ok 帧 / 曲线退化(基线 ≤ 0 / 全程恒亮)时告警并
     静默跳过。``scene_text_policy`` 为场景文字显示策略(默认 overlap 不改变
     任何输出;mask/external/whitespace 不可用时按 whitespace→mask→external
-    自动回退并打 warn 日志)。
-    返回摘要 dict(events / ok_frames / total_frames / keyframes / hard_lines /
-    policy)。
+    自动回退并经 ``log`` 告警)。``log`` 缺省打到 stderr。
+    返回 ``(events, summary)``,summary 含 ok_frames / total_frames /
+    keyframes / hard_lines / policy / width / height / lines / plane_size /
+    quad_window_origin / ocr_engine。
     """
+    if log is None:
+        def log(message: str) -> None:
+            print(message, file=sys.stderr)
+
+    quad = normalize_quad_winding(quad)
+    quad = validate_quad(quad)
+    cfg, policy_cfg = build_config(config_data)
     from core.keyframe_selector import _plane_size_from_quad, select_keyframes
     from core.motion_ass import (
         build_line_tracks,
@@ -419,14 +467,9 @@ def run_pipeline(
         synthesize_events,
     )
     from core.ocr_optimizer import _line_aabbs, fuse_samples_by_position
-    from core.scene_plane_tracker import save_trajectory, track_plane
+    from core.scene_plane_tracker import track_plane
     from core.scene_text_policy import POLICY_MODES, SceneTextPolicyConfig
 
-    def log(message: str) -> None:
-        if not quiet:
-            print(message, file=sys.stderr)
-
-    cfg, policy_cfg = build_config(config_data)
     # 模式走 CLI 参数;replace 触发 SceneTextPolicyConfig.__post_init__ 校验
     policy_cfg = dataclasses.replace(
         policy_cfg, mode=str(scene_text_policy) if scene_text_policy
@@ -577,31 +620,88 @@ def run_pipeline(
                 f"{len(simplified)} keyframe(s), "
                 f"tagged {n_tagged}/{len(events)} event(s)")
 
-    title = os.path.splitext(os.path.basename(str(video_path)))[0]
-    n_written = write_ass(out_path, events, width, height, title)
-    log(f"[4/5] synthesized {len(events)} event(s) for {len(line_tracks)} line(s)")
-    log(f"[5/5] wrote {n_written} dialogue line(s) -> {out_path}")
-
-    if trajectory_json:
-        save_trajectory(
-            trajectory_json, tracks,
-            video_path=os.path.abspath(str(video_path)),
-            init_quad=quad,
-            meta={
-                "motion_ass": os.path.abspath(str(out_path)),
-                "keyframes": [int(f) for f in keyframes],
-                "plane_size": [int(plane_size[0]), int(plane_size[1])],
-                "quad_window_origin": [int(qx1), int(qy1)],
-                "ocr_engine": str(ocr_engine) if ocr_engine else "default",
-            })
-
-    return {
-        "events": n_written,
+    return events, {
         "ok_frames": len(ok_tracks),
         "total_frames": len(tracks),
         "keyframes": [int(f) for f in keyframes],
         "hard_lines": list(hard_lines),
         "policy": applied_policy,
+        "lines": len(line_tracks),
+        "width": width,
+        "height": height,
+        "plane_size": [int(plane_size[0]), int(plane_size[1])],
+        "quad_window_origin": [int(qx1), int(qy1)],
+        "ocr_engine": str(ocr_engine) if ocr_engine else "default",
+        # 轨迹导出(run_pipeline --trajectory-json)用;集成调用方无需持久化。
+        "tracks": tracks,
+    }
+
+
+def run_pipeline(
+    video_path: str,
+    out_path: str,
+    quad: Sequence[Sequence[float]],
+    *,
+    start_frame: int = 0,
+    end_frame: Optional[int] = None,
+    trajectory_json: Optional[str] = None,
+    config_data: Optional[Dict[str, Any]] = None,
+    ocr_engine: Optional[str] = None,
+    keyframe_count: int = 3,
+    min_gap_sec: float = 0.33,
+    vlm_min_confidence: float = 0.0,
+    auto_brightness: bool = False,
+    scene_text_policy: str = "overlap",
+    ocr_fn: Optional[OcrFn] = None,
+    quiet: bool = False,
+) -> Dict[str, Any]:
+    """全链路:跟踪 → 关键帧 → OCR → 融合 → 合成 → 写 .ass(± 轨迹 JSON)。
+
+    :func:`build_motion_events` 的文件输出包装(独立 CLI 用);事件构建细节
+    见其 docstring。返回摘要 dict(events / ok_frames / total_frames /
+    keyframes / hard_lines / policy)。
+    """
+    def log(message: str) -> None:
+        if not quiet:
+            print(message, file=sys.stderr)
+
+    events, summary = build_motion_events(
+        video_path, quad,
+        start_frame=start_frame, end_frame=end_frame,
+        config_data=config_data, ocr_engine=ocr_engine,
+        keyframe_count=keyframe_count, min_gap_sec=min_gap_sec,
+        vlm_min_confidence=vlm_min_confidence,
+        auto_brightness=auto_brightness,
+        scene_text_policy=scene_text_policy,
+        ocr_fn=ocr_fn, log=log)
+    title = os.path.splitext(os.path.basename(str(video_path)))[0]
+    n_written = write_ass(
+        out_path, events, summary["width"], summary["height"], title)
+    log(f"[4/5] synthesized {len(events)} event(s) for {summary['lines']} line(s)")
+    log(f"[5/5] wrote {n_written} dialogue line(s) -> {out_path}")
+
+    if trajectory_json:
+        from core.scene_plane_tracker import save_trajectory
+
+        save_trajectory(
+            trajectory_json, summary["tracks"],
+            video_path=os.path.abspath(str(video_path)),
+            init_quad=quad,
+            meta={
+                "motion_ass": os.path.abspath(str(out_path)),
+                "keyframes": summary["keyframes"],
+                "plane_size": summary["plane_size"],
+                "quad_window_origin": summary["quad_window_origin"],
+                "ocr_engine": summary["ocr_engine"],
+            })
+
+    return {
+        "events": n_written,
+        "ok_frames": summary["ok_frames"],
+        "total_frames": summary["total_frames"],
+        "keyframes": summary["keyframes"],
+        "hard_lines": summary["hard_lines"],
+        "policy": summary["policy"],
     }
 
 

@@ -28,6 +28,14 @@ _current_engine_id: Optional[str] = None
 _engine_options: Dict[str, Any] = {}
 
 
+def _engine_is_ready(engine: BaseOCREngine) -> bool:
+    """Best-effort readiness probe; engines without is_initialized() pass."""
+    try:
+        return bool(engine.is_initialized())
+    except Exception:
+        return True
+
+
 def set_engine(engine_id: str, options: Optional[Dict[str, Any]] = None) -> None:
     """Switch the current OCR engine.
 
@@ -51,6 +59,7 @@ def set_engine(engine_id: str, options: Optional[Dict[str, Any]] = None) -> None
             _engine_instance is not None
             and _current_engine_id == engine_id
             and _engine_options == new_options
+            and _engine_is_ready(_engine_instance)
         ):
             return
         if _engine_instance is not None:
@@ -72,12 +81,23 @@ def get_engine() -> BaseOCREngine:
     """
     global _engine_instance, _current_engine_id
 
-    if _engine_instance is not None:
+    if _engine_instance is not None and _engine_is_ready(_engine_instance):
         return _engine_instance
+    if _engine_instance is not None:
+        logger.warning(
+            "Cached OCR engine was cleaned up externally; re-initializing it."
+        )
 
     with _engine_lock:
         if _engine_instance is not None:
-            return _engine_instance
+            if _engine_is_ready(_engine_instance):
+                return _engine_instance
+            # Cached instance is dead (e.g. cleanup() called on it through a
+            # reference the manager doesn't control): drop it so the rebuild
+            # below creates a freshly initialized engine instead of handing
+            # out an object whose predict() would raise.
+            logger.warning("Rebuilding cleaned-up OCR engine '%s'.", _current_engine_id)
+            _engine_instance = None
 
         engine_id = _current_engine_id or OCREngineRegistry.get_default()
         if not engine_id:

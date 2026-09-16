@@ -83,17 +83,12 @@ class PaddleOCREngine(BaseOCREngine):
     Maintains backward compatibility with all existing ocr_data_dict consumers.
     """
 
-    _instance: Optional["PaddleOCREngine"] = None
-    _init_lock = threading.Lock()
+    # NOTE: deliberately NOT a __new__-level singleton. The process-level
+    # singleton lives in ocr_engine_manager._engine_instance; build_standalone_engine()
+    # must be able to create genuinely independent instances (per refine thread),
+    # which a __new__ singleton silently defeats — cleanup() on the "standalone"
+    # instance would then unload the shared engine out from under the manager.
     _predict_lock = threading.Lock()
-
-    def __new__(cls):
-        # Process-level singleton via __new__ (compatible with registry pattern).
-        if cls._instance is None:
-            with cls._init_lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
 
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
@@ -120,10 +115,7 @@ class PaddleOCREngine(BaseOCREngine):
             return False
 
     def __init__(self):
-        # __init__ is called after __new__, but we use initialize() for heavy lifting.
-        # Singleton guard: re-instantiating must not reset an initialized engine.
-        if getattr(self, "_initialized", False):
-            return
+        # Heavy lifting happens in initialize(); a fresh instance starts unloaded.
         self._ocr: Any = None
         self._initialized: bool = False
 
@@ -309,6 +301,10 @@ class PaddleOCREngine(BaseOCREngine):
 
         self._initialized = True
         logger.info("PaddleOCR initialized successfully.")
+
+    def is_initialized(self) -> bool:
+        """True when this instance is ready for predict() calls."""
+        return self._initialized and self._ocr is not None
 
     def predict(self, img_input):
         """Run PaddleOCR prediction (thread-safe)."""

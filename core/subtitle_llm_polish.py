@@ -14,6 +14,7 @@ import logging
 import re
 import ssl
 import threading
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -30,6 +31,11 @@ logger = logging.getLogger(__name__)
 # 线性放大；4 路并发配合 llm_client 的 429 有界退避在实际限速下仍能站稳。
 DEFAULT_MAX_CONCURRENT_REQUESTS = 4
 _MAX_CONCURRENT_REQUESTS_CAP = 8
+
+# GET /v1/models 的 429 有界退避：最多 3 次重试、单次等待 ≤5s、总等待 ≤30s。
+_MODELS_RETRY_MAX_ATTEMPTS = 3
+_MODELS_RETRY_WAIT_BASE_SECONDS = 2.0
+_MODELS_RETRY_TOTAL_WAIT_SECONDS = 30.0
 
 
 def _short_text(s: str, max_len: int = 96) -> str:
@@ -166,7 +172,12 @@ def fetch_openai_compatible_model_ids(
     *,
     timeout_sec: float = 30.0,
 ) -> List[str]:
-    """GET /v1/models（OpenAI 兼容），返回模型 id 列表。"""
+    """GET /v1/models（OpenAI 兼容），返回模型 id 列表。
+
+    对 429 Too Many Requests 采用有界退避：最多重试
+    ``_MODELS_RETRY_MAX_ATTEMPTS`` 次、单次等待不超过 5s、总等待不超过
+    30s；耗尽后抛出 RuntimeError（可恢复错误，由调用方提示用户）。
+    """
     base = (api_base_url or "").strip().rstrip("/")
     if not base:
         raise ValueError("empty API base URL")
@@ -180,15 +191,32 @@ def fetch_openai_compatible_model_ids(
         headers={"Authorization": f"Bearer {key}"},
     )
     ctx = ssl.create_default_context()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec, context=ctx) as resp:
-            resp_bytes = resp.read()
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        raise RuntimeError(f"HTTP {e.code}: {detail or e.reason}") from e
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", e)
-        raise RuntimeError(str(reason)) from e
+    resp_bytes: Optional[bytes] = None
+    last_http_error: Optional[urllib.error.HTTPError] = None
+    deadline = time.monotonic() + _MODELS_RETRY_TOTAL_WAIT_SECONDS
+    for attempt in range(_MODELS_RETRY_MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_sec, context=ctx) as resp:
+                resp_bytes = resp.read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429:
+                detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
+                raise RuntimeError(f"HTTP {e.code}: {detail or e.reason}") from e
+            last_http_error = e
+            if attempt >= _MODELS_RETRY_MAX_ATTEMPTS:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(5.0, _MODELS_RETRY_WAIT_BASE_SECONDS * (2**attempt), remaining))
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            raise RuntimeError(str(reason)) from e
+    if resp_bytes is None:
+        raise RuntimeError(
+            f"HTTP 429: rate limited, retries exhausted ({_MODELS_RETRY_MAX_ATTEMPTS} attempts)"
+        ) from last_http_error
     parsed = json.loads(resp_bytes.decode("utf-8", errors="replace"))
     data = parsed.get("data")
     if not isinstance(data, list):

@@ -6,8 +6,49 @@
 
 ## 未发布
 
+### 新增
+
+- **移动文字轨迹管线接入项目 CLI 与主流水线 GUI（阶段二：pose 绑定）**：
+  2.6.3 的轨迹字幕此前只能手动跑 `scripts/motion_ass.py`，现与 GUI
+  「写入画面位置标签」复选框绑定——**四点多边形 ROI + 勾选 pose** 即走
+  轨迹管线（`collect_motion_roi_specs` 收集 → `PipelineWorker` 内调
+  `scripts/motion_ass.build_motion_events`：逐帧平面跟踪 → 清晰关键帧
+  OCR → 位置投票融合 → `\move`/`\t` 合成），轨迹事件以 `Name=motion`
+  在噪声过滤/时间合并/LLM 润色之后原样并入输出（逐字保留，不参与重写），
+  同一 ROI 的静态事件被抑制避免双份文本；跟踪/OCR 失败自动回退该 ROI 的
+  静态 pose 路径（告警留痕，不中断任务链），手绘多边形顶点顺序（顺/逆
+  时针）自动纠正。GUI 新增「亮度自适应（轨迹字幕跟随屏幕明暗）」复选框
+  （随 pose 联动启用、`motion_auto_brightness` 键随 ROI json 持久化，
+  即 `--auto-brightness` 的 GUI 入口）；项目 CLI 新增
+  `--motion-quad "x1,y1 … x4,y4[@start-end]"`（可重复，秒区间与 `--roi`
+  同语法）、`--motion-quad-file`、`--auto-brightness`，轨迹事件并入同一
+  输出 .ass。生成器新增 `motion_events`/`motion_roi_ids` 参数与 Dialogue
+  Name 列输出（缺省空串，既有输出逐字节不变）；轨迹事件引用 NoteBox
+  样式时头部按需追加样式行。三语 i18n 补齐。单元测试 589 → **616**
+  （新增 `tests/test_motion_integration.py` 27 项）。
+
 ### 修复
 
+- **「写入画面位置标签」勾选即生效、零倾角也写标签、旋转标签不再泄漏为
+  字面文本**（三处关联修复，回应"勾选后输出与不勾选完全一样"的反馈）：
+  1. 复选框状态此前只在 添加新 ROI / 更新选中 ROI 时写入 ROI 条目，勾选
+     后直接开始识别会静默丢失，重新选中又被回填重置——现在勾选变化即时
+     写回当前选中 ROI（`pose_tags_toggled` 信号 → `on_pose_tags_toggled`，
+     开启时按几何重算 `pose`）。
+  2. 场景行启用 pose 后始终写入完整旋转块 `\frz …\frx …\fry …`（含 0 值）：
+     此前零倾角（正放矩形 ROI）追加的是空串，勾选前后输出逐字节相同，
+     无法确认选项生效；且与 Bottom/Top 行的整体标签块（恒含 0 值）不一致。
+  3. 回归修复：场景行旋转此前用 `tags + rotation` 拼接，落在既有
+     `{…}` override 块**之外**——ASS 语法下 `}` 之后的 `\frz(8.0)` 会被
+     当作字幕字面文本整串渲染在画面上；现并入块内
+     `{\an5\pos(x,y)\frz..\frx..\fry..}`。
+- **安装版 motion 轨迹管线不可用（RapidOCR 未随包分发）**：deb 的 venv
+  依赖来自 requirements.txt，此前 rapidocr/onnxruntime 仅作为注释里的
+  可选项，安装后运行 `scripts/motion_ass.py --ocr-engine rapid` 直接
+  `ImportError: RapidOCR is not installed`、无任何输出。现把
+  `rapidocr>=3.9,<4.0` + `onnxruntime>=1.20` 纳入 requirements.txt 随包
+  安装；`motion_ass._default_ocr_fn` 对依赖缺失的指定引擎先告警并回退
+  注册表默认可用引擎（不再让整条任务链退出），完全无可用引擎才报错。
 - **LLM 服务端失败不再击穿任务链（工作区规则落实）**：`core.llm_client.call_llm`
   现把 openai SDK 级失败（连接失败/超时，以及 429 有界退避耗尽后的原始
   `RateLimitError`，装饰器加 `reraise=True`）归一化为 `LlmApiError`

@@ -225,7 +225,8 @@ def fuse_samples_by_position(
         per_slot_candidates.append(candidates)
 
         # 难帧判定（分母只数真实观测）：
-        # - 观测内部无多数（票数不足观测数一半）；或
+        # - 观测内部无多数（票数未过半；平票=无多数，获胜文本由置信度
+        #   平局裁决产生，属于歧义行）；或
         # - 只有一个采样帧读到该行（缺第二证据交叉验证；旧行为下行数
         #   不一致时整段跳过 VLM，这里收敛到行级送审）；或
         # - 平均置信度低于阈值。
@@ -234,7 +235,7 @@ def fuse_samples_by_position(
         avg_confidence = score_sum[best_text] / votes if votes else 0.0
         if (
             (observations == 1 and len(sample_results) > 1)
-            or votes * 2 < observations
+            or votes * 2 <= observations
             or avg_confidence < vlm_refine_min_confidence
         ):
             hard_lines.append(len(best_ocr_data['rec_texts']) - 1)
@@ -338,7 +339,9 @@ class OcrOptimizer:
                 return self._image_cache[img_input]
             if os.path.exists(img_input):
                 img = cv2.imread(img_input)
-                if not self.in_memory_mode:
+                # 只缓存读到的图像：imread 失败（如瞬时 IO 错误）若把 None
+                # 写入缓存，该帧在 LRU 淘汰前永远无法重试。
+                if img is not None and not self.in_memory_mode:
                     self._cache_put(self._image_cache, img_input, img, self.image_cache_max_entries)
                 return img
         
@@ -574,6 +577,14 @@ class OcrOptimizer:
                     if callable(batch_normalizer)
                     else [engine.normalize_result([raw_item]) for raw_item in raw_list]
                 )
+                if len(normalized_items) != len(chunk):
+                    # 静默截断会让返回列表与 sample_frames 错位（锚定帧语义
+                    # 被破坏），宁可走逐帧回退也不输出错位结果。
+                    raise ValueError(
+                        "normalize_batch_result returned {} items for {} images".format(
+                            len(normalized_items), len(chunk)
+                        )
+                    )
                 for (pos, frame_data, _), ocr_data in zip(chunk, normalized_items):
                     # Same tuple shape and time handling as _run_single_ocr.
                     frame_time_sec = float(frame_data[4]) if len(frame_data) >= 5 and frame_data[4] is not None else 0.0
@@ -598,6 +609,15 @@ class OcrOptimizer:
                     predict_chunk(pending[start:start + chunk_size])
             if not results_by_pos:
                 return None
+            if len(results_by_pos) != len(sample_frames):
+                # 有帧读不出图像（或被丢弃）时返回列表会与输入错位——
+                # 调用方按索引对齐（index 0 = 锚定帧），错位比缺帧更糟，
+                # 这里触发外层 except 走逐帧回退。
+                raise ValueError(
+                    "batch OCR covered {} of {} sampled frames".format(
+                        len(results_by_pos), len(sample_frames)
+                    )
+                )
             if pending:
                 # One real batch invocation counts as a single OCR call
                 # (cache-only returns don't touch the engine).
@@ -718,10 +738,10 @@ class OcrOptimizer:
             best_ocr_data['rec_boxes'][line_idx] = best_result_source['rec_boxes'][line_idx]
             per_slot_candidates.append(list(result_map.keys()))
 
-            # 难帧判定：获胜文本票数未过半，或平均置信度低于阈值。
+            # 难帧判定：获胜文本票数未过半（平票=无多数），或平均置信度低于阈值。
             votes = text_votes[best_text]
             avg_confidence = score_sum[best_text] / votes if votes else 0.0
-            if votes < len(sample_results) / 2 or avg_confidence < self.vlm_refine_min_confidence:
+            if votes * 2 <= len(sample_results) or avg_confidence < self.vlm_refine_min_confidence:
                 hard_lines.append(line_idx)
 
         return best_ocr_data, hard_lines, per_slot_candidates

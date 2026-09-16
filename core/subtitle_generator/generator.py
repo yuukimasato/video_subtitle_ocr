@@ -117,6 +117,8 @@ class OCRToASSOptimizer(
         watermark_filter_config: Optional[Dict] = None,
         roi_scene_text_policies: Optional[Dict[str, str]] = None,
         roi_analysis_rects: Optional[Dict[str, Tuple]] = None,
+        motion_events: Optional[List[Dict[str, str]]] = None,
+        motion_roi_ids: Optional[set] = None,
     ):
         self.video_path = Path(video_path)
         self.output_path = Path(output_path)
@@ -144,6 +146,13 @@ class OCRToASSOptimizer(
         # roi_id -> ROI 外接矩形 (x1, y1, x2, y2)(视频坐标),策略分析图
         # (最大组中间帧)的裁剪窗口。
         self.roi_analysis_rects = roi_analysis_rects or {}
+        # 移动文字轨迹事件(scripts/motion_ass.build_motion_events 产出,
+        # Name=motion):在过滤/合并/润色之后原样并入事件表,不参与任何
+        # 重写;事件带可选 layer/Name 列。
+        self.motion_events = [dict(e) for e in (motion_events or [])]
+        # 轨迹接管成功的 ROI:该 ROI 的静态 OCR 事件整体跳过(避免同区域
+        # 双份文本);轨迹失败回退时为空,静态路径照常。
+        self.motion_roi_ids = set(motion_roi_ids or ())
         logger.info(_tr("OCRToASSOptimizer", "Subtitle generator initialized: {}x{} @ {:.2f} FPS").format(self.width, self.height, self.fps))
         if self.template_path and self.template_path.exists():
             logger.info(_tr("OCRToASSOptimizer", "Using style template: {}").format(self.template_path))
@@ -371,14 +380,24 @@ class OCRToASSOptimizer(
                 organized_data = self._classify_and_filter_text_lines(organized_data)
 
             if not organized_data:
-                logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found, an empty ASS file will be generated."))
-                with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-                    f.write(self._get_ass_header())
+                if self.motion_events:
+                    logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found; writing motion-trajectory events only."))
+                    self._write_final_file([])
+                else:
+                    logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found, an empty ASS file will be generated."))
+                    with open(self.output_path, 'w', encoding='utf-8-sig') as f:
+                        f.write(self._get_ass_header())
                 return
 
             subtitle_events: List[Dict[str, str]] = []
             for roi_id, frame_list in organized_data.items():
                 logger.info(_tr("OCRToASSOptimizer", "Processing ROI: {}, containing {} valid frames.").format(roi_id, len(frame_list)))
+                if str(roi_id) in self.motion_roi_ids:
+                    # 该 ROI 已由移动文字轨迹管线接管(轨迹事件在写文件时
+                    # 并入),跳过静态事件生成避免同区域双份文本;轨迹失败
+                    # 回退时该 ROI 不在 motion_roi_ids,静态路径照常。
+                    logger.info(_tr("OCRToASSOptimizer", "ROI {} handled by motion-trajectory pipeline; static events skipped.").format(roi_id))
+                    continue
                 groups = self._group_consecutive_frames(frame_list)
                 for group in groups:
                     group.lines = self._select_representative_lines(group)
@@ -580,32 +599,7 @@ class OCRToASSOptimizer(
                         ev["body"] = nt
                     logger.info(_tr("OCRToASSOptimizer", "DeepSeek subtitle polishing applied."))
 
-            all_dialogue_entries = []
-            for ev in subtitle_events:
-                text = ev["tags"] + _sanitize_ass_body(ev["body"])
-                # 事件可选 layer(策略事件:遮罩 0、文本 1);缺省 0,与既有
-                # 输出逐字节一致。
-                layer = int(ev.get("layer", 0) or 0)
-                entry = f"Dialogue: {layer},{ev['start_time']},{ev['end_time']},{ev['style']},,0,0,0,,{text}"
-                all_dialogue_entries.append(entry)
-
-            if not all_dialogue_entries:
-                logger.warning(_tr("OCRToASSOptimizer", "No valid subtitle groups formed for any ROI, an empty ASS file will be generated."))
-                with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-                    f.write(self._get_ass_header())
-                return
-
-            # Sort by parsed start time — lexicographic order on "H:MM:SS.CC"
-            # only coincides with chronological order below 10 hours.
-            all_dialogue_entries.sort(
-                key=lambda x: self._parse_ass_time_to_seconds(x.split(',')[1])
-            )
-
-            header_content = self._get_ass_header()
-            final_content = header_content + "\n".join(all_dialogue_entries)
-            
-            with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-                f.write(final_content)
+            self._write_final_file(subtitle_events)
 
             logger.info(_tr("OCRToASSOptimizer", "--- Conversion successful ---"))
             logger.info(_tr("OCRToASSOptimizer", "ASS subtitle file saved to: {}").format(self.output_path))
@@ -614,3 +608,39 @@ class OCRToASSOptimizer(
             logger.error(_tr("OCRToASSOptimizer", "--- Conversion failed ---"))
             logger.error(_tr("OCRToASSOptimizer", "Error: {}").format(e), exc_info=True)
             raise
+
+    def _write_final_file(self, subtitle_events: List[Dict[str, str]]) -> None:
+        """事件表(+ 轨迹事件)→ Dialogue 行 → 按起始时间排序 → 写 .ass。
+
+        轨迹事件(Name=motion,scripts/motion_ass.build_motion_events 产出)
+        在此处并入——位于噪声过滤/合并/LLM 润色之后,脚本产出的 tags/body
+        逐字保留,不参与任何重写。Name 列缺省空串,既有事件输出逐字节不变。
+        """
+        events = list(subtitle_events) + [dict(e) for e in self.motion_events]
+        all_dialogue_entries = []
+        for ev in events:
+            text = ev["tags"] + _sanitize_ass_body(ev["body"])
+            # 事件可选 layer(策略事件:遮罩 0、文本 1)与 Name(轨迹事件
+            # motion,供播放器/后续处理识别);缺省 0/空串,与既有输出一致。
+            layer = int(ev.get("layer", 0) or 0)
+            name = str(ev.get("name", "") or "")
+            entry = f"Dialogue: {layer},{ev['start_time']},{ev['end_time']},{ev['style']},{name},0,0,0,,{text}"
+            all_dialogue_entries.append(entry)
+
+        if not all_dialogue_entries:
+            logger.warning(_tr("OCRToASSOptimizer", "No valid subtitle groups formed for any ROI, an empty ASS file will be generated."))
+            with open(self.output_path, 'w', encoding='utf-8-sig') as f:
+                f.write(self._get_ass_header())
+            return
+
+        # Sort by parsed start time — lexicographic order on "H:MM:SS.CC"
+        # only coincides with chronological order below 10 hours.
+        all_dialogue_entries.sort(
+            key=lambda x: self._parse_ass_time_to_seconds(x.split(',')[1])
+        )
+
+        header_content = self._get_ass_header()
+        final_content = header_content + "\n".join(all_dialogue_entries)
+
+        with open(self.output_path, 'w', encoding='utf-8-sig') as f:
+            f.write(final_content)

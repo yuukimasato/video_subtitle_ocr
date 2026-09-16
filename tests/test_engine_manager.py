@@ -18,6 +18,7 @@ class DummyEngine(BaseOCREngine):
     def __init__(self):
         self.init_kwargs: dict | None = None
         self.cleanup_calls = 0
+        self._ready = False
 
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
@@ -36,6 +37,10 @@ class DummyEngine(BaseOCREngine):
     def initialize(self, **kwargs) -> None:
         self.init_kwargs = dict(kwargs)
         DummyEngine.last_init_kwargs = dict(kwargs)
+        self._ready = True
+
+    def is_initialized(self) -> bool:
+        return self._ready
 
     def predict(self, img_input):
         return []
@@ -45,6 +50,7 @@ class DummyEngine(BaseOCREngine):
 
     def cleanup(self) -> None:
         self.cleanup_calls += 1
+        self._ready = False
 
 
 @pytest.fixture
@@ -176,3 +182,118 @@ def test_build_standalone_engine_keeps_explicit_id(monkeypatch):
     engine = mgr.build_standalone_engine("dummy", None)
     assert DummyEngine.registry_get_calls[-1] == "dummy"
     engine.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Regression: standalone cleanup() must not brick the manager engine
+# ---------------------------------------------------------------------------
+
+class SingletonEngine(BaseOCREngine):
+    """Engine double that forces a __new__ singleton.
+
+    Mirrors the pre-fix PaddleOCREngine: every construction returns the SAME
+    object, so a "standalone" instance obtained via build_standalone_engine()
+    is the very object the manager caches, and cleanup() on it unloads the
+    shared engine behind the manager's back.
+    """
+
+    _shared: "SingletonEngine | None" = None
+
+    def __new__(cls):
+        if SingletonEngine._shared is None:
+            SingletonEngine._shared = super().__new__(cls)
+        return SingletonEngine._shared
+
+    def __init__(self):
+        if getattr(self, "_ready", False):
+            return
+        self._ready = False
+
+    @classmethod
+    def get_engine_info(cls) -> OCREngineInfo:
+        return OCREngineInfo(
+            engine_id="singleton",
+            name="Singleton",
+            version="0.0",
+            description="test double with __new__ singleton",
+            supports_gpu=False,
+        )
+
+    @classmethod
+    def is_available(cls) -> bool:
+        return True
+
+    def initialize(self, **kwargs) -> None:
+        self._ready = True
+
+    def is_initialized(self) -> bool:
+        return self._ready
+
+    def predict(self, img_input):
+        if not self._ready:
+            raise RuntimeError("SingletonEngine not initialized")
+        return []
+
+    def normalize_result(self, raw_result):
+        return {}
+
+    def cleanup(self) -> None:
+        self._ready = False
+
+
+def test_manager_rebuilds_engine_after_external_cleanup(dummy_registry):
+    """cleanup() through a foreign reference must not brick the manager.
+
+    Historical failure: refine threads shared the __new__-singleton
+    PaddleOCREngine and cleaned it up after boundary refinement, so the NEXT
+    pipeline run crashed on its first predict() with "PaddleOCR engine not
+    initialized". get_engine() must detect the dead cached instance and
+    rebuild it.
+    """
+    mgr.set_engine("dummy", {"lang": "ch"})
+    engine = mgr.get_engine()
+    engine.cleanup()  # behind the manager's back
+
+    rebuilt = mgr.get_engine()
+    assert rebuilt is not engine
+    assert rebuilt.init_kwargs == {"lang": "ch"}
+    assert rebuilt.is_initialized()
+
+
+def test_set_engine_idempotence_does_not_preserve_dead_instance(dummy_registry):
+    """Same id + options must still rebuild when the cached instance is dead.
+
+    The idempotence short-circuit in set_engine() used to keep the cleaned-up
+    instance cached, so every later get_engine() kept returning it.
+    """
+    mgr.set_engine("dummy", {"lang": "ch"})
+    engine = mgr.get_engine()
+    engine.cleanup()
+
+    mgr.set_engine("dummy", {"lang": "ch"})  # identical selection
+    assert mgr.get_engine().is_initialized()
+
+
+def test_singleton_engine_survives_standalone_cleanup(monkeypatch):
+    """End-to-end replay of the paddle singleton scenario.
+
+    With a __new__-singleton engine class, build_standalone_engine() hands
+    out the same object the manager caches (the pre-fix paddle hazard);
+    standalone cleanup() must not leave the manager holding a dead engine.
+    """
+    SingletonEngine._shared = None
+    monkeypatch.setattr(
+        OCREngineRegistry, "get", classmethod(lambda cls, engine_id: SingletonEngine)
+    )
+    mgr.set_engine("singleton", {"lang": "ch"})
+
+    main = mgr.get_engine()
+    standalone = mgr.build_standalone_engine("singleton", {"lang": "ch"})
+    assert standalone is main  # premise: the singleton hazard exists here
+
+    standalone.cleanup()  # what refine_executor did at thread teardown
+    assert not main.is_initialized()
+
+    healed = mgr.get_engine()
+    assert healed.is_initialized()
+    healed.predict(object())  # must not raise

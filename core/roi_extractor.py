@@ -25,12 +25,17 @@ except Exception as e:
 
 
 def _hsv_bounds_from_gate_spec(spec: Dict) -> Dict[str, np.ndarray]:
-    return {
+    bounds = {
         "orange_lower": spec["orange_lower"],
         "orange_upper": spec["orange_upper"],
         "white_lower": spec["white_lower"],
         "white_upper": spec["white_upper"],
     }
+    # 环绕色相区间的可选第二段（老 gate spec 无此键，缺省不启用）。
+    if spec.get("orange_lower2") is not None and spec.get("orange_upper2") is not None:
+        bounds["orange_lower2"] = spec["orange_lower2"]
+        bounds["orange_upper2"] = spec["orange_upper2"]
+    return bounds
 
 
 def _in_range_color_mask(bgr: np.ndarray, bgr_ref: List[int], tolerance: int) -> np.ndarray:

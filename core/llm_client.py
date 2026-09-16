@@ -7,6 +7,7 @@ import os
 from typing import Any, List, Optional
 
 import openai
+import tenacity
 from openai import OpenAI
 from tenacity import (
     retry,
@@ -20,6 +21,31 @@ from tenacity import (
 # caller degrades gracefully (e.g. keeps unpolished subtitles) instead of hanging.
 _LLM_RETRY_MAX_ATTEMPTS = 10
 _LLM_RETRY_TOTAL_DELAY_SECONDS = 300
+
+
+class LlmApiError(RuntimeError):
+    """LLM 服务端调用失败（连接失败/超时/429 有界退避耗尽等）。
+
+    统一归一化为 RuntimeError 子类，调用方按可恢复错误处理并优雅降级
+    （如保留未润色的原字幕），避免服务端故障导致整条任务链退出。
+    """
+
+
+def _llm_api_failure_types() -> tuple:
+    """SDK 级失败异常集合；离线 stub 环境缺失的属性自动跳过。"""
+    types: list = []
+    seen: set = set()
+    for mod in (openai, tenacity):
+        for attr in ("OpenAIError", "APIError", "RateLimitError", "RetryError"):
+            exc = getattr(mod, attr, None)
+            if (
+                isinstance(exc, type)
+                and issubclass(exc, BaseException)
+                and exc not in seen
+            ):
+                seen.add(exc)
+                types.append(exc)
+    return tuple(types)
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -88,6 +114,7 @@ def get_llm_client(
     stop=(stop_after_attempt(_LLM_RETRY_MAX_ATTEMPTS) | stop_after_delay(_LLM_RETRY_TOTAL_DELAY_SECONDS)),
     wait=wait_random_exponential(multiplier=1, min=5, max=60),
     retry=retry_if_exception_type(openai.RateLimitError),
+    reraise=True,
 )
 def _call_llm_api(
     client: OpenAI,
@@ -140,7 +167,12 @@ def call_llm(
     if client is None:
         client = get_llm_client(base_url=base_url, api_key=api_key, timeout=timeout)
 
-    response = _call_llm_api(client, messages, model, temperature, timeout=timeout, **kwargs)
+    try:
+        response = _call_llm_api(client, messages, model, temperature, timeout=timeout, **kwargs)
+    except _llm_api_failure_types() as e:
+        raise LlmApiError(
+            f"LLM API call failed after bounded retries: {type(e).__name__}: {e}"
+        ) from e
 
     if not (
         response

@@ -92,6 +92,44 @@ def collect_roi_scene_text_options(
         policies = {"roi_merged": distinct[0]}
     return policies, rects
 
+def collect_motion_roi_specs(roi_data: Optional[List[Dict]]) -> List[Dict[str, Any]]:
+    """收集走移动文字轨迹管线的 ROI 规格。
+
+    绑定规则:「写入画面位置标签」勾选(write_pose_tags)且 ROI 为四点
+    多边形(type="poly"、points 恰 4 个顶点)——四点即文字平面 quad,静态
+    pose 标签跟不动运动画面,这类 ROI 交给轨迹管线合成 \\move 事件;其余
+    (矩形、非四点多边形、未勾选 pose)保持静态路径。每个规格含 roi_id /
+    quad / start_frame / end_frame / scene_text_policy / auto_brightness。
+    """
+    specs: List[Dict[str, Any]] = []
+    for idx, roi in enumerate(roi_data or []):
+        if not isinstance(roi, dict):
+            continue
+        if not roi.get("write_pose_tags"):
+            continue
+        if str(roi.get("type", "")) != "poly":
+            continue
+        points = roi.get("points")
+        if not (isinstance(points, list) and len(points) == 4):
+            continue
+        try:
+            quad = [[float(p[0]), float(p[1])] for p in points]
+            start_frame = int(roi.get("start_frame", 0) or 0)
+            end_frame = roi.get("end_frame")
+            end_frame = int(end_frame) if end_frame is not None else None
+        except (TypeError, ValueError, IndexError):
+            continue
+        specs.append({
+            "roi_id": f"roi_{idx}",
+            "quad": quad,
+            "start_frame": start_frame,
+            "end_frame": end_frame,
+            "scene_text_policy": str(roi.get("scene_text_policy") or "overlap"),
+            "auto_brightness": bool(roi.get("motion_auto_brightness", False)),
+        })
+    return specs
+
+
 class PipelineWorker(QThread):
     progress_updated = Signal(int, str)
     llm_detail = Signal(str)
@@ -168,6 +206,69 @@ class PipelineWorker(QThread):
             ocr_engine_id=self.ocr_engine_id,
             engine_options=self.engine_options,
         )
+
+    def _run_motion_stage(self) -> tuple:
+        """移动文字轨迹阶段(pose 勾选 + 四点多边形 ROI)。
+
+        对每个轨迹 ROI 调 scripts/motion_ass.build_motion_events(独立 OCR
+        引擎实例,不占用主流水线进程级单例),返回 ``(events, roi_ids)``:
+        events 合并进最终 .ass,roi_ids(轨迹接管成功的 ROI)在生成器里
+        抑制对应静态事件,避免同区域双份文本。单个 ROI 失败仅告警并回退
+        该 ROI 的静态 pose 路径,不中断任务链。
+        """
+        specs = collect_motion_roi_specs(self.roi_data)
+        if not specs:
+            return [], set()
+        from scripts.motion_ass import (
+            build_motion_events,
+            normalize_quad_winding,
+            validate_quad,
+        )
+
+        self.progress_updated.emit(
+            90,
+            QCoreApplication.translate(
+                "pipeline_worker",
+                "Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...",
+            ),
+        )
+        engine_id = str(self.ocr_engine_id) if self.ocr_engine_id else None
+        events_all: List[Dict[str, Any]] = []
+        taken_over: set = set()
+        for spec in specs:
+            roi_id = spec["roi_id"]
+            try:
+                quad = validate_quad(normalize_quad_winding(spec["quad"]))
+                events, summary = build_motion_events(
+                    self.video_path, quad,
+                    start_frame=spec["start_frame"],
+                    end_frame=spec["end_frame"],
+                    scene_text_policy=spec["scene_text_policy"],
+                    auto_brightness=spec["auto_brightness"],
+                    ocr_engine=engine_id,
+                    log=logger.info,
+                )
+                events_all.extend(events)
+                taken_over.add(roi_id)
+                logger.info(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).",
+                    ).format(
+                        roi_id, len(events), summary["ok_frames"],
+                        summary["total_frames"], summary["keyframes"],
+                        summary["policy"],
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Motion trajectory for {0} failed ({1}); falling back to static pose tags.",
+                    ).format(roi_id, exc),
+                    exc_info=True,
+                )
+        return events_all, taken_over
 
     def run(self):
         try:
@@ -290,6 +391,11 @@ class PipelineWorker(QThread):
             # 无策略时返回空 dict → 传 None,优化器行为与旧版本一致。
             roi_scene_text_policies, roi_analysis_rects = (
                 collect_roi_scene_text_options(self.roi_data, self.merge_rois))
+            # 移动文字轨迹阶段(pose 勾选 + 四点多边形 ROI;无此类 ROI 时
+            # 为空列表/空集,生成器行为与旧版本一致)。
+            motion_events, motion_roi_ids = self._run_motion_stage()
+            if self.is_cancelled:
+                return
             converter = subtitle_generator.OCRToASSOptimizer(
                 video_path=self.video_path,
                 output_path=self.output_ass_path,
@@ -304,12 +410,19 @@ class PipelineWorker(QThread):
                 watermark_filter_config=self.watermark_filter_config,
                 roi_scene_text_policies=roi_scene_text_policies or None,
                 roi_analysis_rects=roi_analysis_rects or None,
+                motion_events=motion_events or None,
+                motion_roi_ids=motion_roi_ids or None,
             )
             converter.convert_from_memory(
                 iter(restored_results),
                 polish_progress_callback=lambda p, msg: self.progress_updated.emit(p, msg),
                 polish_cancel_check=lambda: self.is_cancelled,
             )
+            if self.is_cancelled:
+                # 阶段 4 的取消走 polish_cancel_check（内部 break 后仍会写出
+                # 半成品 ASS 并正常返回）；与阶段 1-3 的取消语义保持一致，
+                # 这里直接静默返回，不上报成功。
+                return
             self.progress_updated.emit(100, QCoreApplication.translate("pipeline_worker", "Step 4/4: ASS subtitle generation complete."))
             t1_ass = time.perf_counter()
             logger.info(

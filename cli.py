@@ -15,6 +15,11 @@ Examples:
 
     # RapidOCR engine, explicit output path, keep temp frames for debugging:
     video-subtitle-ocr-cli video.mp4 --engine rapid -o out.ass --keep-temp
+
+    # Moving-text plane (phone screen / letter / sign): track a hand-picked
+    # quad between 6.5s and 10.5s, emit \\move trajectory events that follow
+    # the motion (and the screen brightness) into the same ASS:
+    video-subtitle-ocr-cli video.mp4 --motion-quad "820,300 1090,300 1090,520 820,520@6.5-10.5" --auto-brightness
 """
 
 from __future__ import annotations
@@ -84,6 +89,39 @@ def parse_roi_spec(spec: str) -> dict:
         # 帧级边界精修（首/末帧逐帧复核）默认开启。
         "fade_in_refine_enabled": True,
     }
+
+
+def parse_motion_quad_spec(spec: str) -> tuple:
+    """Parse a moving-text plane quad spec into (quad, start_sec, end_sec).
+
+    Geometry follows scripts/motion_ass.parse_quad_spec:
+    "x1,y1 x2,y2 x3,y3 x4,y4" (clockwise TL,TR,BR,BL; any winding is
+    auto-corrected later). An optional "@start-end" tail limits tracking to
+    a seconds range like --roi; either side may be omitted ("@5-", "@-20").
+    """
+    from scripts.motion_ass import parse_quad_spec
+
+    base, rng = spec, None
+    if "@" in spec:
+        base, rng = spec.split("@", 1)
+    quad = parse_quad_spec(base)
+    start_sec = end_sec = None
+    if rng is not None:
+        m = re.match(r"^\s*([\d.]*)\s*-\s*([\d.]*)\s*$", rng)
+        if not m:
+            raise ValueError(
+                f"Invalid motion quad time range: {spec!r} "
+                "(expected x1,y1 ... x4,y4[@start-end])"
+            )
+        if m.group(1):
+            start_sec = float(m.group(1))
+        if m.group(2):
+            end_sec = float(m.group(2))
+        if (start_sec is not None and end_sec is not None
+                and end_sec <= start_sec):
+            raise ValueError(
+                f"Motion quad end time must be after start time: {spec!r}")
+    return quad, start_sec, end_sec
 
 
 def probe_video(video_path: str) -> dict:
@@ -367,6 +405,72 @@ def run_pipeline(args: argparse.Namespace) -> int:
             t3 = time.perf_counter()
             _info(f"      {len(restored_results)} frames restored ({t3 - t2:.2f}s)", args.quiet)
 
+        # ── Moving-text trajectory quads (independent of ROI entries) ──
+        # Each --motion-quad / --motion-quad-file runs the trajectory
+        # pipeline (track → keyframe OCR → fuse → \move events) and merges
+        # the resulting events into the output ASS. A quad failure degrades
+        # to a warning and the rest of the pipeline continues.
+        motion_events_all: list = []
+        if args.motion_quad or args.motion_quad_file:
+            from scripts.motion_ass import (
+                build_motion_events,
+                load_quad_file,
+                normalize_quad_winding,
+                validate_quad,
+            )
+
+            motion_specs: list = []
+            for spec in args.motion_quad or []:
+                try:
+                    motion_specs.append((parse_motion_quad_spec(spec), spec))
+                except ValueError as e:
+                    _info(f"Error: {e}", args.quiet)
+                    return 2
+            for path in args.motion_quad_file or []:
+                try:
+                    motion_specs.append(
+                        ((load_quad_file(path), None, None), path))
+                except (OSError, ValueError) as e:
+                    _info(f"Error: cannot load quad file {path}: {e}", args.quiet)
+                    return 2
+
+            engine_id = None if args.engine == "auto" else args.engine
+            for (quad, start_sec, end_sec), label in motion_specs:
+                try:
+                    quad = validate_quad(normalize_quad_winding(quad))
+                    start_frame = (
+                        int(round(start_sec * info["fps"]))
+                        if start_sec is not None else 0)
+                    end_frame = (
+                        int(round(end_sec * info["fps"]))
+                        if end_sec is not None else None)
+                    _info(
+                        f"[3.5/4] Motion trajectory for quad {label} "
+                        f"(frames [{start_frame}, "
+                        f"{end_frame if end_frame is not None else 'end'}])...",
+                        args.quiet,
+                    )
+                    events, summary = build_motion_events(
+                        video_path, quad,
+                        start_frame=start_frame, end_frame=end_frame,
+                        auto_brightness=args.auto_brightness,
+                        ocr_engine=engine_id,
+                        log=lambda m: _info(f"      {m}", args.quiet),
+                    )
+                    motion_events_all.extend(events)
+                    _info(
+                        f"      motion-quad {label}: {len(events)} event(s) "
+                        f"({summary['ok_frames']}/{summary['total_frames']} "
+                        f"frames ok, keyframes {summary['keyframes']})",
+                        args.quiet,
+                    )
+                except Exception as exc:
+                    _info(
+                        f"Warning: motion quad {label} failed ({exc}); "
+                        "skipped, continuing without it.",
+                        args.quiet,
+                    )
+
         # ── Stage 4: ASS subtitle generation ──
         _info("[4/4] Generating ASS subtitles...", args.quiet)
         # Per-ROI text filter policy: manually specified ROIs (and the legacy
@@ -419,6 +523,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             roi_scene_text_policies=roi_scene_policies or None,
             roi_analysis_rects=roi_analysis_rects or None,
             watermark_filter_config=watermark_config,
+            motion_events=motion_events_all or None,
         )
         converter.convert_from_memory(iter(restored_results))
         t4 = time.perf_counter()
@@ -498,6 +603,27 @@ def parse_args(argv=None) -> argparse.Namespace:
         choices=["overlap", "mask", "external", "whitespace"],
         help="scene-text display policy for --roi entries (default: overlap; "
              "unavailable modes fall back whitespace->mask->external)",
+    )
+    parser.add_argument(
+        "--motion-quad", action="append", metavar="SPEC",
+        help='moving-text plane quad "x1,y1 x2,y2 x3,y3 x4,y4[@start-end]" '
+             "(clockwise TL,TR,BR,BL; @range in seconds like --roi, e.g. "
+             '"820,300 1090,300 1090,520 820,520@6.5-10.5"). Runs the '
+             "\\move trajectory pipeline and merges the events into the "
+             "output ASS. Repeatable.",
+    )
+    parser.add_argument(
+        "--motion-quad-file", action="append", metavar="Q.json",
+        help='quad JSON file {"video": ..., "frame": ..., "quad": [[x,y]x4]} '
+             "(a bare 4x2 list is also accepted); whole video is tracked. "
+             "Repeatable.",
+    )
+    parser.add_argument(
+        "--auto-brightness", action="store_true",
+        help="with --motion-quad/--motion-quad-file: measure the text-plane "
+             "brightness per frame and append \\1c/\\alpha \\t chains so "
+             "trajectory subtitles follow screen dimming/brightening "
+             "(default: off)",
     )
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")

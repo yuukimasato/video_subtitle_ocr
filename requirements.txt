@@ -14,9 +14,13 @@ Levenshtein>=0.25
 openai>=1.0
 tenacity>=8.0
 json-repair>=0.7
+# RapidOCR (ONNX, no PaddlePaddle needed): CPU fallback engine AND the engine
+# the motion-trajectory pipeline (scripts/motion_ass.py) is validated against.
+# Ships with the package — without it the motion CLI dies with
+# "RapidOCR is not installed" in the installed (deb) environment.
+rapidocr>=3.9,<4.0
+onnxruntime>=1.20
 # Optional: OS keychain storage for the saved API key (gnome-keyring/KWallet/
 # macOS Keychain/Windows Credential Manager). Without it the key is stored
 # encrypted in the local config with a user-only master key file:
 #   pip install keyring
-# Optional CPU fallback engine (PP-OCRv6 ONNX models, no PaddlePaddle needed):
-#   pip install "rapidocr>=3.9,<4.0" onnxruntime

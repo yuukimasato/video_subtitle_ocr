@@ -164,6 +164,10 @@ def run_chunk_parallel(
                     st.window.core_end_frame)
 
     def _terminate_all() -> None:
+        # 先请求合作式退出：意外异常路径上 worker 未被通知过取消，直接
+        # join 会让每个存活进程空等最多 10s。成功路径上 worker 已全部
+        # 退出，此调用无副作用。
+        cancel_event.set()
         # Give finished workers a grace period to exit on their own —
         # SIGTERM mid-paddle-teardown prints a scary (harmless) C++ trace.
         for st in states.values():
@@ -205,6 +209,52 @@ def run_chunk_parallel(
         else:
             _run_sequential(st)
 
+    def _process_message(msg: dict) -> None:
+        """Handle one worker message (shared by the drain loop and liveness)."""
+        idx = msg.get("window")
+        st = states.get(idx)
+        if st is None or st.done:
+            return  # late message from a replaced/finished worker
+        if msg.get("attempt") != st.retries:
+            return  # stale output from a killed previous attempt
+        st.last_msg_ts = time.monotonic()
+        mtype = msg.get("type")
+        if mtype == "progress":
+            st.pct = min(90, max(0, int(msg.get("pct", 0))))
+            _emit_progress()
+        elif mtype == "records":
+            st.records.extend(msg.get("records", []))
+        elif mtype == "done":
+            st.done = True
+            st.pct = 90
+            _emit_progress()
+            pending.discard(idx)
+            logger.info("chunk worker %d done: %d records",
+                        idx, len(st.records))
+        elif mtype == "cancelled":
+            st.done = True
+            pending.discard(idx)
+        elif mtype == "error":
+            logger.error("chunk worker %d error: %s", idx, msg.get("error"))
+            _handle_failure(st)
+        # A failure may have relaunched or finished the window; drop it
+        # from pending here so liveness is re-checked even when the
+        # queue keeps producing messages from chatty siblings.
+        if st.done and idx in pending:
+            pending.discard(idx)
+
+    def _drain_queue() -> None:
+        """Non-blocking drain so queue-backed results are not mistaken for
+        a dead window (see _check_liveness)."""
+        while True:
+            try:
+                msg = msg_queue.get(timeout=0)
+            except (queue_mod.Empty, OSError, ValueError):
+                break
+            except Exception:
+                break
+            _process_message(msg)
+
     def _check_liveness(now: float) -> None:
         """Fail pending windows whose process died or went silent."""
         for idx in list(pending):
@@ -212,6 +262,14 @@ def run_chunk_parallel(
             if st.done:
                 continue
             alive = st.proc is not None and st.proc.is_alive()
+            if not alive:
+                # worker 发完 records/done 就会退出；这些消息可能还在共享
+                # 队列里排队。先非阻塞排空队列再复核，否则会把"已完成
+                # 未消费"的窗口误判为死亡，烧掉一次重试整窗重 OCR。
+                _drain_queue()
+                if st.done:
+                    continue
+                alive = st.proc is not None and st.proc.is_alive()
             silent = (now - st.last_msg_ts) > heartbeat_timeout_s
             if (not alive) or silent:
                 if silent and alive:
@@ -236,37 +294,7 @@ def run_chunk_parallel(
                 _check_liveness(time.monotonic())
                 continue
 
-            idx = msg.get("window")
-            st = states.get(idx)
-            if st is None or st.done:
-                continue  # late message from a replaced/finished worker
-            if msg.get("attempt") != st.retries:
-                continue  # stale output from a killed previous attempt
-            st.last_msg_ts = time.monotonic()
-            mtype = msg.get("type")
-            if mtype == "progress":
-                st.pct = min(90, max(0, int(msg.get("pct", 0))))
-                _emit_progress()
-            elif mtype == "records":
-                st.records.extend(msg.get("records", []))
-            elif mtype == "done":
-                st.done = True
-                st.pct = 90
-                _emit_progress()
-                pending.discard(idx)
-                logger.info("chunk worker %d done: %d records",
-                            idx, len(st.records))
-            elif mtype == "cancelled":
-                st.done = True
-                pending.discard(idx)
-            elif mtype == "error":
-                logger.error("chunk worker %d error: %s", idx, msg.get("error"))
-                _handle_failure(st)
-            # A failure may have relaunched or finished the window; drop it
-            # from pending here so liveness is re-checked even when the
-            # queue keeps producing messages from chatty siblings.
-            if st.done and idx in pending:
-                pending.discard(idx)
+            _process_message(msg)
             _check_liveness(time.monotonic())
         return merge_frame_records(
             {idx: st.records for idx, st in states.items()}, plan)

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import numpy as np
 
@@ -34,16 +34,11 @@ class RapidOCREngine(BaseOCREngine):
     if the `rapidocr` package is not installed.
     """
 
-    _instance: Optional["RapidOCREngine"] = None
-    _init_lock = threading.Lock()
+    # NOTE: deliberately NOT a __new__-level singleton — see the matching note
+    # in ocr_engine_paddle.py. The process-level singleton lives in
+    # ocr_engine_manager._engine_instance; standalone engine instances must be
+    # genuinely independent so their cleanup() cannot unload the shared engine.
     _predict_lock = threading.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._init_lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
 
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
@@ -66,10 +61,7 @@ class RapidOCREngine(BaseOCREngine):
             return False
 
     def __init__(self):
-        # Singleton guard: engine_cls() on the already-initialized singleton
-        # must not silently unload the loaded models.
-        if getattr(self, "_initialized", False):
-            return
+        # Heavy lifting happens in initialize(); a fresh instance starts unloaded.
         self._ocr: Any = None
         self._initialized: bool = False
         self.text_score: float = 0.5
@@ -96,6 +88,10 @@ class RapidOCREngine(BaseOCREngine):
         self.text_score = float(kwargs.get("text_score", 0.5))
         self._initialized = True
         logger.info("RapidOCR initialized successfully.")
+
+    def is_initialized(self) -> bool:
+        """True when this instance is ready for predict() calls."""
+        return self._initialized and self._ocr is not None
 
     def predict(self, img_input):
         """Run RapidOCR prediction (thread-safe)."""

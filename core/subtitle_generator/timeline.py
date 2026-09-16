@@ -42,7 +42,11 @@ class _TimelineMixin:
         # extra frame — visible as the old subtitle lingering on the first
         # frame of the next hardsubbed line. Truncation keeps the carry-over
         # behaviour (…99.99 → next s) via the divmod below.
-        cs_total = int(total_seconds * 100)
+        # 1e-6 只抵消浮点表示噪声：POS_MSEC 毫秒时间戳换算成秒后经常落在
+        # 真值一个 ULP 之下（如 1.16 * 100 == 115.99999...），直接截断会把
+        # 整帧时间戳提前 1cs（约 5% 的帧）。加极小 epsilon 后截断语义不变
+        # （真正的非整 cs 分数仍然向下取整，不会越过帧边界）。
+        cs_total = int(total_seconds * 100 + 1e-6)
         h, rem = divmod(cs_total, 360000)
         m, rem = divmod(rem, 6000)
         s, cs = divmod(rem, 100)
