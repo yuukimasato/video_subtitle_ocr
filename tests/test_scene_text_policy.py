@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import sys
@@ -1558,3 +1559,329 @@ class TestBackgroundPolicyIntegration:
         assert applied == "mask"
         assert "confidence" in notes[0]
         assert res.diagnostics["whitespace_band"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 5:透视遮罩的安全边界(先红后绿)
+# ---------------------------------------------------------------------------
+
+def make_tilt_tracks(n: int = 10, dx: float = 2.0, px: float = 0.002) -> list:
+    """n 帧透视(梯形)轨迹:H(init→t) = 平移(dx·t) ∘ 透视除法。
+
+    透视参数随帧线性增长(平面相对相机随时间倾斜的现实情形):帧 0 恒等,
+    t > 0 时相对单应 H(ref→t) 为真透视变换,行框四角映射为梯形——旋转+
+    等比缩放的矩形遮罩无法完全覆盖(原字从遮罩边缘透出,重影)。
+    W = 1 + px·t·x'(x' = x + dx·t),px 越大梯形越夸张。
+    """
+    tracks = []
+    for i in range(n):
+        d = dx * i
+        p = px * i
+        h_mat = np.array([
+            [1.0, 0.0, d],
+            [0.0, 1.0, 0.0],
+            [p, 0.0, 1.0 + p * d],
+        ], dtype=np.float64)
+        tracks.append(TrackedQuad(
+            frame_num=i, time_sec=i / FPS, status="ok",
+            quad=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            homography=[[float(v) for v in row] for row in h_mat],
+            homography_inv=[[float(v) for v in row]
+                            for row in np.linalg.inv(h_mat)],
+        ))
+    return tracks
+
+
+def make_squash_tracks(n: int = 4, eps: float = 1e-3) -> list:
+    """退化轨迹:帧 0 恒等(参考帧),t > 0 起 y 向压缩 ×eps。
+
+    相对单应 H(ref→t) 把行框四角压到一条水平线附近(shoelace 面积 ≈ 0,
+    三点近似共线),eps ≠ 0 保证单应可逆(homography_inv 存在)。注意退化
+    必须是「相对参考帧」的:所有帧共享的固定形变会在 H(ref→t) 中抵消
+    (平面坐标系由参考帧矫正定义)。
+    """
+    tracks = []
+    for i in range(n):
+        e = 1.0 if i == 0 else eps
+        h_mat = np.array([
+            [1.0, 0.0, 2.0 * i],
+            [0.0, e, 0.0],
+            [0.0, 0.0, 1.0],
+        ], dtype=np.float64)
+        tracks.append(TrackedQuad(
+            frame_num=i, time_sec=i / FPS, status="ok",
+            quad=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            homography=[[float(v) for v in row] for row in h_mat],
+            homography_inv=[[float(v) for v in row]
+                            for row in np.linalg.inv(h_mat)],
+        ))
+    return tracks
+
+
+def make_similarity_tracks(n: int = 10, dx: float = 2.0, ds: float = 0.02,
+                           dth: float = 2.0) -> list:
+    """n 帧相似变换轨迹(平移 + 等比缩放 + 旋转):矩形遮罩可精确覆盖。"""
+    tracks = []
+    for i in range(n):
+        th = math.radians(dth * i)
+        s = 1.0 + ds * i
+        cos, sin = math.cos(th), math.sin(th)
+        h_mat = np.array([
+            [s * cos, -s * sin, dx * i],
+            [s * sin, s * cos, 0.0],
+            [0.0, 0.0, 1.0],
+        ], dtype=np.float64)
+        tracks.append(TrackedQuad(
+            frame_num=i, time_sec=i / FPS, status="ok",
+            quad=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            homography=[[float(v) for v in row] for row in h_mat],
+            homography_inv=[[float(v) for v in row]
+                            for row in np.linalg.inv(h_mat)],
+        ))
+    return tracks
+
+
+def polygon_points(tags: str):
+    """解析 ``\\p1`` 多边形遮罩事件:``\\pos`` 原点 + drawing 四点 → 绝对坐标。"""
+    m = re.search(r"\\pos\((-?[\d.]+),(-?[\d.]+)\)", tags)
+    assert m, tags
+    ox, oy = float(m.group(1)), float(m.group(2))
+    body = tags.split("}", 1)[1]
+    body = body[:body.index("{\\p0}")]
+    nums = re.findall(r"-?[\d.]+", body)
+    assert len(nums) == 8, body  # m x0 y0 l x1 y1 x2 y2 x3 y3(四角)
+    vals = [float(v) for v in nums]
+    return [(ox + vals[i], oy + vals[i + 1]) for i in range(0, 8, 2)]
+
+
+class TestMaskPerspectiveGuard:
+    """矩形近似误差超限 / 退化裁剪框 → mask 降级 external 并留痕。"""
+
+    def _events(self):
+        return [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+
+    def test_trapezoid_error_exceeds_threshold_falls_back_to_external(self):
+        # 梯形平面(px=0.002 → 矩形近似误差 ≈0.30 > 默认阈值):不得生成
+        # 虚假「完美」矩形遮罩,必须降级 external 并记录原因与误差值
+        tracks = make_tilt_tracks(px=0.002)
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "external"
+        assert len(notes) == 1
+        assert "mask->external" in notes[0]
+        assert "perspective" in notes[0], notes
+        m = re.search(r"error (\d+\.\d+)", notes[0])
+        assert m, notes  # notes 含误差数值
+        err = float(m.group(1))
+        assert err > 0.1
+        # diagnostics 记录误差度量
+        mp = res.diagnostics["mask_perspective"]
+        assert mp and mp[0]["max_error"] == pytest.approx(err, abs=0.01)
+        assert all(ev["style"] == "NoteBox" for ev in out)  # external 事件
+        assert all("\\p1" not in ev["tags"] for ev in out)  # 无矩形遮罩
+
+    def test_trapezoid_within_threshold_still_mask(self):
+        # px=0.0002 → 最坏块误差 ≈0.061 < 默认 0.1:不降级(证明阈值生效)
+        tracks = make_tilt_tracks(px=0.0002)
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert res[1] == "mask" and res[2] == []
+        assert any("\\p1" in ev["tags"] for ev in res[0])
+
+    def test_similarity_scenarios_never_hit_threshold(self):
+        # 默认阈值必须宽松到不影响既有场景:纯平移/相似变换(平移+等比
+        # 缩放+旋转)误差 ≈ 0 → 不触发降级
+        for tracks in (make_translation_tracks(), make_similarity_tracks()):
+            res = apply_policy(
+                self._events(), ROWS, make_white_plane(), tracks,
+                policy_cfg("mask"), PLANE_W, PLANE_H)
+            assert res[1] == "mask" and res[2] == [], type(tracks)
+
+    def test_degenerate_clipped_box_falls_back_to_external(self):
+        # 退化裁剪框:遮罩框完全在 analysis_box 右侧,裁剪后宽为负/零
+        rows = [("外", (150.0, 20.0, 200.0, 36.0))]
+        events = [simple_event("外", 0.0, 9 / FPS)]
+        res = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H,
+            analysis_box=(0, 0, 100, 400))
+        out, applied, notes = res
+        assert applied == "external"
+        assert notes and "mask->external" in notes[0]
+        assert "degenerate mask box" in notes[0], notes
+        assert all(ev["style"] == "NoteBox" for ev in out)
+
+    def test_degenerate_quad_zero_area_falls_back_to_external(self):
+        # 退化四边形:y 向压缩 1e-3 → 四角近似共线(shoelace 面积 ≈ 0)
+        tracks = make_squash_tracks(eps=1e-3)
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "external"
+        assert notes and "mask->external" in notes[0]
+        assert "degenerate" in notes[0], notes
+        assert all(ev["style"] == "NoteBox" for ev in out)
+
+    def test_axis_aligned_mask_output_unchanged(self):
+        # 回归红线:规则矩形 quad 误差为 0,输出与加固前实现逐字段一致
+        # (基线字面量在实现前从当前实现记录)
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        res = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert res.applied_mode == "mask" and res.notes == []
+        assert [dict(ev) for ev in res.events] == [
+            {
+                "start_time": "0:00:00.00",
+                "end_time": "0:00:00.36",
+                "style": "Scene",
+                "name": "motion",
+                "tags": ("{\\an7\\p1\\bord0\\1c&HFAFAFA&"
+                         "\\move(20.1,18.1,34.1,18.1,0,360)}"
+                         "m 0 0 l 184 0 184 20 0 20{\\p0}"),
+                "body": "",
+                "layer": 0,
+                "base_color": (250, 250, 250),
+            },
+            {
+                "start_time": "0:00:00.00",
+                "end_time": "0:00:00.36",
+                "style": "Scene",
+                "name": "motion",
+                "tags": ("{\\an7\\p1\\bord0\\1c&HFAFAFA&"
+                         "\\move(20.1,58.1,34.1,58.1,0,360)}"
+                         "m 0 0 l 184 0 184 40 0 40{\\p0}"),
+                "body": "",
+                "layer": 0,
+                "base_color": (250, 250, 250),
+            },
+            {
+                "start_time": "0:00:00.00",
+                "end_time": "0:00:00.36",
+                "style": "Scene",
+                "name": "motion",
+                "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+                "body": "标题",
+                "layer": 1,
+            },
+            {
+                "start_time": "0:00:00.00",
+                "end_time": "0:00:00.36",
+                "style": "Scene",
+                "name": "motion",
+                "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+                "body": "正文一",
+                "layer": 1,
+            },
+            {
+                "start_time": "0:00:00.00",
+                "end_time": "0:00:00.36",
+                "style": "Scene",
+                "name": "motion",
+                "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+                "body": "正文二",
+                "layer": 1,
+            },
+        ]
+
+
+class TestMaskPolygonClip:
+    """实验开关 mask_polygon_clip:逐帧四角 ``\\p1`` 多边形遮罩事件。"""
+
+    def _events(self):
+        return [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+
+    def test_polygon_events_per_frame_with_valid_tags(self):
+        tracks = make_translation_tracks()
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask", mask_polygon_clip=True), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        polys = [ev for ev in out if "\\p1" in ev["tags"]]
+        texts = [ev for ev in out if "\\p1" not in ev["tags"]]
+        # 两块 × 10 个 ok 帧 = 20 条逐帧多边形;3 行文本升 layer 1
+        assert len(polys) == 2 * 10
+        assert len(texts) == 3
+        assert all(ev["layer"] == 1 for ev in texts)
+        for ev in polys:
+            assert ev["style"] == "Scene"
+            assert ev["layer"] == 0
+            assert ev["name"] == "motion" and ev["body"] == ""
+            assert ev["base_color"] == (250, 250, 250)
+            # 标签合法:{\an7\pos(..)\p1\bord0\1c..} ... {\p0}
+            assert ev["tags"].startswith("{\\an7\\pos(")
+            assert "\\p1" in ev["tags"] and "\\bord0" in ev["tags"]
+            assert "\\1c&HFAFAFA&" in ev["tags"]
+            assert ev["tags"].endswith("{\\p0}")
+        # 逐帧四角 = 遮罩框四角平移 dx·t(块 0 框 (18.08,18.08)-(201.92,37.92))
+        for t, ev in enumerate(polys[:10]):
+            pts = polygon_points(ev["tags"])
+            assert len(pts) == 4
+            xs = sorted(p[0] for p in pts)
+            ys = sorted(p[1] for p in pts)
+            assert xs[0] == pytest.approx(18.08 + 2.0 * t, abs=0.06)
+            assert xs[1] == pytest.approx(18.08 + 2.0 * t, abs=0.06)
+            assert xs[2] == pytest.approx(201.92 + 2.0 * t, abs=0.06)
+            assert xs[3] == pytest.approx(201.92 + 2.0 * t, abs=0.06)
+            assert ys[0] == pytest.approx(18.08, abs=0.06)
+            assert ys[3] == pytest.approx(37.92, abs=0.06)
+            assert ev["start_time"] == format_ass_time(t / FPS)
+        # 块 1 框 y ∈ {58.08, 97.92}
+        for t, ev in enumerate(polys[10:]):
+            ys = sorted(p[1] for p in polygon_points(ev["tags"]))
+            assert ys[0] == pytest.approx(58.08, abs=0.06)
+            assert ys[3] == pytest.approx(97.92, abs=0.06)
+            assert ev["start_time"] == format_ass_time(t / FPS)
+        # 末帧事件延续一个帧间隔(hold)
+        assert polys[9]["end_time"] == format_ass_time(10 / FPS)
+
+    def test_polygon_covers_trapezoid_without_fallback(self):
+        # 实验开关打开:透视梯形不再触发矩形误差降级(多边形精确覆盖)
+        tracks = make_tilt_tracks(px=0.002)
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask", mask_polygon_clip=True), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        assert sum(1 for ev in out if "\\p1" in ev["tags"]) == 2 * 10
+
+    def test_polygon_off_by_default(self):
+        # 默认关闭:输出与既有矩形遮罩一致
+        tracks = make_translation_tracks()
+        res = apply_policy(
+            self._events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert res[1] == "mask"
+        assert all("\\move(" in ev["tags"]
+                   for ev in res[0] if "\\p1" in ev["tags"])
+
+
+class TestMaskPerspectiveConfig:
+    """新配置项默认值与 pipeline 配置键(policy_ 前缀动态路由)。"""
+
+    def test_defaults_and_construction(self):
+        cfg = SceneTextPolicyConfig()
+        assert cfg.mask_max_perspective_error == pytest.approx(0.1)
+        assert cfg.mask_polygon_clip is False
+        cfg = policy_cfg("mask", mask_max_perspective_error=0.02,
+                         mask_polygon_clip=True)
+        assert cfg.mask_max_perspective_error == pytest.approx(0.02)
+        assert cfg.mask_polygon_clip is True
+
+    def test_policy_config_keys_route_from_pipeline_config(self):
+        # CLI/pipeline --config-json 的 policy_ 前缀键动态路由 dataclass
+        # fields(dataclasses.fields 驱动):新配置键无需改动路由代码即可用
+        from scripts.motion_ass import build_config
+        _motion_cfg, routed = build_config({
+            "scene_text_policy": "mask",
+            "policy_mask_max_perspective_error": 0.02,
+            "policy_mask_polygon_clip": True,
+        })
+        assert routed.mode == "mask"
+        assert routed.mask_max_perspective_error == pytest.approx(0.02)
+        assert routed.mask_polygon_clip is True

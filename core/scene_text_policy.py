@@ -31,6 +31,12 @@
   (面积/宽高/背景均匀性/可排版长度)与逐项分量,并支持 ``threshold_mode``
   = ``percentile``(行内百分位,适应渐变)/``otsu``(默认 ``global`` 与
   旧行为一致);低置信度带由调用方沿既定回退链降级并在 diagnostics 留痕;
+- 透视遮罩安全边界(Task 5):mask 模式逐帧检查遮罩框四角经单应映射后
+  与 ASS 可渲染矩形的偏差(角点最大偏移/对角线,无量纲),超过
+  ``mask_max_perspective_error``(默认 0.1,轴对齐/规则缩放场景 ≈0 不受
+  影响)或四角退化(零面积/共线/非有限)时降级 external 并留痕;
+  ``mask_polygon_clip``(实验开关,默认关)改生成逐帧四角 ``\\p1`` 多边形
+  遮罩事件,精确覆盖透视梯形;
 - :func:`wrap_cjk` / :func:`fit_font_size` —— CJK 折行(行首禁则)与字号适配。
 
 轨迹生成完全复用 :mod:`core.motion_ass`(块/合成行框角点经
@@ -49,9 +55,13 @@ import numpy as np
 
 from core.motion_ass import (
     MotionAssConfig,
+    _apply_homography,
     _fmt1,
+    _frame_map,
+    _homography_between,
     _merge_chains_with_hold,
     _overlay_tags,
+    _pose_from_quad,
     _seg_ms,
     _segment_indices,
     _split_runs,
@@ -97,6 +107,10 @@ _INK_DROP_DELTA = 40      # 墨水剔除/墨迹二值化阈值(低于背景估�
 _WRAP_BASE_FS = 40        # 折行用的基准字号(px)
 _EXTERNAL_MIN_FS = 24     # external/whitespace 字号下限(px)
 _NOTE_STYLE = "NoteBox"   # external 展示框样式(CLI 写入 ASS 头)
+# 退化四边形判定:shoelace 面积 ≤ 该比例 × 对角线²(零面积/三点共线/自交
+# ——有向面积抵消为 0)。1e-3 远低于任何真实遮罩框(最细长的合法框
+# 2000×2px 也有 ≈1e-3 的面积/对角线²,一般行框 ≥0.01)。
+_QUAD_DEGENERATE_AREA_RATIO = 1e-3
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +135,16 @@ class SceneTextPolicyConfig:
     ws_threshold_mode: str = "global"  # global(旧规则) | percentile | otsu
     ws_percentile: float = 25.0    # percentile 模式的行内百分位
     ws_min_confidence: float = 0.0  # 候选带置信度下限(0=不筛,旧行为)
+    # —— Task 5:透视遮罩安全边界 ——
+    # 矩形近似误差上限(无量纲):逐帧把遮罩框四角映射到视频坐标后,与 ASS
+    # 实际能渲染的「旋转+等比缩放矩形」按角点比较,取最大角点偏移 / 四边形
+    # 对角线长。相似变换(平移/旋转/等比缩放)= 0;透视梯形/剪切 > 0。超限
+    # → mask 降级 external。默认 0.1 为宽松值:轴对齐与规则缩放场景误差
+    # ≈1e-16(浮点噪声),完全不受影响(测试证明)。
+    mask_max_perspective_error: float = 0.1
+    # 实验开关(默认关):开启后梯形场景不再降级,而是生成逐帧四角 ``\p1``
+    # 多边形遮罩事件(精确覆盖透视形变;lost 帧无四角数据,区间无遮罩)。
+    mask_polygon_clip: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in POLICY_MODES:
@@ -222,9 +246,10 @@ def _validate_rows(
 
 def _merge_bg_diag(diag: Dict[str, object],
                    diag_extra: Dict[str, object]) -> Dict[str, object]:
-    """把背景/空白带诊断(mask 逐块统计、候选带与 confidence)并入 diag。"""
+    """把背景/空白带/透视误差诊断(逐块统计、候选带、误差度量)并入 diag。"""
     diag["background_blocks"] = list(diag_extra.get("background_blocks", []))
     diag["whitespace_band"] = diag_extra.get("whitespace_band")
+    diag["mask_perspective"] = list(diag_extra.get("mask_perspective", []))
     return diag
 
 
@@ -777,6 +802,131 @@ def _mask_events_for_block(
     return events
 
 
+def _shoelace_area(pts: np.ndarray) -> float:
+    """多边形有向面积(shoelace;顶点按边界序)。自交时正负抵消 ≈ 0。"""
+    x, y = pts[:, 0], pts[:, 1]
+    return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+
+
+def _mask_quad_frames(
+    box: Tuple[float, float, float, float],
+    tracks: Sequence,
+    ref: int,
+) -> Tuple[List[Tuple[int, float, np.ndarray]], float, Optional[str]]:
+    """遮罩框逐帧四角(视频坐标)+ 矩形近似误差 + 退化检测。
+
+    **误差度量**(Task 5):把遮罩框四角经 ``H(ref→t)`` 映射到各帧视频
+    坐标,与 ASS 实际能渲染的矩形(位姿模型与 ``_pose_top_left`` 一致:
+    中心 = 四角均值、角度 = 顶边方向、等比 scale = 顶边长/参考长边,即
+    ``\\an7\\p1 + \\move + \\frz\\fscx\\fscy`` 可表达的全部形状)按角点
+    一一对应,取「最大角点偏移 / 四边形对角线长」为无量纲误差,再对帧取
+    最大。纯平移/旋转/等比缩放(相似变换)= 0(浮点噪声量级);透视
+    梯形、剪切等投影形变 > 0。选角点偏移而非面积差:面积守恒的剪切形变
+    面积差为 0 但矩形同样盖不住。
+
+    **退化判定**:任一 ok 帧四角含非有限坐标,或 shoelace 面积 ≤
+    ``_QUAD_DEGENERATE_AREA_RATIO`` × 对角线²(零面积、三点共线、自交
+    ——有向面积抵消),即整体退化(遮罩形状无定义)。
+
+    返回 ``(逐帧 [frame_num, time_sec, 四角], 最大误差, 退化原因)``;
+    退化时前两项为 ``([], 0.0, 原因)``。
+    """
+    x1, y1, x2, y2 = (float(v) for v in box)
+    w = max(1.0, x2 - x1)
+    h = max(1.0, y2 - y1)
+    horizontal = (x2 - x1) >= (y2 - y1)
+    long_edge = max(w, h)
+    corners = np.array(
+        [[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float64)
+    hmap = _frame_map(tracks)
+    frames: List[Tuple[int, float, np.ndarray]] = []
+    max_err = 0.0
+    for tq in tracks:
+        if tq.status != "ok" or tq.homography is None:
+            continue
+        try:
+            h_mat = _homography_between(hmap, ref, tq.frame_num)
+            mapped = _apply_homography(corners, h_mat)
+        except (KeyError, ValueError):
+            return [], 0.0, (f"frame {tq.frame_num}: degenerate homography "
+                             f"while mapping mask quad corners")
+        if not np.all(np.isfinite(mapped)):
+            return [], 0.0, (f"frame {tq.frame_num}: non-finite mask quad "
+                             f"corners")
+        area = abs(_shoelace_area(mapped))
+        diag = float(np.linalg.norm(mapped[2] - mapped[0]))
+        if area <= _QUAD_DEGENERATE_AREA_RATIO * max(diag * diag, 1e-9):
+            return [], 0.0, (
+                f"frame {tq.frame_num}: degenerate mask quad (shoelace area "
+                f"{area:.3g}px^2 for diagonal {diag:.3g}px; corners "
+                f"collapsed/collinear)")
+        pose = _pose_from_quad(mapped, long_edge, horizontal)
+        scale = pose.scale
+        ang = math.radians(pose.angle_deg)
+        cos, sin = math.cos(ang), math.sin(ang)
+        tl = _pose_top_left(pose, w, h)
+        # ASS 渲染矩形四角 = 平面框尺寸 (w, h) × 等比 scale,绕左上角旋转
+        rect = np.array([
+            [tl[0], tl[1]],
+            [tl[0] + w * scale * cos, tl[1] + w * scale * sin],
+            [tl[0] + w * scale * cos - h * scale * sin,
+             tl[1] + w * scale * sin + h * scale * cos],
+            [tl[0] - h * scale * sin, tl[1] + h * scale * cos],
+        ], dtype=np.float64)
+        err = (float(np.max(np.linalg.norm(mapped - rect, axis=1)))
+               / max(diag, 1e-9))
+        max_err = max(max_err, err)
+        frames.append((int(tq.frame_num), float(tq.time_sec), mapped))
+    return frames, max_err, None
+
+
+def _polygon_mask_events_for_block(
+    frames: Sequence[Tuple[int, float, np.ndarray]],
+    color_bgr: Tuple[int, int, int],
+    *,
+    style: str = "Scene",
+) -> List[Dict]:
+    """逐帧四角 ``\\p1`` 多边形遮罩事件(实验开关 mask_polygon_clip=True)。
+
+    每个跟踪 ok 帧一条事件,覆盖 ``[t_i, t_{i+1})``;末帧延续一个帧间隔
+    (与 lost 保持语义一致)。drawing 坐标取四角相对包围盒左上角的偏移
+    (全非负),``\\an7\\pos`` 精确定位包围盒左上角,保证 libass 的对齐
+    基线与坐标一一对应;多边形精确覆盖透视梯形/剪切形变,无矩形近似的
+    漏字。``frames`` 由 :func:`_mask_quad_frames` 产出(退化帧已在调用方
+    拦截降级);lost 帧无四角数据,对应区间不产出遮罩(实验边界)。
+    """
+    b, g, r = (int(round(float(c))) for c in color_bgr)
+    color_tag = f"\\1c&H{b:02X}{g:02X}{r:02X}&"
+    n = len(frames)
+    events: List[Dict] = []
+    for i, (_fnum, t0, pts) in enumerate(frames):
+        if i + 1 < n:
+            t1 = frames[i + 1][1]
+        else:
+            t1 = t0 + (t0 - frames[i - 1][1]) if n >= 2 else t0
+        if t1 <= t0:
+            continue
+        origin = pts.min(axis=0)
+        rel = pts - origin
+        drawing = (f"m {_fmt1(rel[0][0])} {_fmt1(rel[0][1])} l "
+                   + " ".join(f"{_fmt1(x)} {_fmt1(y)}" for x, y in rel[1:])
+                   + "{\\p0}")
+        # 绘图命令与 {\p0} 原样进入 Text 字段;\bord0 压掉样式描边
+        tags = (f"{{\\an7\\pos({_fmt1(origin[0])},{_fmt1(origin[1])})"
+                f"\\p1\\bord0{color_tag}}}") + drawing
+        events.append({
+            "start_time": format_ass_time(t0),
+            "end_time": format_ass_time(t1),
+            "style": str(style),
+            "name": "motion",
+            "tags": tags,
+            "body": "",
+            "layer": 0,
+            "base_color": (b, g, r),
+        })
+    return events
+
+
 def _rendered_width(text: str, line_h: float) -> float:
     """估算替换字体渲染该行文本的宽度:全角 1.0×字高、半角/ASCII 0.5×。
 
@@ -860,12 +1010,21 @@ def _apply_mask(
     像素通道 std > ``bg_max_std`` → 整体回退 external(旧规则不变);
     ``background_mode="robust"`` 用 :func:`sample_background_stats` 的
     MAD/IQR 离散、样本数与置信度判定。``diag_extra``(可选)就地累加
-    ``background_blocks`` 逐块统计(std/robust spread/样本数/置信度),
-    由入口合并进 ``PolicyResult.diagnostics``。``ref_frame`` 透传给遮罩
-    轨迹重建(缺省隐式 ``tracks[0].frame_num``,旧行为);行尾标点补偿按行
-    计算,遮罩取「按行补偿后求 union」。``orig_indices`` 为排序后行位置 →
+    ``background_blocks`` 逐块统计(std/robust spread/样本数/置信度)与
+    ``mask_perspective`` 逐块透视误差,由入口合并进
+    ``PolicyResult.diagnostics``。``ref_frame`` 透传给遮罩轨迹重建(缺省
+    隐式 ``tracks[0].frame_num``,旧行为);行尾标点补偿按行计算,遮罩取
+    「按行补偿后求 union」。``orig_indices`` 为排序后行位置 →
     ``blocks_meta`` 输入序下标的映射,供 external 回退时按 ``line_idx``
     建立事件归属。
+
+    Task 5 透视安全边界:块遮罩框裁剪后宽/高 ≤ 0(退化裁剪框),或逐帧
+    四角映射退化(:func:`_mask_quad_frames`),或矩形模式(实验开关
+    ``mask_polygon_clip`` 关闭)下矩形近似误差超过
+    ``mask_max_perspective_error`` 时,整体沿既定回退链降级 external 并在
+    notes 记录 ``mask->external`` 原因(含误差值/帧号)。开关打开时改生成
+    逐帧四角 ``\\p1`` 多边形遮罩(:func:`_polygon_mask_events_for_block`),
+    精确覆盖透视形变,不再做误差降级(退化仍降级)。
     """
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
@@ -882,6 +1041,19 @@ def _apply_mask(
             for text, rbox in rows[s:e + 1]]
         mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
                                          cfg, analysis_box, row_dx=row_dx)
+        mbox_w = float(mbox[2]) - float(mbox[0])
+        mbox_h = float(mbox[3]) - float(mbox[1])
+        if mbox_w <= 0.0 or mbox_h <= 0.0:
+            # 退化裁剪框(裁剪后宽或高为 0):矩形遮罩无定义,沿回退链
+            # 降级 external 并记录原因(旧行为经空采样窗判 uniform=False
+            # 降级,结果一致,原因更明确)
+            notes.append(
+                f"mask->external: block {bi} degenerate mask box after "
+                f"clipping (w={mbox_w:g}, h={mbox_h:g})")
+            ext = _apply_external(events, rows, blocks, tracks, cfg,
+                                  video_w, video_h, motion_cfg, style, notes,
+                                  orig_indices=orig_indices)
+            return ext, "external", notes
         stats = sample_background_stats(
             plane_img_bgr, mbox,
             background_mode=cfg.background_mode,
@@ -920,9 +1092,44 @@ def _apply_mask(
                                   video_w, video_h, motion_cfg, style, notes,
                                   orig_indices=orig_indices)
             return ext, "external", notes
-        out.extend(_mask_events_for_block(mbox, stats.color_bgr, tracks,
-                                          motion_cfg,
-                                          ref_frame=ref_frame, style=style))
+        # —— Task 5:透视安全边界 ——
+        # 逐帧四角与矩形近似误差(遮罩框 → 各帧视频坐标);诊断先留痕,
+        # 退化或(矩形模式下)误差超限 → 沿既定回退链降级 external。
+        ref = tracks[0].frame_num if ref_frame is None else int(ref_frame)
+        frames, persp_err, degenerate = _mask_quad_frames(mbox, tracks, ref)
+        if diag_extra is not None:
+            diag_extra.setdefault("mask_perspective", []).append({
+                "block": int(bi),
+                "frames": len(frames),
+                "max_error": round(persp_err, 4),
+                "polygon_clip": bool(cfg.mask_polygon_clip),
+            })
+        if degenerate is not None:
+            notes.append(f"mask->external: block {bi} {degenerate}")
+            ext = _apply_external(events, rows, blocks, tracks, cfg,
+                                  video_w, video_h, motion_cfg, style, notes,
+                                  orig_indices=orig_indices)
+            return ext, "external", notes
+        if (not cfg.mask_polygon_clip
+                and persp_err > float(cfg.mask_max_perspective_error)):
+            notes.append(
+                f"mask->external: block {bi} perspective rectangle "
+                f"approximation error {persp_err:.3f} > "
+                f"mask_max_perspective_error "
+                f"{float(cfg.mask_max_perspective_error):g} (max corner "
+                f"offset / quad diagonal over {len(frames)} frames)")
+            ext = _apply_external(events, rows, blocks, tracks, cfg,
+                                  video_w, video_h, motion_cfg, style, notes,
+                                  orig_indices=orig_indices)
+            return ext, "external", notes
+        if cfg.mask_polygon_clip:
+            # 实验开关:逐帧四角 \p1 多边形精确覆盖透视形变(不做误差降级)
+            out.extend(_polygon_mask_events_for_block(
+                frames, stats.color_bgr, style=style))
+        else:
+            out.extend(_mask_events_for_block(mbox, stats.color_bgr, tracks,
+                                              motion_cfg,
+                                              ref_frame=ref_frame, style=style))
     # 所有识别行都归属某块 → 文本事件整体升到 layer 1(遮罩之下)
     out.extend(dict(ev, layer=1) for ev in events)
     return out, "mask", notes
@@ -1162,11 +1369,14 @@ def apply_policy(
     三元组解包;notes 记录回退原因(whitespace→mask→external,仅所选模式
     不可用时降级;overlap 不回退),由 CLI 打 warn 日志。diagnostics 携带
     requested/applied mode、参考帧、行框有效性统计,以及逐块背景统计
-    (``background_blocks``:std、robust spread、样本数、confidence)与
-    候选空白带(``whitespace_band``:box、confidence 及评分分量)。
+    (``background_blocks``:std、robust spread、样本数、confidence)、
+    候选空白带(``whitespace_band``:box、confidence 及评分分量)与逐块
+    透视误差(``mask_perspective``:帧数、最大角点偏移比、多边形开关)。
     ``tracks`` 为空时
     mask/whitespace 沿回退链降级 external(记录原因),overlap 原样返回
-    事件(不修改输入)。
+    事件(不修改输入)。mask 模式另有透视安全边界:退化裁剪框/退化四角/
+    矩形近似误差超 ``mask_max_perspective_error`` 时降级 external 并留痕
+    (``mask_polygon_clip`` 开启时改生成逐帧 ``\\p1`` 多边形遮罩)。
     """
     mode = cfg.mode
     plane_h, plane_w = plane_img_bgr.shape[:2]
