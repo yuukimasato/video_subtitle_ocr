@@ -16,6 +16,10 @@
   合并单事件(底带位置、过高缩字号、时间不相交不合并);whitespace 文本
   落入空白带且坐标随轨迹;无带 → 回退 mask(杂色时继续 → external,
   完整回退链);
+- 上下文与诊断契约:显式 `ref_frame`(≠ tracks[0])锚定 mask/whitespace
+  轨迹;空轨迹按回退链降级不抛 IndexError;PolicyResult 携带 requested/
+  applied mode、notes、diagnostics(参考帧、行框有效性统计);行框校验
+  (NaN/inf 剔除、非正宽高剔除、越界裁剪、全无效行降级留痕);
 - brightness_tag_chain 的 base_color 扩展:给定 BGR 基色时按通道缩放、
   缺省保持灰色行为(回归由 test_motion_ass 既有用例保证)。
 
@@ -738,3 +742,280 @@ class TestApplyPolicyStatic:
             specs, applied, _notes = apply_policy_static(
                 [], make_white_plane(), policy_cfg(mode), PLANE_W, PLANE_H)
             assert specs == [] and applied == mode
+
+
+# ---------------------------------------------------------------------------
+# 上下文与诊断契约:显式 ref_frame、空轨迹降级、结果诊断字段、行框校验
+# ---------------------------------------------------------------------------
+
+def make_offset_tracks(first_frame: int = 100, n: int = 10, dx: float = 2.0) -> list:
+    """n 帧纯平移轨迹,帧号 first_frame..first_frame+n-1(时间 = 帧号/FPS)。
+
+    H(init→f) = 平移 dx·f(init = 0 号帧平面);于是 H(a→b) = 平移 dx·(b-a),
+    行框在参考帧 a 的平面坐标映射到帧 b 时平移 dx·(b-a)。tracks[0].frame_num
+    = first_frame,与显式 ref_frame(如 OCR 锚定帧 105)不同,用于验证策略
+    不再隐式使用 tracks[0] 作参考帧。
+    """
+    tracks = []
+    for k in range(n):
+        f = first_frame + k
+        h_mat = np.array([
+            [1.0, 0.0, dx * f],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ], dtype=np.float64)
+        tracks.append(TrackedQuad(
+            frame_num=f, time_sec=f / FPS, status="ok",
+            quad=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            homography=[[float(v) for v in row] for row in h_mat],
+            homography_inv=[[float(v) for v in row]
+                            for row in np.linalg.inv(h_mat)],
+        ))
+    return tracks
+
+
+class TestExplicitRefFrame:
+    """ref_frame ≠ tracks[0].frame_num 时,轨迹以显式参考帧构建。"""
+
+    ANCHOR = 105  # OCR 锚定帧;tracks[0].frame_num = 100
+
+    def _rows_events(self):
+        return [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+
+    def test_mask_track_anchored_at_explicit_ref_frame(self):
+        tracks = make_offset_tracks(first_frame=100)
+        res = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H, ref_frame=self.ANCHOR)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        assert res.diagnostics["ref_frame"] == self.ANCHOR
+        assert res.diagnostics["ref_frame_source"] == "explicit"
+        mask0 = next(ev for ev in out if "\\p1" in ev["tags"])
+        x1, y1, x2, y2 = move_points(mask0["tags"])
+        # 块 0 外扩框左上角 (18.08, 18.08) 在锚定帧 105 的平面坐标;窗口 5
+        # 平滑后链首帧 100 的位姿 = 参考帧 105 坐标 + dx·(101-105):
+        # 显式参考帧 → x ≈ 18.08 - 8 = 10.08(隐式 tracks[0]=100 会是 20.08)
+        assert x1 == pytest.approx(18.08 + 2.0 * (101 - 105), abs=1.5)
+        assert y1 == pytest.approx(18.08, abs=1.0)
+        assert x2 - x1 == pytest.approx(14.0, abs=0.6)
+        assert y1 == y2
+
+    def test_whitespace_track_anchored_at_explicit_ref_frame(self):
+        tracks = make_offset_tracks(first_frame=100)
+        base = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        expl = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("whitespace"), PLANE_W, PLANE_H, ref_frame=self.ANCHOR)
+        assert base[1] == "whitespace" and expl[1] == "whitespace"
+        assert expl.diagnostics["ref_frame"] == self.ANCHOR
+        assert expl.diagnostics["ref_frame_source"] == "explicit"
+        assert len(base[0]) == len(expl[0]) > 0
+        for ev_b, ev_e in zip(base[0], expl[0]):
+            bx1, by1, _bx2, _by2 = move_points(ev_b["tags"])
+            ex1, ey1, _ex2, _ey2 = move_points(ev_e["tags"])
+            # 纯平移:显式 ref(105) 相对隐式 ref(100) 整体左移 dx×5 = 10
+            assert ex1 - bx1 == pytest.approx(-2.0 * 5, abs=0.6)
+            assert ey1 == by1
+
+    def test_default_ref_frame_inferred_backward_compatible(self):
+        # 缺省 ref_frame:保持旧行为(隐式 tracks[0].frame_num)并在
+        # diagnostics 注明推断参考帧
+        tracks = make_offset_tracks(first_frame=100)
+        res = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), tracks,
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        assert res.diagnostics["ref_frame"] == 100
+        assert res.diagnostics["ref_frame_source"] == "inferred"
+        mask0 = next(ev for ev in out if "\\p1" in ev["tags"])
+        x1, _y1, _x2, _y2 = move_points(mask0["tags"])
+        assert x1 == pytest.approx(18.08 + 2.0, abs=1.5)  # 旧隐式行为不变
+
+
+class TestEmptyTracksDegradation:
+    """tracks=[] 而 rows 非空:明确降级,不抛 IndexError。"""
+
+    def _rows_events(self):
+        return [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+
+    def test_mask_empty_tracks_falls_back_to_external(self):
+        res = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), [],
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "external"
+        assert notes and "tracks" in notes[0]
+        assert res.diagnostics["applied_mode"] == "external"
+        assert res.requested_mode == "mask"
+        assert all(ev["style"] == "NoteBox" for ev in out)
+
+    def test_whitespace_empty_tracks_falls_back_to_external(self):
+        res = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), [],
+            policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "external"
+        assert notes and "tracks" in notes[0]
+        assert res.diagnostics["applied_mode"] == "external"
+        assert all(ev["style"] == "NoteBox" for ev in out)
+
+    def test_external_empty_tracks_still_layouts(self):
+        res = apply_policy(
+            self._rows_events(), ROWS, make_white_plane(), [],
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        out, applied, _notes = res
+        assert applied == "external"
+        assert len(out) == 1 and out[0]["style"] == "NoteBox"
+
+    def test_overlap_empty_tracks_returned_as_is(self):
+        events = self._rows_events()
+        out, applied, notes = apply_policy(
+            events, ROWS, make_white_plane(), [],
+            policy_cfg("overlap"), PLANE_W, PLANE_H)
+        assert out == events and applied == "overlap" and notes == []
+
+
+class TestPolicyResultContract:
+    """策略结果携带 requested/applied mode、notes、diagnostics。"""
+
+    def test_full_fallback_chain_result_fields(self):
+        # whitespace → mask → external 全链:requested/applied/notes/diagnostics
+        rng = np.random.default_rng(9)
+        plane = rng.integers(0, 256, (PLANE_H, PLANE_W, 3), dtype=np.uint8)
+        plane[::4, :, :] = 10  # 保证无空白带
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        res = apply_policy(
+            events, ROWS, plane, make_translation_tracks(),
+            policy_cfg("whitespace"), PLANE_W, PLANE_H)
+        out, applied, notes = res  # 三元组解包兼容(既有消费方不受影响)
+        assert res.requested_mode == "whitespace"
+        assert res.applied_mode == applied == "external"
+        assert res.notes == notes and len(notes) == 2
+        diag = res.diagnostics
+        assert isinstance(diag, dict)
+        assert diag["requested_mode"] == "whitespace"
+        assert diag["applied_mode"] == "external"
+        assert diag["ref_frame"] == 0  # make_translation_tracks 帧号从 0 起
+        assert diag["ref_frame_source"] == "inferred"
+        assert diag["total_rows"] == 3
+        assert diag["valid_rows"] == 3
+        assert diag["invalid_rows"] == 0
+
+    def test_overlap_result_fields(self):
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        res = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("overlap"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert res.requested_mode == "overlap"
+        assert res.applied_mode == applied == "overlap"
+        assert res.notes == notes == []
+        assert res.diagnostics["applied_mode"] == "overlap"
+        assert out == events
+
+    def test_static_result_fields(self):
+        res = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        specs, applied, notes = res
+        assert res.requested_mode == "mask"
+        assert res.applied_mode == applied == "mask"
+        assert res.notes == notes == []
+        diag = res.diagnostics
+        assert diag["requested_mode"] == "mask"
+        assert diag["applied_mode"] == "mask"
+        assert diag["ref_frame"] is None       # 静态路径无轨迹
+        assert diag["ref_frame_source"] == "none"
+        assert diag["invalid_rows"] == 0
+
+
+class TestRowBoxValidation:
+    """输入行框校验:非有限/非正宽高/越界的判定与裁剪。"""
+
+    def test_nan_inf_and_non_positive_boxes_dropped(self):
+        rows = [
+            ("nan行", (float("nan"), 20.0, 100.0, 36.0)),
+            ("inf行", (20.0, float("inf"), 100.0, 36.0)),
+            ("负宽", (100.0, 20.0, 20.0, 36.0)),
+            ("零高", (20.0, 36.0, 100.0, 36.0)),
+            ("标题", (20.0, 20.0, 200.0, 36.0)),  # 唯一有效行
+        ]
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in rows]
+        res = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert applied == "mask" and notes == []
+        assert res.diagnostics["total_rows"] == 5
+        assert res.diagnostics["invalid_rows"] == 4
+        assert res.diagnostics["valid_rows"] == 1
+        assert len(res.diagnostics["invalid_reasons"]) == 4
+        assert sum(1 for ev in out if "\\p1" in ev["tags"]) == 1
+
+    def test_partial_out_of_bounds_box_clipped_to_plane(self):
+        rows = [("越界", (-30.0, -10.0, 500.0, 36.0))]
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in rows]
+        res = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, _notes = res
+        assert applied == "mask"
+        assert res.diagnostics["clipped_rows"] == 1
+        assert res.diagnostics["invalid_rows"] == 0
+        mask0 = next(ev for ev in out if "\\p1" in ev["tags"])
+        x1, y1, _x2, _y2 = move_points(mask0["tags"])
+        assert x1 >= 0.0 and y1 >= 0.0  # 遮罩不越出平面边界
+
+    def test_fully_out_of_bounds_box_invalid(self):
+        rows = [("出界", (400.0, 500.0, 600.0, 600.0))]  # 平面 300×400 之外
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in rows]
+        res = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        out, applied, notes = res
+        assert res.diagnostics["invalid_rows"] == 1
+        assert applied == "overlap"          # 无有效行 → 策略未应用
+        assert out == events                  # 原事件返回
+        assert notes and "invalid" in notes[0]
+
+    def test_all_rows_invalid_overlap_returns_original_events(self):
+        rows = [("a", (float("nan"), 0.0, 10.0, 10.0)),
+                ("b", (10.0, 10.0, 5.0, 20.0))]
+        events = [simple_event(t, 0.0, 1.0) for t, _b in rows]
+        for mode in ("overlap", "mask", "external", "whitespace"):
+            res = apply_policy(
+                events, rows, make_white_plane(), make_translation_tracks(),
+                policy_cfg(mode), PLANE_W, PLANE_H)
+            out, applied, notes = res
+            assert res.diagnostics["invalid_rows"] == 2
+            if mode == "overlap":
+                assert out == events and applied == "overlap" and notes == []
+            else:
+                # 按回退链降级:无可布局对象 → 策略未应用(原事件返回)+ 原因
+                assert out == events and applied == "overlap"
+                assert notes and "invalid" in notes[0]
+                assert res.diagnostics["applied_mode"] == "overlap"
+
+    def test_static_invalid_rows_dropped_with_diagnostics(self):
+        rows = [("坏", (float("nan"), 20.0, 100.0, 36.0)),
+                ("标题", (20.0, 20.0, 200.0, 36.0))]
+        res = apply_policy_static(
+            rows, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        specs, applied, _notes = res
+        assert applied == "mask"
+        assert res.diagnostics["total_rows"] == 2
+        assert res.diagnostics["invalid_rows"] == 1
+        texts = [s["body"] for s in specs if s["kind"] == "text"]
+        assert texts == ["标题"]
+
+    def test_static_all_rows_invalid_degrades_with_reason(self):
+        rows = [("坏", (float("nan"), 20.0, 100.0, 36.0))]
+        res = apply_policy_static(
+            rows, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H)
+        specs, applied, notes = res
+        assert specs == [] and applied == "mask"  # 静态路径既有约定
+        assert notes and "invalid" in notes[0]
+        assert res.diagnostics["invalid_rows"] == 1

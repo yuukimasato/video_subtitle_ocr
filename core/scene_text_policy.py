@@ -12,6 +12,12 @@
 - :func:`apply_policy_static` —— 同一回退链的静态 ``\\pos`` 变体(主流水线
   用):输入行框 + 单帧平面图,输出不带时间的 spec dict(时间由调用方按
   所属组回填),遮罩为静态 ``\\an7\\pos\\p1`` 矩形;
+- :class:`PolicyResult` —— 两个入口的返回值:兼容
+  ``(events/specs, applied_mode, notes)`` 三元组解包,另以属性携带
+  ``requested_mode`` 与 ``diagnostics``(轨迹参考帧及其来源、输入行框
+  有效性统计);动态入口可选 ``ref_frame`` 显式指定行框参考帧(缺省隐式
+  ``tracks[0].frame_num``,旧行为),输入行框统一做有限数/正宽高/边界
+  裁剪校验,空轨迹与全无效行按回退链优雅降级并留痕;
 - 自动回退链 **whitespace → mask → external**(仅当所选模式为三者之一且
   不可用时降级;overlap 不参与回退),降级原因记录在返回的 notes 里;
 - :func:`sample_background_color` —— 块区域剔除墨水像素后的中位色 +
@@ -51,6 +57,7 @@ from core.motion_ass import (
 
 __all__ = [
     "SceneTextPolicyConfig",
+    "PolicyResult",
     "sample_background_color",
     "merge_line_blocks",
     "find_whitespace_band",
@@ -61,6 +68,9 @@ __all__ = [
 ]
 
 POLICY_MODES = ("overlap", "mask", "external", "whitespace")
+
+# diagnostics["ref_frame_source"] 取值:显式传入 / 由 tracks[0] 推断 / 不适用
+_REF_EXPLICIT, _REF_INFERRED, _REF_NONE = "explicit", "inferred", "none"
 
 _INK_DROP_DELTA = 40      # 墨水剔除/墨迹二值化阈值(低于背景估计 40 灰级)
 _WRAP_BASE_FS = 40        # 折行用的基准字号(px)
@@ -90,6 +100,110 @@ class SceneTextPolicyConfig:
             raise ValueError(
                 f"unknown scene text policy mode: {self.mode!r}; "
                 f"valid modes: {', '.join(POLICY_MODES)}")
+
+
+# ---------------------------------------------------------------------------
+# 结果契约与输入行框校验(PolicyResult 兼容三元组解包,字段只追加)
+# ---------------------------------------------------------------------------
+
+class PolicyResult(tuple):
+    """策略结果:``(events, applied_mode, notes)`` 三元组 + 诊断属性。
+
+    兼容既有消费方的三元组解包(``events, applied, notes = apply_policy(...)``
+    与 ``== tuple`` 比较);同时以属性携带 ``events`` / ``applied_mode`` /
+    ``notes`` / ``requested_mode`` / ``diagnostics``,新字段只追加、不改变
+    既有返回值消费方。``diagnostics`` 含 requested/applied 模式、轨迹参考帧
+    (``ref_frame`` 及其来源 explicit/inferred/none)与输入行框有效性统计
+    (total/valid/invalid/clipped 行数、逐行原因)。
+    """
+
+    def __new__(cls, events, applied_mode, notes, requested_mode, diagnostics):
+        obj = super().__new__(cls, (events, applied_mode, notes))
+        obj.events = events
+        obj.applied_mode = applied_mode
+        obj.notes = notes
+        obj.requested_mode = requested_mode
+        obj.diagnostics = diagnostics
+        return obj
+
+    def __repr__(self) -> str:
+        return (f"PolicyResult(applied_mode={self.applied_mode!r}, "
+                f"requested_mode={self.requested_mode!r}, "
+                f"notes={self.notes!r}, diagnostics={self.diagnostics!r})")
+
+
+def _validate_rows(
+    blocks_meta: Sequence[Row],
+    plane_w: float,
+    plane_h: float,
+) -> Tuple[List[Row], List[int], Dict[str, object]]:
+    """输入行框校验:有限数、正宽高、裁到平面边界。
+
+    返回 ``(有效行, 原始输入索引, 统计)``。非有限坐标(NaN/inf)、坐标数
+    不足、宽或高非正、完全越出平面的行整行剔除;部分越界行裁剪到
+    ``(0, 0, plane_w, plane_h)`` 并计入 ``clipped_rows``。统计 dict 携带
+    total/valid/invalid/clipped 行数与逐行剔除原因(供 diagnostics)。
+    """
+    valid: List[Row] = []
+    indices: List[int] = []
+    reasons: List[str] = []
+    clipped = 0
+    for i, item in enumerate(blocks_meta):
+        try:
+            text, box = item
+            if len(box) != 4:
+                raise ValueError("box must have 4 coordinates")
+            x1, y1, x2, y2 = (float(v) for v in box)
+        except (TypeError, ValueError):
+            reasons.append(f"row {i}: malformed box {box!r}")
+            continue
+        if not all(math.isfinite(v) for v in (x1, y1, x2, y2)):
+            reasons.append(f"row {i}: non-finite coordinate")
+            continue
+        if x2 <= x1 or y2 <= y1:
+            reasons.append(
+                f"row {i}: non-positive size (w={x2 - x1:g}, h={y2 - y1:g})")
+            continue
+        cx1, cy1 = max(0.0, x1), max(0.0, y1)
+        cx2 = min(float(plane_w), x2)
+        cy2 = min(float(plane_h), y2)
+        if cx2 - cx1 < 1e-6 or cy2 - cy1 < 1e-6:
+            reasons.append(f"row {i}: fully outside plane")
+            continue
+        if (cx1, cy1, cx2, cy2) != (x1, y1, x2, y2):
+            clipped += 1
+        valid.append((text, (cx1, cy1, cx2, cy2)))
+        indices.append(i)
+    stats: Dict[str, object] = {
+        "total_rows": len(blocks_meta),
+        "valid_rows": len(valid),
+        "invalid_rows": len(blocks_meta) - len(valid),
+        "clipped_rows": clipped,
+        "invalid_reasons": reasons,
+    }
+    return valid, indices, stats
+
+
+def _result_diagnostics(
+    requested_mode: str,
+    applied_mode: str,
+    *,
+    ref_frame: Optional[int],
+    ref_source: str,
+    row_stats: Dict[str, object],
+) -> Dict[str, object]:
+    """构造 ``PolicyResult.diagnostics``(参考帧 + 行框有效性统计)。"""
+    return {
+        "requested_mode": str(requested_mode),
+        "applied_mode": str(applied_mode),
+        "ref_frame": None if ref_frame is None else int(ref_frame),
+        "ref_frame_source": str(ref_source),
+        "total_rows": int(row_stats["total_rows"]),
+        "valid_rows": int(row_stats["valid_rows"]),
+        "invalid_rows": int(row_stats["invalid_rows"]),
+        "clipped_rows": int(row_stats["clipped_rows"]),
+        "invalid_reasons": list(row_stats["invalid_reasons"]),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -357,11 +471,15 @@ def _mask_events_for_block(
     color_bgr: Tuple[int, int, int],
     tracks: Sequence,
     motion_cfg: MotionAssConfig,
+    *,
+    ref_frame: Optional[int] = None,
 ) -> List[Dict]:
     """单块遮罩事件:``\\an7\\p1`` 矩形随轨迹平移/旋转/缩放(自己的 DP 分段)。
 
     块角点经 :func:`build_line_tracks` 同款映射得逐帧轨迹(纯色块,无需与
     文本事件对齐);遮罩不用 ``\\alpha``,调暗由调用方按 ``base_color`` 生成。
+    ``ref_frame`` 为行框所在平面坐标系的参考帧;缺省回退旧行为
+    (隐式 ``tracks[0].frame_num``,由入口在 diagnostics 注明)。
     """
     x1, y1, x2, y2 = box
     w = max(1.0, float(x2) - float(x1))
@@ -371,8 +489,9 @@ def _mask_events_for_block(
     color_tag = f"\\1c&H{b:02X}{g:02X}{r:02X}&"
     drawing = (f"m 0 0 l {iw} 0 {iw} {ih} 0 {ih}{{\\p0}}")
 
+    ref = tracks[0].frame_num if ref_frame is None else int(ref_frame)
     (lt,) = build_line_tracks([(x1, y1, x2, y2)], ["mask"], tracks,
-                              ref_frame=tracks[0].frame_num)
+                              ref_frame=ref)
     smooth_line_track(lt, window=motion_cfg.smooth_window)
 
     tmap = {t.frame_num: t for t in tracks}
@@ -485,11 +604,13 @@ def _apply_mask(
     style: str,
     notes: List[str],
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
+    ref_frame: Optional[int] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """mask 模式:低层纯色遮罩盖住原文字(layer 0)+ 原文本事件(layer 1)。
 
     每块取色并检查背景均匀性:任一块非墨像素通道 std > ``bg_max_std``
-    (背景杂色,纯色补丁观感突兀)→ 整体回退 external。
+    (背景杂色,纯色补丁观感突兀)→ 整体回退 external。``ref_frame`` 透传
+    给遮罩轨迹重建(缺省隐式 ``tracks[0].frame_num``,旧行为)。
     """
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
@@ -518,7 +639,8 @@ def _apply_mask(
             ext = _apply_external(events, rows, blocks, tracks, cfg,
                                   video_w, video_h, motion_cfg, style, notes)
             return ext, "external", notes
-        out.extend(_mask_events_for_block(mbox, color, tracks, motion_cfg))
+        out.extend(_mask_events_for_block(mbox, color, tracks, motion_cfg,
+                                          ref_frame=ref_frame))
     # 所有识别行都归属某块 → 文本事件整体升到 layer 1(遮罩之下)
     out.extend(dict(ev, layer=1) for ev in events)
     return out, "mask", notes
@@ -623,8 +745,13 @@ def _apply_whitespace(
     style: str,
     notes: List[str],
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
+    ref_frame: Optional[int] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
-    """whitespace 模式:全部块文本合并放进原文字空白带(合成行框复用轨迹)。"""
+    """whitespace 模式:全部块文本合并放进原文字空白带(合成行框复用轨迹)。
+
+    ``ref_frame`` 为行框所在平面坐标系的参考帧;缺省回退旧行为
+    (隐式 ``tracks[0].frame_num``,由入口在 diagnostics 注明)。
+    """
     gray, ox, oy = _analysis_gray(plane_img_bgr, analysis_box)
     line_h = sum(float(b[3]) - float(b[1]) for _t, b in rows) / max(1, len(rows))
     local_boxes = [(float(b[0]) - ox, float(b[1]) - oy,
@@ -640,7 +767,7 @@ def _apply_whitespace(
             f"width >= {float(cfg.ws_min_width_ratio):g} x plane width)")
         return _apply_mask(events, rows, blocks, plane_img_bgr, tracks, cfg,
                            video_w, video_h, motion_cfg, style, notes,
-                           analysis_box=analysis_box)
+                           analysis_box=analysis_box, ref_frame=ref_frame)
     band = (band[0] + ox, band[1] + oy, band[2] + ox, band[3] + oy)
 
     band_w = float(band[2] - band[0])
@@ -657,8 +784,8 @@ def _apply_whitespace(
     boxes = [(float(band[0]), y0 + i * fs,
               float(band[0]) + max(1, len(p)) * fs,
               y0 + (i + 1) * fs) for i, p in enumerate(parts)]
-    new_tracks = build_line_tracks(boxes, parts, tracks,
-                                   ref_frame=tracks[0].frame_num)
+    ref = tracks[0].frame_num if ref_frame is None else int(ref_frame)
+    new_tracks = build_line_tracks(boxes, parts, tracks, ref_frame=ref)
     for lt in new_tracks:
         smooth_line_track(lt, window=motion_cfg.smooth_window)
     return (synthesize_events(new_tracks, tracks, motion_cfg, style=style),
@@ -677,7 +804,8 @@ def apply_policy(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     motion_cfg: Optional[MotionAssConfig] = None,
     style: str = "Scene",
-) -> Tuple[List[Dict], str, List[str]]:
+    ref_frame: Optional[int] = None,
+) -> PolicyResult:
     """对合成后的 motion 事件应用场景文字显示策略(设计 §3/§4)。
 
     ``blocks_meta`` 为识别行 ``[(文本, (x1, y1, x2, y2)), ...]``(统一坐标 =
@@ -686,36 +814,78 @@ def apply_policy(
     ``analysis_box`` 可选,限定文字平面(quad 窗口)在展开图内的范围,
     窗口外的展开区域不参与取色与空白带检测。
 
-    返回 ``(events, applied_policy, notes)``:notes 记录回退原因
-    (whitespace→mask→external,仅所选模式不可用时降级;overlap 不回退),
-    由 CLI 打 warn 日志。overlap 原样返回事件(不修改输入)。
+    ``ref_frame`` 为 ``blocks_meta`` 行框平面坐标系的参考帧(动态入口应传
+    OCR 锚定帧):mask/whitespace 的轨迹重建以它为参考;缺省保持向后兼容
+    (隐式 ``tracks[0].frame_num``)并在 diagnostics 注明 ``ref_frame_source
+    = "inferred"``。输入行框先经校验:非有限坐标、宽高非正或完全越界的行
+    剔除,部分越界行裁剪到平面边界;全部行无效或无识别行时原样返回事件并
+    留痕(不抛异常)。
+
+    返回 :class:`PolicyResult`:兼容 ``(events, applied_policy, notes)``
+    三元组解包;notes 记录回退原因(whitespace→mask→external,仅所选模式
+    不可用时降级;overlap 不回退),由 CLI 打 warn 日志。diagnostics 携带
+    requested/applied mode、参考帧与行框有效性统计。``tracks`` 为空时
+    mask/whitespace 沿回退链降级 external(记录原因),overlap 原样返回
+    事件(不修改输入)。
     """
     mode = cfg.mode
+    plane_h, plane_w = plane_img_bgr.shape[:2]
+    rows_kept, _valid_indices, row_stats = _validate_rows(
+        blocks_meta, plane_w, plane_h)
+    if ref_frame is not None:
+        ref, ref_source = int(ref_frame), _REF_EXPLICIT
+    elif len(tracks):
+        ref, ref_source = int(tracks[0].frame_num), _REF_INFERRED
+    else:
+        ref, ref_source = None, _REF_NONE
+    diag = _result_diagnostics(mode, mode, ref_frame=ref,
+                               ref_source=ref_source, row_stats=row_stats)
     if mode == "overlap":
-        return list(events), "overlap", []
+        return PolicyResult(list(events), "overlap", [], mode, diag)
     mcfg = motion_cfg if motion_cfg is not None else MotionAssConfig()
-    rows = _sorted_rows(blocks_meta)
+    rows = _sorted_rows(rows_kept)
     if not rows:
-        # 无识别行：mask/external/whitespace 都没有可布局的对象，空 rows
-        # 还会让后续行高/取最值计算崩溃；原样返回事件并留痕。
-        return list(events), "overlap", [f"{mode}: no recognized text rows; policy not applied"]
+        # 无识别行,或识别行全部未通过行框校验:mask/external/whitespace 都
+        # 没有可布局的对象,空 rows 还会让后续行高/取最值计算崩溃;原样返回
+        # 事件并留痕。
+        if row_stats["total_rows"]:
+            note = (f"{mode}: all {row_stats['total_rows']} text rows invalid "
+                    f"after box validation; policy not applied")
+        else:
+            note = f"{mode}: no recognized text rows; policy not applied"
+        diag["applied_mode"] = "overlap"
+        return PolicyResult(list(events), "overlap", [note], mode, diag)
     blocks = merge_line_blocks([b for _t, b in rows],
                                vgap_ratio=float(cfg.block_vgap_ratio))
+    if mode in ("mask", "whitespace") and not tracks:
+        # 轨迹重建需要至少一帧跟踪结果;空轨迹沿回退链降级 external
+        #(external 只按事件时间排版,不依赖轨迹几何)。
+        notes = [f"{mode}->external: no tracking frames (empty tracks)"]
+        out = _apply_external(list(events), rows, blocks, tracks, cfg,
+                              video_w, video_h, mcfg, style, notes)
+        diag["applied_mode"] = "external"
+        return PolicyResult(out, "external", notes, mode, diag)
     if mode == "mask":
-        return _apply_mask(list(events), rows, blocks, plane_img_bgr, tracks,
-                           cfg, video_w, video_h, mcfg, style, [],
-                           analysis_box=analysis_box)
-    if mode == "external":
-        return (_apply_external(list(events), rows, blocks, tracks, cfg,
-                                video_w, video_h, mcfg, style, []),
-                "external", [])
-    if mode == "whitespace":
-        return _apply_whitespace(list(events), rows, blocks, plane_img_bgr,
-                                 tracks, cfg, video_w, video_h, mcfg, style,
-                                 [], analysis_box=analysis_box)
-    raise ValueError(
-        f"unknown scene text policy mode: {mode!r}; "
-        f"valid modes: {', '.join(POLICY_MODES)}")
+        out, applied, notes = _apply_mask(
+            list(events), rows, blocks, plane_img_bgr, tracks, cfg,
+            video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
+            ref_frame=ref)
+    elif mode == "external":
+        out, applied, notes = (_apply_external(list(events), rows, blocks,
+                                               tracks, cfg, video_w, video_h,
+                                               mcfg, style, []),
+                               "external", [])
+    elif mode == "whitespace":
+        out, applied, notes = _apply_whitespace(
+            list(events), rows, blocks, plane_img_bgr, tracks, cfg,
+            video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
+            ref_frame=ref)
+    else:
+        raise ValueError(
+            f"unknown scene text policy mode: {mode!r}; "
+            f"valid modes: {', '.join(POLICY_MODES)}")
+    diag["applied_mode"] = applied
+    return PolicyResult(out, applied, notes, mode, diag)
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +1060,7 @@ def apply_policy_static(
     *,
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     base_font_size: Optional[int] = None,
-) -> Tuple[List[Dict], str, List[str]]:
+) -> PolicyResult:
     """对静态 ``\\pos`` 路径的识别行应用场景文字显示策略(静态变体)。
 
     与 :func:`apply_policy` 同一回退链(whitespace → mask → external)与
@@ -908,36 +1078,57 @@ def apply_policy_static(
       (平面坐标)。
 
     ``base_font_size`` 为折行/字号适配的基准字号(缺省 40;主流水线传
-    Scene 样式字号)。overlap 原样返回空 spec 列表。
+    Scene 样式字号)。overlap 原样返回空 spec 列表。输入行框先经校验
+    (非有限/非正宽高/完全越界剔除,部分越界裁剪到平面边界);全部行无效时
+    返回空 spec 并留痕。返回 :class:`PolicyResult`(兼容
+    ``(specs, applied, notes)`` 三元组解包),diagnostics 携带
+    requested/applied mode 与行框有效性统计(静态路径无轨迹,
+    ``ref_frame`` 为 None)。
     """
     mode = cfg.mode
+    plane_h, plane_w = plane_img_bgr.shape[:2]
+    rows_kept, kept_ids, row_stats = _validate_rows(
+        rows_meta, plane_w, plane_h)
+    diag = _result_diagnostics(mode, mode, ref_frame=None,
+                               ref_source=_REF_NONE, row_stats=row_stats)
     if mode == "overlap":
-        return [], "overlap", []
+        return PolicyResult([], "overlap", [], mode, diag)
     base_fs = int(base_font_size) if base_font_size else _WRAP_BASE_FS
     notes: List[str] = []
-    rows = _sorted_rows(rows_meta)
+    rows = _sorted_rows(rows_kept)
     if not rows:
-        return [], mode, notes
+        if row_stats["total_rows"]:
+            notes.append(
+                f"{mode}: all {row_stats['total_rows']} text rows invalid "
+                f"after box validation; policy not applied")
+        return PolicyResult([], mode, notes, mode, diag)
     # 行序 = 阅读序;orig_indices 把排序后位置映射回输入行索引
-    orig_indices = sorted(
-        range(len(rows_meta)),
-        key=lambda i: (float(rows_meta[i][1][1]), float(rows_meta[i][1][0])))
+    # (rows_kept 保持输入序,kept_ids[j] = rows_kept[j] 的原始输入索引)
+    order = sorted(
+        range(len(rows_kept)),
+        key=lambda j: (float(rows_kept[j][1][1]), float(rows_kept[j][1][0])))
+    orig_indices = [kept_ids[j] for j in order]
     blocks = merge_line_blocks([b for _t, b in rows],
                                vgap_ratio=float(cfg.block_vgap_ratio))
     while True:
         if mode == "mask":
-            return _apply_static_mask(
+            out, applied, notes = _apply_static_mask(
                 rows, blocks, plane_img_bgr, cfg, video_w, video_h, notes,
                 orig_indices, analysis_box=analysis_box, base_fs=base_fs)
+            diag["applied_mode"] = applied
+            return PolicyResult(out, applied, notes, cfg.mode, diag)
         if mode == "external":
             spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
-            return ([spec] if spec else []), "external", notes
+            diag["applied_mode"] = "external"
+            return (PolicyResult([spec] if spec else [], "external", notes,
+                                 cfg.mode, diag))
         if mode == "whitespace":
             specs = _apply_static_whitespace(
                 rows, plane_img_bgr, cfg, video_w, video_h, notes,
                 analysis_box=analysis_box, base_fs=base_fs)
             if specs is not None:
-                return specs, "whitespace", notes
+                diag["applied_mode"] = "whitespace"
+                return PolicyResult(specs, "whitespace", notes, cfg.mode, diag)
             mode = "mask"  # 回退链:whitespace → mask
             continue
         raise ValueError(
