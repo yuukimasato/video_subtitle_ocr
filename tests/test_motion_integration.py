@@ -41,7 +41,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 _app = QApplication.instance() or QApplication(sys.argv[:1])
 
 from scripts import motion_ass as motion_cli  # noqa: E402
-from cli import parse_motion_quad_spec  # noqa: E402
+from cli import load_roi_file, parse_motion_quad_spec  # noqa: E402
 from core.pipeline_worker import (  # noqa: E402
     PipelineWorker,
     collect_motion_roi_specs,
@@ -150,13 +150,40 @@ class TestCollectMotionRoiSpecs:
         assert spec["scene_text_policy"] == "mask"
         assert spec["auto_brightness"] is True
 
+    def test_rect_with_pose_expanded_to_quad(self):
+        specs = collect_motion_roi_specs([{
+            "type": "rect", "points": [0, 0, 10, 10],
+            "start_frame": 0, "end_frame": 5, "write_pose_tags": True}])
+        assert len(specs) == 1
+        assert specs[0]["quad"] == [[0.0, 0.0], [10.0, 0.0],
+                                    [10.0, 10.0], [0.0, 10.0]]
+
+    def test_closed_poly_dedupes_closure_click(self):
+        # GUI 手绘四边形会把「回到起点」的闭合点击也存进来(末点≈首点,
+        # 允许几像素误差);去掉闭合点后应还原出 4 角 quad。
+        closed = [[100, 100], [180, 100], [180, 160], [100, 160],
+                  [100.5, 100.5]]
+        specs = collect_motion_roi_specs([self._poly(points=closed)])
+        assert len(specs) == 1
+        assert specs[0]["quad"] == [[100.0, 100.0], [180.0, 100.0],
+                                    [180.0, 160.0], [100.0, 160.0]]
+
+    def test_overcomplete_poly_reduced_by_min_area_rect(self):
+        messy = [[100, 100], [180, 101], [179, 160],
+                 [100, 159], [101, 101], [180.5, 159.5]]
+        specs = collect_motion_roi_specs([self._poly(points=messy)])
+        assert len(specs) == 1
+        quad = specs[0]["quad"]
+        assert len(quad) == 4
+        xs = [p[0] for p in quad]
+        ys = [p[1] for p in quad]
+        assert max(xs) - min(xs) == pytest.approx(80.0, abs=2.0)
+        assert max(ys) - min(ys) == pytest.approx(60.0, abs=2.0)
+
     def test_static_cases_excluded(self):
-        rect = {"type": "rect", "points": [0, 0, 10, 10],
-                "start_frame": 0, "end_frame": 5, "write_pose_tags": True}
         tri = self._poly(points=[[0, 0], [10, 0], [5, 5]])
-        five = self._poly(points=[[0, 0], [10, 0], [10, 10], [5, 12], [0, 10]])
         no_pose = self._poly(write_pose_tags=False)
-        assert collect_motion_roi_specs([rect, tri, five, no_pose]) == []
+        assert collect_motion_roi_specs([tri, no_pose]) == []
 
     def test_malformed_points_skipped(self):
         bad = self._poly(points=[[0, "x"], [10, 0], [10, 10], [0, 10]])
@@ -508,3 +535,60 @@ class TestGuiBrightnessCheckbox:
         roi_def.motion_brightness_checkbox.setChecked(False)
         entry = win._create_roi_entry_from_ui()
         assert entry["motion_auto_brightness"] is False
+
+
+# ---------------------------------------------------------------------------
+# cli.load_roi_file(--roi-file)
+# ---------------------------------------------------------------------------
+
+class TestLoadRoiFile:
+    def _write(self, tmp_path, payload, name="rois.json"):
+        import json
+        p = tmp_path / name
+        p.write_text(json.dumps(payload, ensure_ascii=False),
+                     encoding="utf-8")
+        return str(p)
+
+    def test_gui_wrapper_format(self, tmp_path):
+        payload = {"ocr_lang": "ch", "rois": [
+            {"type": "poly", "points": [[1, 1], [9, 1], [9, 9], [1, 9]],
+             "start_frame": 0, "end_frame": 10, "write_pose_tags": True,
+             "motion_auto_brightness": True}]}
+        entries = load_roi_file(self._write(tmp_path, payload))
+        assert len(entries) == 1
+        assert entries[0]["write_pose_tags"] is True
+        assert entries[0]["motion_auto_brightness"] is True
+
+    def test_bare_list_format(self, tmp_path):
+        payload = [{"type": "rect", "points": [0, 0, 5, 5]}]
+        entries = load_roi_file(self._write(tmp_path, payload))
+        assert entries[0]["type"] == "rect"
+
+    def test_malformed_rejected(self, tmp_path):
+        with pytest.raises(ValueError):
+            load_roi_file(self._write(tmp_path, {"nope": 1}))
+        with pytest.raises(ValueError):
+            load_roi_file(self._write(tmp_path, [{"type": "rect"}]))
+        with pytest.raises(ValueError):
+            load_roi_file(self._write(tmp_path, {"rois": []}))
+
+    def test_missing_file_raises_oserror(self, tmp_path):
+        with pytest.raises(OSError):
+            load_roi_file(str(tmp_path / "absent.json"))
+
+    def test_loaded_pose_poly_yields_motion_spec(self, tmp_path):
+        # 端到端小闭环:GUI 保存的 5 点闭合多边形(带 pose + 亮度)经
+        # load_roi_file -> collect_motion_roi_specs 应产出轨迹规格。
+        from core.pipeline_worker import collect_motion_roi_specs
+        payload = {"rois": [
+            {"type": "poly",
+             "points": [[632, 282], [1288, 280], [1324, 1075],
+                        [599, 1079], [630, 280]],
+             "start_frame": 0, "end_frame": 245,
+             "write_pose_tags": True, "motion_auto_brightness": True}]}
+        entries = load_roi_file(self._write(tmp_path, payload))
+        specs = collect_motion_roi_specs(entries)
+        assert len(specs) == 1
+        assert len(specs[0]["quad"]) == 4
+        assert specs[0]["auto_brightness"] is True
+        assert specs[0]["start_frame"] == 0 and specs[0]["end_frame"] == 245

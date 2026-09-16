@@ -92,14 +92,48 @@ def collect_roi_scene_text_options(
         policies = {"roi_merged": distinct[0]}
     return policies, rects
 
+def _normalize_plane_quad(points: List) -> Optional[List[List[float]]]:
+    """把手绘多边形顶点归一化为文字平面四角（quad）。
+
+    - 恰 4 点：原样返回（顶点顺序由下游自动纠正）；
+    - 末点与首点几乎重合（手绘闭合点击——GUI 保存的多边形会把「回到起点」
+      的那一击也存进去）时丢弃闭合点后再判；
+    - 归一后仍多于 4 点：取最小外接矩形（``cv2.minAreaRect``）四角作近似
+      ——文字平面（手机屏幕/信件/招牌）近似凸四边形，绕着屏幕点的杂点
+      由外接矩形兜住；
+    - 少于 4 点返回 None。
+    """
+    import math
+
+    pts = [[float(p[0]), float(p[1])] for p in points]
+    if len(pts) > 4:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
+        tol = max(4.0, 0.01 * diag)
+        if math.hypot(pts[-1][0] - pts[0][0], pts[-1][1] - pts[0][1]) <= tol:
+            pts = pts[:-1]
+    if len(pts) == 4:
+        return pts
+    if len(pts) > 4:
+        import cv2
+        import numpy as np
+
+        box = cv2.boxPoints(cv2.minAreaRect(np.asarray(pts, dtype=np.float32)))
+        return [[float(x), float(y)] for x, y in box]
+    return None
+
+
 def collect_motion_roi_specs(roi_data: Optional[List[Dict]]) -> List[Dict[str, Any]]:
     """收集走移动文字轨迹管线的 ROI 规格。
 
-    绑定规则:「写入画面位置标签」勾选(write_pose_tags)且 ROI 为四点
-    多边形(type="poly"、points 恰 4 个顶点)——四点即文字平面 quad,静态
-    pose 标签跟不动运动画面,这类 ROI 交给轨迹管线合成 \\move 事件;其余
-    (矩形、非四点多边形、未勾选 pose)保持静态路径。每个规格含 roi_id /
-    quad / start_frame / end_frame / scene_text_policy / auto_brightness。
+    绑定规则：「写入画面位置标签」勾选（write_pose_tags）且 ROI 形状是
+    可跟踪的文字平面——四点多边形、带回闭点的手绘多边形（自动去重，见
+    :func:`_normalize_plane_quad`）、一般多边形（最小外接矩形四角）或
+    矩形（points=[x,y,w,h]，展开为四角）。静态 pose 标签跟不动运动画面，
+    这类 ROI 交给轨迹管线合成 \\move 事件；其余（未勾选 pose、点数不足
+    3、形状非法）保持静态路径。每个规格含 roi_id / quad / start_frame /
+    end_frame / scene_text_policy / auto_brightness。
     """
     specs: List[Dict[str, Any]] = []
     for idx, roi in enumerate(roi_data or []):
@@ -107,17 +141,34 @@ def collect_motion_roi_specs(roi_data: Optional[List[Dict]]) -> List[Dict[str, A
             continue
         if not roi.get("write_pose_tags"):
             continue
-        if str(roi.get("type", "")) != "poly":
-            continue
+        rtype = str(roi.get("type", ""))
         points = roi.get("points")
-        if not (isinstance(points, list) and len(points) == 4):
+        if rtype == "rect":
+            if not (isinstance(points, (list, tuple)) and len(points) == 4):
+                continue
+            try:
+                x, y, w, h = (float(v) for v in points)
+            except (TypeError, ValueError):
+                continue
+            if w <= 0 or h <= 0:
+                continue
+            quad = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+        elif rtype == "poly":
+            if not (isinstance(points, list) and len(points) >= 4):
+                continue
+            try:
+                quad = _normalize_plane_quad(points)
+            except (TypeError, ValueError, IndexError):
+                continue
+            if quad is None:
+                continue
+        else:
             continue
         try:
-            quad = [[float(p[0]), float(p[1])] for p in points]
             start_frame = int(roi.get("start_frame", 0) or 0)
             end_frame = roi.get("end_frame")
             end_frame = int(end_frame) if end_frame is not None else None
-        except (TypeError, ValueError, IndexError):
+        except (TypeError, ValueError):
             continue
         specs.append({
             "roi_id": f"roi_{idx}",

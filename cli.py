@@ -124,6 +124,36 @@ def parse_motion_quad_spec(spec: str) -> tuple:
     return quad, start_sec, end_sec
 
 
+def load_roi_file(path: str) -> list:
+    """Load a GUI-saved ROI json into ROI entries (same dict shape as the GUI).
+
+    Accepts either {"rois": [...]} (the GUI save format) or a bare list of
+    ROI entries. Each entry must carry at least "type" and "points"; all
+    per-ROI flags (write_pose_tags / motion_auto_brightness /
+    scene_text_policy / text_filter_policy ...) are kept so the CLI run
+    behaves exactly like the GUI pipeline with the same ROI list.
+    """
+    import json
+
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    entries = payload.get("rois") if isinstance(payload, dict) else payload
+    if not isinstance(entries, list):
+        raise ValueError(
+            f"ROI file {path!r}: expected {{\"rois\": [...]}} or a bare list")
+    out = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"ROI file {path!r}: entry {i} is not an object")
+        if not entry.get("type") or "points" not in entry:
+            raise ValueError(
+                f"ROI file {path!r}: entry {i} missing 'type'/'points'")
+        out.append(entry)
+    if not out:
+        raise ValueError(f"ROI file {path!r}: no ROI entries")
+    return out
+
+
 def probe_video(video_path: str) -> dict:
     import cv2
 
@@ -278,12 +308,20 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     for w in report.watermarks
                 ],
             }
-    elif args.roi:
+    elif args.roi or args.roi_file:
         try:
-            roi_entries = [parse_roi_spec(s) for s in args.roi]
+            roi_entries = [parse_roi_spec(s) for s in (args.roi or [])]
         except ValueError as e:
             _info(f"Error: {e}", args.quiet)
             return 2
+        if args.roi_file:
+            try:
+                # GUI-saved entries first (roi_0... numbering matches the GUI
+                # list order), then any interactive --roi specs.
+                roi_entries = load_roi_file(args.roi_file) + roi_entries
+            except (OSError, ValueError) as e:
+                _info(f"Error: {e}", args.quiet)
+                return 2
     else:
         # 默认底部条带取帧高的 20%（至少 160px）：固定 160px 在 1080p 及更高
         # 分辨率下容不下双行字幕，首行会被条带上边缘截掉导致整行丢失。
@@ -410,8 +448,15 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # pipeline (track → keyframe OCR → fuse → \move events) and merges
         # the resulting events into the output ASS. A quad failure degrades
         # to a warning and the rest of the pipeline continues.
+        # ROI-bound specs (from --roi-file with write_pose_tags on) take the
+        # same path; their roi_id is recorded so the generator suppresses the
+        # static events of that ROI (fallback keeps them on failure) — same
+        # contract as the GUI worker.
         motion_events_all: list = []
-        if args.motion_quad or args.motion_quad_file:
+        motion_roi_ids: set = set()
+        from core.pipeline_worker import collect_motion_roi_specs
+        roi_motion_specs = collect_motion_roi_specs(roi_entries)
+        if args.motion_quad or args.motion_quad_file or roi_motion_specs:
             from scripts.motion_ass import (
                 build_motion_events,
                 load_quad_file,
@@ -435,39 +480,64 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     return 2
 
             engine_id = None if args.engine == "auto" else args.engine
+
+            def _run_motion_quad(quad, start_sec, end_sec, label, auto_brightness):
+                nonlocal motion_events_all
+                quad = validate_quad(normalize_quad_winding(quad))
+                start_frame = (
+                    int(round(start_sec * info["fps"]))
+                    if start_sec is not None else 0)
+                end_frame = (
+                    int(round(end_sec * info["fps"]))
+                    if end_sec is not None else None)
+                _info(
+                    f"[3.5/4] Motion trajectory for quad {label} "
+                    f"(frames [{start_frame}, "
+                    f"{end_frame if end_frame is not None else 'end'}])...",
+                    args.quiet,
+                )
+                events, summary = build_motion_events(
+                    video_path, quad,
+                    start_frame=start_frame, end_frame=end_frame,
+                    auto_brightness=auto_brightness,
+                    ocr_engine=engine_id,
+                    log=lambda m: _info(f"      {m}", args.quiet),
+                )
+                motion_events_all.extend(events)
+                _info(
+                    f"      motion-quad {label}: {len(events)} event(s) "
+                    f"({summary['ok_frames']}/{summary['total_frames']} "
+                    f"frames ok, keyframes {summary['keyframes']})",
+                    args.quiet,
+                )
+
             for (quad, start_sec, end_sec), label in motion_specs:
                 try:
-                    quad = validate_quad(normalize_quad_winding(quad))
-                    start_frame = (
-                        int(round(start_sec * info["fps"]))
-                        if start_sec is not None else 0)
-                    end_frame = (
-                        int(round(end_sec * info["fps"]))
-                        if end_sec is not None else None)
-                    _info(
-                        f"[3.5/4] Motion trajectory for quad {label} "
-                        f"(frames [{start_frame}, "
-                        f"{end_frame if end_frame is not None else 'end'}])...",
-                        args.quiet,
-                    )
-                    events, summary = build_motion_events(
-                        video_path, quad,
-                        start_frame=start_frame, end_frame=end_frame,
-                        auto_brightness=args.auto_brightness,
-                        ocr_engine=engine_id,
-                        log=lambda m: _info(f"      {m}", args.quiet),
-                    )
-                    motion_events_all.extend(events)
-                    _info(
-                        f"      motion-quad {label}: {len(events)} event(s) "
-                        f"({summary['ok_frames']}/{summary['total_frames']} "
-                        f"frames ok, keyframes {summary['keyframes']})",
-                        args.quiet,
-                    )
+                    _run_motion_quad(quad, start_sec, end_sec,
+                                     label, args.auto_brightness)
                 except Exception as exc:
                     _info(
                         f"Warning: motion quad {label} failed ({exc}); "
                         "skipped, continuing without it.",
+                        args.quiet,
+                    )
+
+            for spec in roi_motion_specs:
+                try:
+                    _run_motion_quad(
+                        spec["quad"],
+                        None,
+                        None,
+                        f"{spec['roi_id']} (frames "
+                        f"[{spec['start_frame']}, "
+                        f"{spec['end_frame'] if spec['end_frame'] is not None else 'end'}])",
+                        bool(spec["auto_brightness"]) or args.auto_brightness,
+                    )
+                    motion_roi_ids.add(str(spec["roi_id"]))
+                except Exception as exc:
+                    _info(
+                        f"Warning: motion ROI {spec['roi_id']} failed ({exc}); "
+                        "falling back to its static events.",
                         args.quiet,
                     )
 
@@ -524,6 +594,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             roi_analysis_rects=roi_analysis_rects or None,
             watermark_filter_config=watermark_config,
             motion_events=motion_events_all or None,
+            motion_roi_ids=motion_roi_ids or None,
         )
         converter.convert_from_memory(iter(restored_results))
         t4 = time.perf_counter()
@@ -558,6 +629,13 @@ def parse_args(argv=None) -> argparse.Namespace:
         help='rect ROI "x,y,w,h" or "x,y,w,h@start-end" (seconds, e.g. '
              '"0,560,1280,160@5-20"). Repeatable. Default: bottom strip of 20%% '
              "of the frame height (min 160px), whole video.",
+    )
+    parser.add_argument(
+        "--roi-file", metavar="JSON", default=None,
+        help='GUI-saved ROI json ({"rois": [...]} or a bare list). Per-ROI '
+             "flags are kept: a poly/rect ROI with write_pose_tags on runs "
+             "the motion trajectory pipeline (see --motion-quad), "
+             "motion_auto_brightness enables brightness-adaptive tags",
     )
     parser.add_argument(
         "--scan", action="store_true",

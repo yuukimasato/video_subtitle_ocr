@@ -26,6 +26,21 @@
   Name 列输出（缺省空串，既有输出逐字节不变）；轨迹事件引用 NoteBox
   样式时头部按需追加样式行。三语 i18n 补齐。单元测试 589 → **616**
   （新增 `tests/test_motion_integration.py` 27 项）。
+- **轨迹 ROI 形状归一化 + `--roi-file`（GUI 工作流等价闭环）**：
+  `collect_motion_roi_specs` 不再要求多边形恰 4 个顶点——GUI 手绘四边形
+  会把「回到起点」的闭合点击也存进 points（5 点），此前轨迹模式永远不
+  会被触发；现自动去重闭合点（末点≈首点，容差 max(4px, 对角线 1%)），
+  仍多于 4 点取最小外接矩形四角，矩形 ROI（points=[x,y,w,h]）展开为四
+  角，即「任意平面形状 + 勾选 pose」都走轨迹管线（<4 点/未勾选仍走静
+  态）。项目 CLI 新增 `--roi-file`：直接载入 GUI 保存的 ROI json
+  （{"rois":[…]} 或裸列表），per-ROI 标志（write_pose_tags /
+  motion_auto_brightness / scene_text_policy）原样生效——CLI 运行与 GUI
+  勾选完全等价；该路径产出的轨迹事件同样登记 `motion_roi_ids` 抑制对应
+  ROI 的静态事件（失败回退静态）。验收：用真实保存的手机屏幕 ROI（勾选
+  pose+亮度）经 CLI 跑出 28 条轨迹事件（亮度标记 14/28、零静态残留），
+  与基线 motion-bright.ass 逐事件同构、位置偏差 ≤0.5px（\fs 数值差异来
+  自四边形尺寸不同的平面坐标比例，经单应映射后渲染物理尺寸一致）。单元
+  测试 616 → **624**。
 
 ### 修复
 
