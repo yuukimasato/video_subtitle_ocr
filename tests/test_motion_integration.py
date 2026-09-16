@@ -326,6 +326,65 @@ class TestWorkerMotionStage:
         assert kwargs["scene_text_policy"] == "whitespace"
         assert kwargs["auto_brightness"] is True
 
+    def test_auto_detect_runs_when_enabled_and_no_manual_specs(
+            self, tmp_path, monkeypatch):
+        """FR-1:勾选自动检测且无手动轨迹 ROI 时,检出区域以 ROI 身份走
+        轨迹管线(接管成功 → 抑制其静态事件)。"""
+        from core.motion_detector import MotionRegion
+
+        calls = []
+
+        def fake_detect(video_path, **kwargs):
+            calls.append(dict(kwargs))
+            return [MotionRegion(
+                quad=[[100.0, 100.0], [180.0, 100.0],
+                      [180.0, 160.0], [100.0, 160.0]],
+                start_frame=5, end_frame=50,
+                max_displacement_px=80.0, sample_count=6, texts=["X"])]
+
+        monkeypatch.setattr(
+            "core.motion_detector.detect_moving_text", fake_detect)
+
+        def fake_build(video_path, quad, **kwargs):
+            calls.append({"quad": quad, **kwargs})
+            return [_motion_event()], {"ok_frames": 10, "total_frames": 10,
+                                       "keyframes": [1], "policy": "overlap",
+                                       "lines": 1}
+
+        monkeypatch.setattr(motion_cli, "build_motion_events", fake_build)
+        worker = PipelineWorker(
+            video_path=str(tmp_path / "in.avi"),
+            roi_data=[{"type": "rect", "points": [0, 0, 320, 240],
+                       "start_frame": 0, "end_frame": 100}],
+            total_frames=100, fps=FPS, video_width=W, video_height=H,
+            output_ass_path=str(tmp_path / "out.ass"),
+            debug_mode=False, template_path=None,
+            motion_auto_detect=True,
+        )
+        events, roi_ids = worker._run_motion_stage()
+        assert roi_ids == {"roi_0"} and len(events) == 1
+        detect_kw = calls[0]
+        assert detect_kw["region"] == (0.0, 0.0, 320.0, 240.0)
+        build_call = calls[1]
+        assert build_call["quad"] == [[100.0, 100.0], [180.0, 100.0],
+                                      [180.0, 160.0], [100.0, 160.0]]
+        assert build_call["start_frame"] == 5 and build_call["end_frame"] == 50
+
+    def test_auto_detect_disabled_keeps_noop(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "core.motion_detector.detect_moving_text",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
+        worker = PipelineWorker(
+            video_path=str(tmp_path / "in.avi"),
+            roi_data=[{"type": "rect", "points": [0, 0, 320, 240],
+                       "start_frame": 0, "end_frame": 100}],
+            total_frames=100, fps=FPS, video_width=W, video_height=H,
+            output_ass_path=str(tmp_path / "out.ass"),
+            debug_mode=False, template_path=None,
+            motion_auto_detect=False,
+        )
+        assert worker._run_motion_stage() == ([], set())
+
     def test_failure_falls_back_without_raising(self, tmp_path, monkeypatch):
         def fake_build(video_path, quad, **kwargs):
             raise RuntimeError("no ok frames")

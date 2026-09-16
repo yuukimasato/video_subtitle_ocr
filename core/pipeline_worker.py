@@ -177,6 +177,7 @@ def collect_motion_roi_specs(roi_data: Optional[List[Dict]]) -> List[Dict[str, A
             "end_frame": end_frame,
             "scene_text_policy": str(roi.get("scene_text_policy") or "overlap"),
             "auto_brightness": bool(roi.get("motion_auto_brightness", False)),
+            "occlusion_clip": bool(roi.get("motion_occlusion_clip", False)),
         })
     return specs
 
@@ -203,6 +204,7 @@ class PipelineWorker(QThread):
                  engine_options: Optional[Dict[str, Any]] = None,
                  watermark_filter_config: Optional[Dict[str, Any]] = None,
                  chunk_workers: int = 0,
+                 motion_auto_detect: bool = False,
                  parent=None):
         super().__init__(parent)
         self.video_path = video_path
@@ -235,6 +237,8 @@ class PipelineWorker(QThread):
         # duration/cores/RAM/GPU), 1 = force single-process path, N>1 =
         # cap the auto worker count at N.
         self.chunk_workers = int(chunk_workers or 0)
+        # FR-1: 自动检测移动文字(无手动轨迹 ROI 时,按 ROI 范围采样检测)。
+        self.motion_auto_detect = bool(motion_auto_detect)
         self.is_cancelled = False
         self.work_dir: Optional[str] = None
 
@@ -258,8 +262,58 @@ class PipelineWorker(QThread):
             engine_options=self.engine_options,
         )
 
+    def _auto_detect_motion_specs(self) -> List[Dict[str, Any]]:
+        """FR-1 自动检测(FR 表「移动文字检测触发」阶段三落地点):无手动
+        轨迹 ROI 且启用「自动检测移动文字」时,在每个 ROI 外接矩形内做
+        采样 OCR 行心位移检测(:mod:`core.motion_detector`),检出区域以
+        该 ROI 的身份走轨迹管线(接管成功即抑制其静态碎片事件)。"""
+        from core.motion_detector import detect_moving_text
+
+        engine_id = str(self.ocr_engine_id) if self.ocr_engine_id else None
+        specs: List[Dict[str, Any]] = []
+        for idx, roi in enumerate(self.roi_data or []):
+            if not isinstance(roi, dict):
+                continue
+            rect = _roi_analysis_rect(roi)
+            if rect is None:
+                continue
+            try:
+                start_frame = int(roi.get("start_frame", 0) or 0)
+                end_frame = roi.get("end_frame")
+                end_frame = int(end_frame) if end_frame is not None else None
+            except (TypeError, ValueError):
+                continue
+            try:
+                regions = detect_moving_text(
+                    self.video_path, engine_id=engine_id,
+                    start_frame=start_frame, end_frame=end_frame,
+                    region=rect)
+            except Exception as exc:
+                logger.warning(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Auto motion detection on {0} failed ({1}); skipping it.",
+                    ).format(f"roi_{idx}", exc),
+                    exc_info=True,
+                )
+                continue
+            for region in regions:
+                specs.append({
+                    "roi_id": f"roi_{idx}",
+                    "quad": region.quad,
+                    "start_frame": region.start_frame,
+                    "end_frame": region.end_frame,
+                    "scene_text_policy": str(
+                        roi.get("scene_text_policy") or "overlap"),
+                    "auto_brightness": bool(
+                        roi.get("motion_auto_brightness", False)),
+                    "occlusion_clip": bool(
+                        roi.get("motion_occlusion_clip", False)),
+                })
+        return specs
+
     def _run_motion_stage(self) -> tuple:
-        """移动文字轨迹阶段(pose 勾选 + 四点多边形 ROI)。
+        """移动文字轨迹阶段(pose 勾选 + 四点多边形 ROI;或自动检测命中)。
 
         对每个轨迹 ROI 调 scripts/motion_ass.build_motion_events(独立 OCR
         引擎实例,不占用主流水线进程级单例),返回 ``(events, roi_ids)``:
@@ -268,6 +322,8 @@ class PipelineWorker(QThread):
         该 ROI 的静态 pose 路径,不中断任务链。
         """
         specs = collect_motion_roi_specs(self.roi_data)
+        if not specs and self.motion_auto_detect:
+            specs = self._auto_detect_motion_specs()
         if not specs:
             return [], set()
         from scripts.motion_ass import (
@@ -296,6 +352,7 @@ class PipelineWorker(QThread):
                     end_frame=spec["end_frame"],
                     scene_text_policy=spec["scene_text_policy"],
                     auto_brightness=spec["auto_brightness"],
+                    occlusion_clip=bool(spec.get("occlusion_clip", False)),
                     ocr_engine=engine_id,
                     log=logger.info,
                 )

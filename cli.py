@@ -154,6 +154,29 @@ def load_roi_file(path: str) -> list:
     return out
 
 
+def _entry_rect(entry: dict):
+    """ROI entry → 画面坐标外接矩形 (x1, y1, x2, y2);无法解析返回 None。"""
+    rtype = str(entry.get("type", ""))
+    points = entry.get("points")
+    try:
+        if rtype == "rect":
+            if not (isinstance(points, (list, tuple)) and len(points) == 4):
+                return None
+            x, y, w, h = (float(v) for v in points)
+            if w <= 0 or h <= 0:
+                return None
+            return (x, y, x + w, y + h)
+        if rtype == "poly":
+            if not (isinstance(points, (list, tuple)) and len(points) >= 3):
+                return None
+            xs = [float(p[0]) for p in points]
+            ys = [float(p[1]) for p in points]
+            return (min(xs), min(ys), max(xs), max(ys))
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
 def probe_video(video_path: str) -> dict:
     import cv2
 
@@ -456,7 +479,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
         motion_roi_ids: set = set()
         from core.pipeline_worker import collect_motion_roi_specs
         roi_motion_specs = collect_motion_roi_specs(roi_entries)
-        if args.motion_quad or args.motion_quad_file or roi_motion_specs:
+        if (args.motion_quad or args.motion_quad_file or roi_motion_specs
+                or args.motion_auto):
             from scripts.motion_ass import (
                 build_motion_events,
                 load_quad_file,
@@ -481,7 +505,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
             engine_id = None if args.engine == "auto" else args.engine
 
-            def _run_motion_quad(quad, start_sec, end_sec, label, auto_brightness):
+            def _run_motion_quad(quad, start_sec, end_sec, label,
+                                 auto_brightness, occlusion_clip=None):
                 nonlocal motion_events_all
                 quad = validate_quad(normalize_quad_winding(quad))
                 start_frame = (
@@ -500,6 +525,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     video_path, quad,
                     start_frame=start_frame, end_frame=end_frame,
                     auto_brightness=auto_brightness,
+                    brightness_per_line=(
+                        args.brightness_per_line if auto_brightness else None),
+                    occlusion_clip=occlusion_clip,
                     ocr_engine=engine_id,
                     log=lambda m: _info(f"      {m}", args.quiet),
                 )
@@ -514,7 +542,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             for (quad, start_sec, end_sec), label in motion_specs:
                 try:
                     _run_motion_quad(quad, start_sec, end_sec,
-                                     label, args.auto_brightness)
+                                     label, args.auto_brightness,
+                                     occlusion_clip=args.occlusion_clip)
                 except Exception as exc:
                     _info(
                         f"Warning: motion quad {label} failed ({exc}); "
@@ -532,12 +561,70 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         f"[{spec['start_frame']}, "
                         f"{spec['end_frame'] if spec['end_frame'] is not None else 'end'}])",
                         bool(spec["auto_brightness"]) or args.auto_brightness,
+                        occlusion_clip=bool(spec.get("occlusion_clip", False))
+                        or args.occlusion_clip,
                     )
                     motion_roi_ids.add(str(spec["roi_id"]))
                 except Exception as exc:
                     _info(
                         f"Warning: motion ROI {spec['roi_id']} failed ({exc}); "
                         "falling back to its static events.",
+                        args.quiet,
+                    )
+
+            # ── FR-1 自动检测触发:每个 ROI 外接矩形内采样 OCR 行心位移,
+            #    超阈值区域走轨迹管线,接管成功即抑制该 ROI 静态碎片事件。
+            if args.motion_auto:
+                from core.motion_detector import detect_moving_text
+
+                detected_any = False
+                for idx, entry in enumerate(roi_entries):
+                    rect = _entry_rect(entry)
+                    if rect is None:
+                        continue
+                    t0f = int(round(float(entry.get("start_time") or 0)
+                                    * info["fps"]))
+                    t1 = entry.get("end_time")
+                    t1f = (int(round(float(t1) * info["fps"]))
+                           if t1 is not None else None)
+                    try:
+                        regions = detect_moving_text(
+                            video_path, engine_id=engine_id,
+                            start_frame=t0f, end_frame=t1f,
+                            region=rect,
+                            sample_stride_sec=args.motion_auto_stride,
+                            move_thresh_px=args.motion_auto_threshold,
+                            log=lambda m: _info(f"      {m}", args.quiet))
+                    except Exception as exc:
+                        _info(
+                            f"Warning: motion auto-detection on roi_{idx} "
+                            f"failed ({exc}); skipping it.",
+                            args.quiet,
+                        )
+                        continue
+                    for k, region in enumerate(regions):
+                        try:
+                            _run_motion_quad(
+                                region.quad,
+                                region.start_frame / info["fps"],
+                                region.end_frame / info["fps"],
+                                f"auto[roi_{idx}]#{k}",
+                                args.auto_brightness,
+                                occlusion_clip=args.occlusion_clip)
+                            motion_roi_ids.add(f"roi_{idx}")
+                            detected_any = True
+                        except Exception as exc:
+                            _info(
+                                f"Warning: auto motion region #{k} of "
+                                f"roi_{idx} failed ({exc}); its static "
+                                "events remain.",
+                                args.quiet,
+                            )
+                if not detected_any:
+                    _info(
+                        "motion-auto: no moving text detected (detection is "
+                        "scoped to ROI rects; use --roi to cover the moving "
+                        "area).",
                         args.quiet,
                     )
 
@@ -702,6 +789,37 @@ def parse_args(argv=None) -> argparse.Namespace:
              "brightness per frame and append \\1c/\\alpha \\t chains so "
              "trajectory subtitles follow screen dimming/brightening "
              "(default: off)",
+    )
+    parser.add_argument(
+        "--brightness-per-line", action="store_true",
+        help="with --auto-brightness: measure each text line's brightness "
+             "separately so subtitles follow partial dimming (a darkened top "
+             "bar leaves bright lines bright; default: off)",
+    )
+    parser.add_argument(
+        "--occlusion-clip", action="store_true",
+        help="with motion trajectory modes: detect partial hand occlusion "
+             "(unwarped frame vs anchor-keyframe difference) and clip "
+             "affected events with \\iclip so subtitles never render over "
+             "the occluder (default: off)",
+    )
+    parser.add_argument(
+        "--motion-auto", action="store_true",
+        help="auto-detect moving text (FR-1): sample-OCR each ROI rect every "
+             "--motion-auto-stride seconds; a text line whose centre moves "
+             "more than --motion-auto-threshold px runs the trajectory "
+             "pipeline on its detected quad+time range (replacing that "
+             "ROI's static fragments). Scope detection with --roi/--roi-file "
+             "(default: off)",
+    )
+    parser.add_argument(
+        "--motion-auto-stride", type=float, default=0.5, metavar="SEC",
+        help="sampling interval for --motion-auto detection (default: 0.5)",
+    )
+    parser.add_argument(
+        "--motion-auto-threshold", type=float, default=24.0, metavar="PX",
+        help="line-centre displacement that counts as moving for "
+             "--motion-auto (default: 24)",
     )
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")
