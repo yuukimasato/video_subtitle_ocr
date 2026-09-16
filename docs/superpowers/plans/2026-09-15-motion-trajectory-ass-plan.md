@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **执行状态(2026-09-17):Task 1~8 全部完成。** 阶段一提交链
+> `2c0beaa`(融合抽取)→ `d5070a8`(合成器)→ `d44cff7`(渲染校验)→
+> `b8656bd`(关键帧选取)→ `eb58617`(端到端 CLI)→ `1922aa7`(验收);
+> 亮度自适应 `81520a1`/`99e6f06`;主流水线 GUI/CLI 接入 `fb19f82`;
+> ROI 形状归一化与 `--roi-file` `f3bdb68`。后续需求状态以
+> `docs/requirements-motion-trajectory-ass.md` 为准;下方 checkbox 保留
+> 原文供追溯。
+
 **Goal:** 打通「手动 quad → 逐帧平面跟踪 → 清晰关键帧 OCR 投票 → 轨迹合成 ASS(`\move` 分段 / `\t` / 帧级 `\pos` 兜底)」全链路,并在 `test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4` 手机场景完成验收。
 
 **Architecture:** 旁路脚本管线,不动主流水线既有事件路径。新增 `core/keyframe_selector.py`(清晰关键帧选取)与 `core/motion_ass.py`(纯函数合成器);从 `core/ocr_optimizer.py` 行为保持地抽取模块级融合函数供脚本复用;新增 `scripts/motion_ass.py`(端到端 CLI)与 `scripts/verify_motion_ass.py`(libass 渲染偏差校验)。

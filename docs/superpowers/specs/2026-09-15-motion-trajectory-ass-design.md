@@ -128,16 +128,32 @@
 | `lost_hold_sec` | 0.0 | lost 保持时长(0=切段) |
 | `dense_pos_fallback` | true | 允许帧级 `\pos` 兜底 |
 
-## 6. 管线接入(阶段一形态)
+## 6. 管线接入
 
-- CLI/脚本旁路,不动主流水线:
-  - `scripts/track_plane.py`(已有)产轨迹 JSON;
-  - 新增 `scripts/motion_ass.py`:`--video --quad-file --start --end
-    [--trajectory] [--out]`,串接 跟踪→关键帧选择→OCR→融合→合成→写 .ass;
-  - 产出独立 .ass,与现状 `test/*.ass` 对比验收。
-- 主流水线(GUI/roi_editing 集成、自动检测触发)按两步走策略留阶段二。
-- 检测器接口预留:`motion_ass` 与合成逻辑不依赖「quad 来源」;阶段二的
-  自动检测器(采样 OCR 行心位移超阈值触发)只负责产出 quad+时间范围。
+> 状态更新(2026-09-17):阶段一为脚本旁路(`scripts/motion_ass.py` 独立
+> 输出,仍可用);**轨迹管线现已接入项目正常流程**(提交 `fb19f82`、
+> `f3bdb68`),以下为最终形态:
+
+- **GUI**(与「写入画面位置标签」复选框绑定):平面形状 ROI(多边形/
+  矩形;手绘闭合点击自动去重、>4 点取最小外接矩形四角、矩形展开为四角)
+  + 勾选 pose → `PipelineWorker._run_motion_stage`(`collect_motion_roi_specs`
+  收集 → `scripts/motion_ass.build_motion_events`);轨迹事件以
+  `Name=motion` 在噪声过滤/时间合并/LLM 润色之后**原样并入**输出,同 ROI
+  静态事件被抑制,单个 ROI 跟踪/OCR 失败回退该 ROI 静态 pose 路径(告警
+  留痕,不中断任务链);
+- **亮度自适应**:GUI「亮度自适应」复选框(随 pose 联动启用,
+  `motion_auto_brightness` 键随 ROI json 持久化)= CLI `--auto-brightness`,
+  见 §11;
+- **CLI**:`--motion-quad "x1,y1 … x4,y4[@start-end]"`(可重复)、
+  `--motion-quad-file`、`--auto-brightness`;`--roi-file` 直接载入 GUI
+  保存的 ROI json({"rois":[…]} 或裸列表),per-ROI 标志原样生效,
+  **CLI 运行与 GUI 勾选完全等价**;
+- **生成器**:`motion_events`/`motion_roi_ids` 参数与 Dialogue Name 列
+  输出(缺省空串,既有输出逐字节不变);轨迹事件引用 NoteBox 样式时
+  头部按需追加样式行;
+- 检测器接口预留:`motion_ass` 与合成逻辑不依赖「quad 来源」;自动检测器
+  (采样 OCR 行心位移超阈值触发)只负责产出 quad+时间范围,留后续
+  (见 requirements FR-1)。
 
 ## 7. 与现状输出的关系
 

@@ -116,3 +116,33 @@
 - 过程修复:分析图候选帧改为跨全部 SCENE 组范围取最亮帧(原"最大组中间帧"
   落在暗屏段,遮罩取色发黑);静态文本事件显式 `\fs=行高`(原按 Scene 样式
   43px 渲染,与遮罩/原字尺寸体系脱节)。
+
+## 增补验收:轨迹管线接入项目 CLI 与 GUI(正常流程,2026-09-17)
+
+集成提交 `fb19f82`(pose 复选框绑定 + 亮度自适应复选框 +
+`--motion-quad[/-file]`/`--auto-brightness` + 生成器
+`motion_events`/`motion_roi_ids`/Name 列 + 三处 pose 复选框修复 +
+rapidocr 随包)、`f3bdb68`(ROI 形状归一化 + `--roi-file`)。
+
+- **阻断点修复**:GUI 手绘多边形会把「回到起点」的闭合点击存进 points
+  (5 点),旧 `collect_motion_roi_specs` 恰好要求 4 点 → 轨迹模式永远不会
+  被触发;现去重闭合点(容差 max(4px, 对角线 1%))、>4 点取最小外接矩形
+  四角、矩形 [x,y,w,h] 展开为四角。
+- **正常流程实测**(用户真实保存的手机屏幕 ROI,置 pose+亮度标志,等价
+  GUI 勾选):
+  - 命令:`cli.py --engine rapid --roi-file <roi.json> -o gui-flow.ass`;
+  - 结果:**28 条轨迹事件**(14 行 × 2 链,亮度标记 14/28),
+    **零静态残留**(同 ROI 静态碎片事件全部被抑制);
+  - 与基线 `motion-bright.ass` 逐事件同构,位置偏差 ≤0.5px;
+    `\fs` 数值差异(如 26 vs 29)来自两次框选四边形尺寸不同的平面坐标
+    比例,经单应映射后渲染物理尺寸一致;
+  - 烧录帧 36(1.5s,手机已上移)目检:字幕各行贴合屏幕原文字 ✅;
+  - 已知内容级差异(非管线行为):多识别 1 行「<」返回箭头图标、1 处
+    OCR 变体(とりあえす/とりあえず),归 OCR 既有职责;
+- 全量测试 616 → **624 passed, 1 skipped**(`tests/test_motion_integration.py`
+  增至 35 项:闭合点去重、minAreaRect 归一、rect 展开、`--roi-file` 加载)。
+
+**使用方式(正常流程)**:GUI 框住文字平面(多边形/矩形)→ 勾选「写入
+画面位置标签」(可选「亮度自适应」)→ 开始识别;CLI
+`video-subtitle-ocr-cli 视频 --engine rapid --roi-file roi.json -o out.ass`
+或 `--motion-quad "x1,y1 … x4,y4[@start-end]"`。

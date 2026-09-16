@@ -1,8 +1,8 @@
 # 需求文档:移动文字轨迹字幕与亮度自适应(视频字幕 OCR 工具)
 
-- 整理日期:2026-09-16
-- 来源会话:移动文字轨迹头脑风暴 → 设计 → 实施 → 验收 → 亮度自适应增补
-- 关联文档:
+- 整理日期:2026-09-16;**状态更新 2026-09-17**(正常流程 GUI/CLI 接入已落地,见 §3 状态列与 §6/§7 增补)
+- 来源会话:移动文字轨迹头脑风暴 → 设计 → 实施 → 验收 → 亮度自适应增补 → 主流水线集成
+- 本文档为该特性的**需求入口与状态总览**;细节见关联文档:
   - 设计 spec:`docs/superpowers/specs/2026-09-15-motion-trajectory-ass-design.md`
   - 实施计划:`docs/superpowers/plans/2026-09-15-motion-trajectory-ass-plan.md`
   - 验收记录:`docs/superpowers/evidence/2026-09-16-motion-trajectory-ass-acceptance.md`
@@ -39,14 +39,14 @@
 
 | # | 需求 | 决策/口径 | 状态 |
 | --- | --- | --- | --- |
-| FR-1 | 移动文字检测触发 | 采样 OCR 行心位移超阈值触发密集模式;**两步走**:阶段一手动框选 quad + 时间范围,自动检测留阶段二(仅预留接口) | 阶段二待做 |
-| FR-2 | 逐帧位置轨迹 | 复用 `scene_plane_tracker`(ORB+RANSAC 单应、质量门限、lost 重捕获);手动输入四边形+时间范围 | ✅ 已实现 |
+| FR-1 | 移动文字检测触发 | 采样 OCR 行心位移超阈值触发密集模式;**两步走**:阶段一/二为手动指定(GUI 画 ROI + 勾选,或 CLI quad),自动检测留后续 | 待做(接口已预留:合成逻辑不依赖 quad 来源) |
+| FR-2 | 逐帧位置轨迹 | 复用 `scene_plane_tracker`(ORB+RANSAC 单应、质量门限、lost 重捕获);输入四边形+时间范围 | ✅ 已实现(接入正常流程,见 FR-8) |
 | FR-3 | 文本识别与融合 | 清晰关键帧(Laplacian 方差 top-K,默认 3)上 OCR,统一坐标展开,按行框位置对齐投票 | ✅ 已实现 |
 | FR-4 | ASS 标签阶梯 | 单段 `\move` → 分段 `\move`(DP 容差 2px@1080p,最小段 3 帧,段边界时间无缝)→ 旋转/缩放叠 `\t(\frz/\fscx/\fscy)` → 混乱抖动帧级 `\pos` 兜底 | ✅ 已实现 |
 | FR-5 | 遮挡/出画处理 | lost 切段不外推,恢复后以真实轨迹重新开始;如实呈现(文字消失) | ✅ 已实现 |
 | FR-6 | 渲染误差校验 | libass 烧录抽样帧,字幕中心与期望中心偏差统计(预算:中位 ≤4px、p95 ≤8px),超预算可减半容差复验一次 | ✅ 已实现 |
-| FR-7 | 屏幕亮度自适应标签 | 文字平面渐变变暗/变亮时,`\t` 驱动 `\1c`(颜色变暗)**与** `\alpha`(变透明)**两者结合**;**完全忠实跟随,无保底下限**(用户明确选择;最暗时字幕与原字一起接近隐形) | ✅ 已实现 |
-| FR-8 | GUI 四角框选入口、自动检测接入主流水线 | 阶段二 | 待做 |
+| FR-7 | 屏幕亮度自适应标签 | 文字平面渐变变暗/变亮时,`\t` 驱动 `\1c`(颜色变暗)**与** `\alpha`(变透明)**两者结合**;**完全忠实跟随,无保底下限**(用户明确选择;最暗时字幕与原字一起接近隐形) | ✅ 已实现(GUI 复选框/CLI `--auto-brightness`) |
+| FR-8 | GUI/CLI 正常流程接入 | GUI:「写入画面位置标签」勾选 + 平面形状 ROI(多边形/矩形,手绘闭合点自动去重、>4 点取最小外接矩形)走轨迹管线;「亮度自适应」复选框随 pose 联动、`motion_auto_brightness` 持久化。CLI:`--motion-quad[/-file]`、`--auto-brightness`、`--roi-file`(GUI 保存的 ROI json,与 GUI 勾选等价);轨迹事件 `Name=motion` 原样并入,同 ROI 静态事件抑制,失败回退静态路径 | ✅ 已落地(提交 `fb19f82`、`f3bdb68`);其中「自动检测触发」归 FR-1 |
 | FR-9 | `\iclip` 手部遮挡蒙版 | 阶段三 | 待做 |
 
 ## 4. 非功能需求
@@ -81,26 +81,49 @@
 | 亮度跟随 | 忠实 | 亮态墨水 248/255;最暗态与原帧差分 0(与原字一起隐形) |
 | 回归 | 无 | 全量 350 → 441 → 466 passed, 1 skipped |
 
+**正常流程增补验收(2026-09-17,GUI/CLI 等价闭环)**:
+
+| 指标 | 要求 | 实测 |
+| --- | --- | --- |
+| GUI 等价 CLI(`--roi-file`,真实保存的手机 ROI + pose/亮度勾选) | 与基线 motion-bright.ass 同效果 | 28 条轨迹事件(14 行 × 2 链,亮度标记 14/28),**零静态残留** |
+| 位置一致性 | 同效果 | 逐事件位置偏差 ≤0.5px;`\fs` 数值差异来自两次框选尺寸不同的平面坐标比例,经单应映射渲染物理尺寸一致 |
+| 静止/回退 | 静态路径保持 | 未勾选 pose / 点数 <4 → 静态路径;轨迹失败回退该 ROI 静态事件 |
+| 回归 | 无 | 全量 616 → **624 passed, 1 skipped** |
+
+已知内容级差异(非管线行为):多识别 1 行「<」返回箭头图标、1 处 OCR 变体
+(とりあえす/とりあえず),归 OCR 既有职责。
+
 ## 7. 交付物
 
 - 代码:`core/scene_plane_tracker.py`(前置)、`core/keyframe_selector.py`、
   `core/motion_ass.py`、`core/screen_luma.py`、`core/ocr_optimizer.py`
   (模块级融合函数抽取)、`scripts/motion_ass.py`(CLI,含
   `--auto-brightness`)、`scripts/verify_motion_ass.py`;
+- **正常流程接入**:`core/pipeline_worker.py`(`collect_motion_roi_specs`
+  + `_run_motion_stage`:轨迹阶段/静态抑制/失败回退)、`cli.py`
+  (`--motion-quad[/-file]`、`--auto-brightness`、`--roi-file`)、
+  `core/subtitle_generator/generator.py`(`motion_events`/`motion_roi_ids`
+  参数、Dialogue Name 列)、`main_window/roi_editing.py` +
+  `components/roi_definition.py`(pose/亮度复选框、即时写回、ROI 组装)、
+  三语 i18n;
 - 样例产物(`test/` 工作区):`motion-quad.json`、`motion-trajectory.json`、
-  `[DMG] 第07話19-motion.ass`、`[DMG] 第07話19-motion-bright.ass`;
+  `[DMG] 第07話19-motion.ass`、`[DMG] 第07話19-motion-bright.ass`(基线)、
+  `[DMG] 第07話19-gui-flow.ass`(正常流程输出)、
+  `[DMG] 第07話19-cli-motion.ass`;
 - 提交:`5fda1de`(spec)→ `6b9371d`(plan)→ `2c0beaa`/`d5070a8`/
   `d44cff7`/`b8656bd`/`eb58617`(特性)→ `1922aa7`(验收)→
-  `81520a1`(亮度)/`af6d9ba`(lint)/`99e6f06`(增补归档)。
+  `81520a1`(亮度)/`af6d9ba`(lint)/`99e6f06`(增补归档)→
+  `fa2f8c5`(2.6.3 发布)→ `fb19f82`(主流水线 GUI/CLI 接入)→
+  `f3bdb68`(ROI 形状归一化 + `--roi-file`)。
 
 ## 8. 已知限制与后续方向
 
 - 行尾全角标点使渲染包围盒含空白格,字形整体左偏 ≤7px(字形度量补偿,
-  阶段二候选);
+  后续候选);
 - 亮度基线口径下,`brightness_use_color/use_alpha/tol/baseline_percentile`
   可配置,但无"保底可读性"下限(用户选择忠实);如需保底需新增
   floor 参数;
-- 内容级误差(图标误读「血」、「ます/まず」混淆)归 OCR/分类/VLM 既有
-  职责,本需求不扩权;
-- 待做:自动检测触发(FR-1)、GUI 四角框选(FR-8)、`\iclip` 遮挡蒙版
-  (FR-9)、屏幕局部调暗的背景适配。
+- 内容级误差(图标误读「血」「<」、「ます/まず」混淆)归 OCR/分类/VLM
+  既有职责,本需求不扩权;
+- 待做:自动检测触发(FR-1)、`\iclip` 遮挡蒙版(FR-9)、屏幕局部调暗
+  的背景适配。
