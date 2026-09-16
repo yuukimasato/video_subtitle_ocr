@@ -51,6 +51,7 @@ __all__ = [
     "synthesize_events",
     "simplify_luma_curve",
     "brightness_tag_chain",
+    "punct_comp_offset_px",
 ]
 
 
@@ -77,6 +78,11 @@ class MotionAssConfig:
     brightness_baseline_percentile: float = 90.0  # 亮度基线分位(各帧中位值的分位)
     brightness_use_color: bool = True             # \1c 颜色跟随
     brightness_use_alpha: bool = True             # \alpha 透明度跟随
+    brightness_per_line: bool = False             # 逐行测亮度(屏幕局部调暗的背景适配)
+
+    # —— 行尾全角标点字形补偿(。、等墨迹偏左的标点,渲染墨水整体左偏 ≤7px)——
+    punct_comp_enabled: bool = True
+    punct_comp_max_px: float = 7.0                # 补偿上限(1080p 基准,随 PlayRes 高度缩放)
 
 
 @dataclass
@@ -111,6 +117,45 @@ def format_ass_time(sec: float) -> str:
     m, rem = divmod(rem, 6000)
     s, cs = divmod(rem, 100)
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+# ---------------------------------------------------------------------------
+# 行尾全角标点字形补偿
+# ---------------------------------------------------------------------------
+
+# 行尾全角标点(墨迹位于字身框左半、右半留白的标点):渲染排版宽度计入
+# 空白半格,libass \an5 按排版盒居中会使墨水整体左偏(2026-09-16 DMG 验收
+# 实测:带标点行 dx -6~-7px、无标点行 ≈ -0.5px)。补偿 = 右移半个空白格
+# ≈ 0.25×行高,上限随 PlayRes 高度缩放(默认 7px@1080p)。
+_TRAILING_BLANK_RIGHT_PUNCT = frozenset("。，、．,・")
+
+
+def punct_comp_offset_px(
+    text: str,
+    fs_px: float,
+    *,
+    enabled: bool = True,
+    max_px: float = 7.0,
+    video_height: Optional[float] = None,
+) -> float:
+    """行尾全角标点的字形度量补偿量(x 向右移,画面 px);无标点返回 0。
+
+    ``fs_px`` 为行高(≈字号,``\\fs`` 同单位);补偿量 = ``min(上限, 0.25×行高)``,
+    上限 = ``max_px``×(video_height/1080)(PlayRes 非空时按高度等比缩放,
+    1080p 时恰为 ``max_px``)。
+    """
+    if not enabled:
+        return 0.0
+    stripped = str(text or "").strip()
+    if not stripped or not stripped[-1] in _TRAILING_BLANK_RIGHT_PUNCT:
+        return 0.0
+    fs_px = float(fs_px or 0.0)
+    if fs_px <= 0:
+        return 0.0
+    cap = float(max_px)
+    if video_height is not None and float(video_height) > 0:
+        cap *= float(video_height) / 1080.0
+    return float(min(cap, 0.25 * fs_px))
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +524,8 @@ def _dense_events(
     style: str,
     fs_h: int,
     text: str,
+    x_offset: float = 0.0,
+    video_height: Optional[float] = None,
 ) -> List[Dict]:
     """帧级 ``\\pos`` 兜底:每隔 dense_stride 个好帧一条事件,
     时间取该帧 time_sec 到下一取样好帧 time_sec。"""
@@ -490,6 +537,10 @@ def _dense_events(
         dt = dts[len(dts) // 2]
     else:
         dt = 0.0
+    if not x_offset:
+        x_offset = punct_comp_offset_px(
+            text, fs_h, enabled=cfg.punct_comp_enabled,
+            max_px=cfg.punct_comp_max_px, video_height=video_height)
     events: List[Dict] = []
     for k in range(0, n, stride):
         f0 = chain[k]
@@ -499,7 +550,8 @@ def _dense_events(
             t1 = _next_frame_time(tmap, f0, t0, dt)
         if t1 <= t0:
             continue  # 零长段丢弃
-        tags = f"{{\\an5\\fs{fs_h}\\pos({_fmt1(centers[k][0])},{_fmt1(centers[k][1])})}}"
+        tags = (f"{{\\an5\\fs{fs_h}"
+                f"\\pos({_fmt1(centers[k][0] + x_offset)},{_fmt1(centers[k][1])})}}")
         events.append({
             "start_time": format_ass_time(t0),
             "end_time": format_ass_time(t1),
@@ -517,6 +569,7 @@ def _chain_events(
     tmap: Dict[int, TrackedQuad],
     cfg: MotionAssConfig,
     style: str,
+    video_height: Optional[float] = None,
 ) -> List[Dict]:
     centers = np.array([lt.poses[f].center for f in chain], dtype=np.float64)
     angles = [lt.poses[f].angle_deg for f in chain]
@@ -525,10 +578,16 @@ def _chain_events(
     if not segs:
         return []
     fs_h = int(round(lt.height))
+    # 行尾全角标点字形补偿:渲染墨水整体左偏 ≤7px(见 punct_comp_offset_px),
+    # x 端点统一右移补偿(mask 遮罩由 scene_text_policy 对同一偏移同步外扩)。
+    x_off = punct_comp_offset_px(
+        lt.text, fs_h, enabled=cfg.punct_comp_enabled,
+        max_px=cfg.punct_comp_max_px, video_height=video_height)
 
     # 阶梯 5:段数爆炸 → 帧级 \pos 兜底(按原始 DP 分段判定;单段永不触发)
     if cfg.dense_pos_fallback and len(raw_segs) >= 2 and _is_exploded(chain, raw_segs, tmap, cfg):
-        return _dense_events(chain, centers, tmap, cfg, style, fs_h, lt.text)
+        return _dense_events(chain, centers, tmap, cfg, style, fs_h, lt.text,
+                             x_offset=x_off, video_height=video_height)
 
     events: List[Dict] = []
     multi = len(segs) > 1
@@ -544,11 +603,11 @@ def _chain_events(
         if t1 <= t0:
             continue
         if multi:
-            move = (f"\\move({_fmt1(centers[ai][0])},{_fmt1(centers[ai][1])},"
-                    f"{_fmt1(centers[bi][0])},{_fmt1(centers[bi][1])})")
+            move = (f"\\move({_fmt1(centers[ai][0] + x_off)},{_fmt1(centers[ai][1])},"
+                    f"{_fmt1(centers[bi][0] + x_off)},{_fmt1(centers[bi][1])})")
         else:
-            move = (f"\\move({_fmt1(centers[ai][0])},{_fmt1(centers[ai][1])},"
-                    f"{_fmt1(centers[bi][0])},{_fmt1(centers[bi][1])},"
+            move = (f"\\move({_fmt1(centers[ai][0] + x_off)},{_fmt1(centers[ai][1])},"
+                    f"{_fmt1(centers[bi][0] + x_off)},{_fmt1(centers[bi][1])},"
                     f"0,{_seg_ms(t0, t1)})")
         tags = f"{{\\an5\\fs{fs_h}{move}"
         tags += _overlay_tags(angles[ai], angles[bi], scales[ai], scales[bi],
@@ -570,22 +629,30 @@ def synthesize_events(
     tracks: Sequence[TrackedQuad],
     cfg: MotionAssConfig,
     style: str = "Scene",
+    *,
+    video_height: Optional[float] = None,
 ) -> List[Dict]:
     """行轨迹 + 平面跟踪轨迹 → ASS 事件列表(标签阶梯)。
 
     每行独立处理:pose 按 lost 间隔切链(``lost_hold_sec`` > 0 时短间隔
     合并跨越);每条链先分段(单段直线/多段 ``\\move``),段数爆炸时整条
     链改帧级 ``\\pos`` 兜底。事件按行分组、行内按时间排序;不修改输入。
+    ``video_height``(PlayResY)供行尾标点补偿的上限按分辨率缩放,缺省按
+    ``punct_comp_max_px`` 原值封顶。事件携带 ``line_idx``(行下标,行序同
+    输入),供逐行亮度适配等调用方回溯所属行;写入 .ass 时忽略。
     """
     tmap = _frame_map(tracks)
     events: List[Dict] = []
-    for lt in line_tracks:
+    for line_idx, lt in enumerate(line_tracks):
         frames = sorted(lt.poses)
         if not frames:
             continue
         chains = _merge_chains_with_hold(_split_runs(frames), tmap, cfg.lost_hold_sec)
         for chain in chains:
-            events.extend(_chain_events(lt, chain, tmap, cfg, style))
+            for ev in _chain_events(lt, chain, tmap, cfg, style,
+                                    video_height=video_height):
+                ev["line_idx"] = line_idx
+                events.append(ev)
     return events
 
 

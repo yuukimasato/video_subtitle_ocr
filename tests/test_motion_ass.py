@@ -32,6 +32,7 @@ from core.motion_ass import (  # noqa: E402
     build_line_tracks,
     format_ass_time,
     homography_between,
+    punct_comp_offset_px,
     simplify_and_segment,
     simplify_luma_curve,
     smooth_line_track,
@@ -675,3 +676,81 @@ class TestBrightnessTagChain:
             "\\1c&HFFFFFF&\\t(0,1000,\\1c&H1F1F1F&)")
         assert brightness_tag_chain(
             curve, 0.0, 1.0, use_color=False, use_alpha=False) == ""
+
+
+# ---------------------------------------------------------------------------
+# 行尾全角标点字形补偿(punct_comp_offset_px 与标签阶梯应用)
+# ---------------------------------------------------------------------------
+
+class TestPunctCompensation:
+    def test_offset_quarter_line_height_capped(self):
+        # 0.25×行高:26 → 6.5;40 → 10 但上限 7
+        assert punct_comp_offset_px("テスト。", 26.0) == pytest.approx(6.5)
+        assert punct_comp_offset_px("あいう、", 40.0, max_px=7.0) == pytest.approx(7.0)
+
+    def test_no_trailing_punct_zero(self):
+        for t in ("hello", "行一", "a。b", "テスト?", "あいう "):
+            assert punct_comp_offset_px(t, 26.0) == 0.0
+
+    def test_disabled_or_bad_input_zero(self):
+        assert punct_comp_offset_px("あ。", 26.0, enabled=False) == 0.0
+        assert punct_comp_offset_px("", 26.0) == 0.0
+        assert punct_comp_offset_px("あ。", 0.0) == 0.0
+
+    def test_cap_scales_with_video_height(self):
+        # PlayRes 高度等比缩放:1080p → 7、2160p → 14、540p → 3.5
+        assert punct_comp_offset_px("あ。", 100.0, video_height=1080) == pytest.approx(7.0)
+        assert punct_comp_offset_px("あ。", 100.0, video_height=2160) == pytest.approx(14.0)
+        assert punct_comp_offset_px("あ。", 100.0, video_height=540) == pytest.approx(3.5)
+
+    def test_synthesize_shifts_move_endpoints(self):
+        # 同一几何轨迹,行尾「。」相对无标点文本 x 端点右移(0.25×50=12.5 → cap 7)
+        n = 10
+        tracks = translation_tracks(n, dx=2.0)
+        plain = synthesize_events(
+            build_line_tracks([BOX], ["あいう"], tracks, ref_frame=0),
+            tracks, MotionAssConfig())
+        punct = synthesize_events(
+            build_line_tracks([BOX], ["あいう。"], tracks, ref_frame=0),
+            tracks, MotionAssConfig())
+        assert len(plain) == len(punct) == 1
+        px1, py1, px2, _ = move_points(plain[0]["tags"])
+        qx1, qy1, qx2, _ = move_points(punct[0]["tags"])
+        assert qx1 - px1 == pytest.approx(7.0, abs=0.05)
+        assert qx2 - px2 == pytest.approx(7.0, abs=0.05)
+        assert py1 == qy1  # y 不受补偿影响
+
+    def test_synthesize_disabled_matches_plain(self):
+        n = 10
+        tracks = translation_tracks(n, dx=2.0)
+        cfg = MotionAssConfig(punct_comp_enabled=False)
+        plain = synthesize_events(
+            build_line_tracks([BOX], ["あいう"], tracks, ref_frame=0), tracks, cfg)
+        punct = synthesize_events(
+            build_line_tracks([BOX], ["あいう。"], tracks, ref_frame=0), tracks, cfg)
+        assert plain[0]["tags"] == punct[0]["tags"]
+
+    def test_dense_pos_fallback_shifts(self):
+        # 高频抖动 → 帧级 \pos 兜底路径,x 同样右移
+        n = 24
+        homogs = []
+        for i in range(n):
+            jitter = 25.0 if i % 2 == 0 else -25.0
+            homogs.append(translation(320.0 - BOX_CENTER[0] + 5.0 * i,
+                                      240.0 + jitter - BOX_CENTER[1]))
+        tracks = make_tracks(homogs)
+        cfg = MotionAssConfig(dense_stride=2)
+        plain = synthesize_events(
+            build_line_tracks([BOX], ["あ"], tracks, ref_frame=0), tracks, cfg)
+        punct = synthesize_events(
+            build_line_tracks([BOX], ["あ。"], tracks, ref_frame=0), tracks, cfg)
+        assert "\\pos(" in plain[0]["tags"] and "\\pos(" in punct[0]["tags"]
+        px = float(plain[0]["tags"].split("\\pos(")[1].split(",")[0])
+        qx = float(punct[0]["tags"].split("\\pos(")[1].split(",")[0])
+        assert qx - px == pytest.approx(7.0, abs=0.05)
+
+    def test_events_carry_line_idx(self):
+        tracks = translation_tracks(6)
+        lts = build_line_tracks([BOX, BOX2], ["a", "b"], tracks, ref_frame=0)
+        events = synthesize_events(lts, tracks, MotionAssConfig())
+        assert [ev["line_idx"] for ev in events] == [0, 1]

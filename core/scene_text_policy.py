@@ -44,6 +44,7 @@ from core.motion_ass import (
     _split_runs,
     build_line_tracks,
     format_ass_time,
+    punct_comp_offset_px,
     smooth_line_track,
     synthesize_events,
 )
@@ -495,6 +496,20 @@ def _apply_mask(
     for bi, (s, e) in enumerate(blocks):
         mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
                                          cfg, analysis_box)
+        # 行尾标点字形补偿:文本事件 x 右移 ≤7px(与 core.motion_ass 同一
+        # 偏移),遮罩必须同步平移,否则补偿后的字幕字形悬出补丁右缘。
+        block_dx = max(
+            (punct_comp_offset_px(
+                text, max(1.0, float(rbox[3] - rbox[1])),
+                enabled=motion_cfg.punct_comp_enabled,
+                max_px=motion_cfg.punct_comp_max_px,
+                video_height=video_h)
+             for text, rbox in rows[s:e + 1]), default=0.0)
+        if block_dx:
+            mbox = (mbox[0] + block_dx, mbox[1], mbox[2] + block_dx, mbox[3])
+            if analysis_box is not None:  # 平移后仍不越出文字平面
+                mbox = (max(float(analysis_box[0]), mbox[0]), mbox[1],
+                        min(float(analysis_box[2]), mbox[2]), mbox[3])
         color, std = sample_background_color(plane_img_bgr, mbox)
         if std > float(cfg.bg_max_std):
             notes.append(

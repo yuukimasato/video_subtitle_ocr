@@ -401,6 +401,24 @@ class TestApplyMask:
         assert all(ev["style"] == "NoteBox" for ev in out)
         assert all(not ev["tags"].startswith("{\\an7\\p1") for ev in out)
 
+    def test_mask_follows_punct_compensation(self):
+        # 行尾「。」触发 core.motion_ass 的 x 字形补偿(默认开,上限随
+        # PlayRes 高度缩放:7×400/1080≈2.59 < 0.25×16),遮罩块同步右移。
+        plane = make_white_plane()
+        tracks = make_translation_tracks()
+        expected_dx = min(7.0 * PLANE_H / 1080.0, 0.25 * 16.0)
+        xs = []
+        for text in ("あいう", "あいう。"):
+            rows = [(text, (20.0, 20.0, 200.0, 36.0))]
+            events = [simple_event(text, 0.0, 9 / FPS)]
+            out, _a, _n = apply_policy(
+                events, rows, plane, tracks, policy_cfg("mask"),
+                PLANE_W, PLANE_H)
+            mask0 = next(ev for ev in out if "\\p1" in ev["tags"])
+            x1, _y1, _x2, _y2 = move_points(mask0["tags"])
+            xs.append(x1)
+        assert xs[1] - xs[0] == pytest.approx(expected_dx, abs=0.05)
+
 
 # ---------------------------------------------------------------------------
 # apply_policy:external

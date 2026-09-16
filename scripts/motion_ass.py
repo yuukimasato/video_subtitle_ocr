@@ -559,9 +559,9 @@ def build_motion_events(
         line_boxes, texts, tracks, ref_frame=int(start_frame))
     for line_track in line_tracks:
         smooth_line_track(line_track, window=cfg.smooth_window)
-    events = synthesize_events(line_tracks, tracks, cfg, style="Scene")
-
     width, height = _video_size(video_path)
+    events = synthesize_events(line_tracks, tracks, cfg, style="Scene",
+                               video_height=height)
 
     # 5.5 场景文字显示策略(默认 overlap:原样返回,输出与既有版本逐事件一致)。
     #     需要锚定关键帧(最清晰帧)的统一坐标展开图与平面坐标行框——均为
