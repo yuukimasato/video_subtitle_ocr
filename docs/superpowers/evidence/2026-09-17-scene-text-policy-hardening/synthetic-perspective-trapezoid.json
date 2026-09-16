@@ -1,0 +1,56 @@
+{
+  "case": "perspective-trapezoid",
+  "requested_mode": "mask",
+  "applied_mode": "external",
+  "notes": [
+    "mask->external: block 0 perspective rectangle approximation error 0.300 > mask_max_perspective_error 0.1 (max corner offset / quad diagonal over 10 frames)"
+  ],
+  "diagnostics": {
+    "requested_mode": "mask",
+    "applied_mode": "external",
+    "ref_frame": 0,
+    "ref_frame_source": "inferred",
+    "total_rows": 3,
+    "valid_rows": 3,
+    "invalid_rows": 0,
+    "clipped_rows": 0,
+    "invalid_reasons": [],
+    "background_blocks": [
+      {
+        "block": 0,
+        "box": [
+          18.08,
+          18.08,
+          201.92,
+          37.92
+        ],
+        "mode": "std",
+        "std": 0.0,
+        "robust_spread_mad": 0.0,
+        "robust_spread_iqr": 0.0,
+        "n_samples": 2992,
+        "confidence": 1.0,
+        "uniform": true
+      }
+    ],
+    "whitespace_band": null,
+    "mask_perspective": [
+      {
+        "block": 0,
+        "frames": 10,
+        "max_error": 0.3001,
+        "polygon_clip": false
+      }
+    ]
+  },
+  "events": [
+    {
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "NoteBox",
+      "name": "motion",
+      "tags": "{\\an2\\pos(960.0,1040.0)\\fs40}",
+      "body": "标题\\N正文一\\N正文二"
+    }
+  ]
+}

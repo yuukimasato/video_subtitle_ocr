@@ -1,0 +1,410 @@
+{
+  "fps": 23.976023976023978,
+  "mask_leak_checks": [
+    {
+      "frame": 36,
+      "n_patch_rects": 7,
+      "patch_rects": [
+        [
+          717,
+          167,
+          927,
+          203
+        ],
+        [
+          765,
+          233,
+          894,
+          270
+        ],
+        [
+          642,
+          306,
+          1012,
+          338
+        ],
+        [
+          644,
+          377,
+          806,
+          415
+        ],
+        [
+          593,
+          436,
+          1324,
+          659
+        ],
+        [
+          634,
+          685,
+          1018,
+          721
+        ],
+        [
+          690,
+          909,
+          732,
+          951
+        ]
+      ],
+      "bg_median_luma_under_patches": 247.0,
+      "per_rect": [
+        {
+          "rect": [
+            717,
+            167,
+            927,
+            203
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 223.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            765,
+            233,
+            894,
+            270
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            642,
+            306,
+            1012,
+            338
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            644,
+            377,
+            806,
+            415
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            593,
+            436,
+            1324,
+            659
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0575,
+            "bottom": 0.0301,
+            "left": 1.0,
+            "right": 1.0
+          }
+        },
+        {
+          "rect": [
+            634,
+            685,
+            1018,
+            721
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            690,
+            909,
+            732,
+            951
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 222.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "frame": 176,
+      "n_patch_rects": 7,
+      "patch_rects": [
+        [
+          717,
+          293,
+          927,
+          329
+        ],
+        [
+          765,
+          358,
+          894,
+          396
+        ],
+        [
+          642,
+          432,
+          1012,
+          464
+        ],
+        [
+          644,
+          502,
+          806,
+          540
+        ],
+        [
+          593,
+          561,
+          1324,
+          784
+        ],
+        [
+          634,
+          810,
+          1018,
+          846
+        ],
+        [
+          690,
+          1034,
+          732,
+          1076
+        ]
+      ],
+      "bg_median_luma_under_patches": 173.0,
+      "per_rect": [
+        {
+          "rect": [
+            717,
+            293,
+            927,
+            329
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 223.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0648,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            765,
+            358,
+            894,
+            396
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            642,
+            432,
+            1012,
+            464
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            644,
+            502,
+            806,
+            540
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            593,
+            561,
+            1324,
+            784
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0588,
+            "bottom": 0.031,
+            "left": 1.0,
+            "right": 1.0
+          }
+        },
+        {
+          "rect": [
+            634,
+            810,
+            1018,
+            846
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 245.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        },
+        {
+          "rect": [
+            690,
+            1034,
+            732,
+            1076
+          ],
+          "patchonly_interior_std": 0.0,
+          "patchonly_interior_median": 222.0,
+          "ring_dark_frac_outside": {
+            "top": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+            "right": 0.0
+          }
+        }
+      ]
+    }
+  ],
+  "external_box": {
+    "per_frame": {
+      "0": {
+        "row_range": [
+          519,
+          1000
+        ],
+        "col_range": [
+          641,
+          1278
+        ]
+      },
+      "36": {
+        "row_range": [
+          519,
+          965
+        ],
+        "col_range": [
+          641,
+          1278
+        ]
+      },
+      "79": {
+        "row_range": [
+          519,
+          1000
+        ],
+        "col_range": [
+          641,
+          1278
+        ]
+      },
+      "176": {
+        "row_range": [
+          519,
+          1000
+        ],
+        "col_range": [
+          641,
+          1278
+        ]
+      },
+      "192": {
+        "row_range": [
+          519,
+          1000
+        ],
+        "col_range": [
+          641,
+          1278
+        ]
+      }
+    },
+    "stable": true,
+    "note": "row min + col range identical across frames; row max varies only where the box overlaps an already-dark phone bezel (detection limit, not rendering)"
+  },
+  "whitespace_vs_mask_png_md5": {
+    "0": [
+      "3959caeeba91926303a705c4c80be1d7",
+      "3959caeeba91926303a705c4c80be1d7"
+    ],
+    "36": [
+      "9ffad7075f629a4ffa0f4635ad112f7e",
+      "9ffad7075f629a4ffa0f4635ad112f7e"
+    ],
+    "79": [
+      "97e9100b67cddcb6e3332f8b9b7db4dd",
+      "97e9100b67cddcb6e3332f8b9b7db4dd"
+    ],
+    "176": [
+      "591e6d04cc129f366b4cdd7cc368242b",
+      "591e6d04cc129f366b4cdd7cc368242b"
+    ],
+    "192": [
+      "2e88ef9c2520fe84c9a0d96dcef1f993",
+      "2e88ef9c2520fe84c9a0d96dcef1f993"
+    ]
+  },
+  "whitespace_png_identical": true
+}

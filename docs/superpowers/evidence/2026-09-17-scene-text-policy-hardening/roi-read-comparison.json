@@ -1,0 +1,144 @@
+{
+  "video": "/home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4",
+  "candidates": "7 candidate frames per ROI (0.1..1.0 x span [0,245])",
+  "results": [
+    {
+      "scenario": "1roi-same-region",
+      "n_rois": 1,
+      "candidates_per_roi": 7,
+      "shared_reader": true,
+      "frame_opens": 1,
+      "frame_seeks": 7,
+      "total_seconds": 0.5068,
+      "per_roi": {
+        "roi_0": {
+          "analysis_rect": [
+            604,
+            282,
+            1317,
+            1078
+          ],
+          "plane_shape": [
+            796,
+            713,
+            3
+          ],
+          "plane_luma_median": 245.0,
+          "prep_seconds": 0.503
+        }
+      }
+    },
+    {
+      "scenario": "2roi-duplicated-region",
+      "n_rois": 2,
+      "candidates_per_roi": 7,
+      "shared_reader": true,
+      "frame_opens": 1,
+      "frame_seeks": 7,
+      "total_seconds": 0.5076,
+      "per_roi": {
+        "roi_0": {
+          "analysis_rect": [
+            604,
+            282,
+            1317,
+            1078
+          ],
+          "plane_shape": [
+            796,
+            713,
+            3
+          ],
+          "plane_luma_median": 245.0,
+          "prep_seconds": 0.4911
+        },
+        "roi_1": {
+          "analysis_rect": [
+            604,
+            282,
+            1317,
+            1078
+          ],
+          "plane_shape": [
+            796,
+            713,
+            3
+          ],
+          "plane_luma_median": 245.0,
+          "prep_seconds": 0.0089
+        }
+      }
+    },
+    {
+      "scenario": "2roi-different-subregions",
+      "n_rois": 2,
+      "candidates_per_roi": 7,
+      "shared_reader": true,
+      "frame_opens": 1,
+      "frame_seeks": 7,
+      "total_seconds": 0.4971,
+      "per_roi": {
+        "roi_0": {
+          "analysis_rect": [
+            604,
+            282,
+            1000,
+            700
+          ],
+          "plane_shape": [
+            418,
+            396,
+            3
+          ],
+          "plane_luma_median": 245.0,
+          "prep_seconds": 0.4906
+        },
+        "roi_1": {
+          "analysis_rect": [
+            900,
+            600,
+            1400,
+            1000
+          ],
+          "plane_shape": [
+            400,
+            500,
+            3
+          ],
+          "plane_luma_median": 245.0,
+          "prep_seconds": 0.0039
+        }
+      }
+    },
+    {
+      "scenario": "no-cache-reference-per-roi-reader",
+      "n_rois": 2,
+      "candidates_per_roi": 7,
+      "shared_reader": false,
+      "frame_opens": 2,
+      "frame_seeks": 14,
+      "total_seconds": 0.9762,
+      "per_roi": {
+        "roi_0": {
+          "analysis_rect": [
+            604,
+            282,
+            1317,
+            1078
+          ]
+        },
+        "roi_1": {
+          "analysis_rect": [
+            604,
+            282,
+            1317,
+            1078
+          ]
+        }
+      }
+    }
+  ],
+  "roi_0_plane_identical_1roi_vs_2roi_duplicated": true,
+  "roi_0_plane_identical_1roi_vs_2roi_subregion": false,
+  "conclusion": "2 ROIs sharing the region perform the same opens/seeks as 1 ROI (cache hits); analysis image byte-identical. Reads do not scale linearly with ROI count."
+}

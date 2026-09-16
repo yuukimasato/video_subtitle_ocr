@@ -1,0 +1,113 @@
+{
+  "case": "axis-aligned-control",
+  "requested_mode": "mask",
+  "applied_mode": "mask",
+  "notes": [],
+  "diagnostics": {
+    "requested_mode": "mask",
+    "applied_mode": "mask",
+    "ref_frame": 0,
+    "ref_frame_source": "inferred",
+    "total_rows": 3,
+    "valid_rows": 3,
+    "invalid_rows": 0,
+    "clipped_rows": 0,
+    "invalid_reasons": [],
+    "background_blocks": [
+      {
+        "block": 0,
+        "box": [
+          18.08,
+          18.08,
+          201.92,
+          37.92
+        ],
+        "mode": "std",
+        "std": 0.0,
+        "robust_spread_mad": 0.0,
+        "robust_spread_iqr": 0.0,
+        "n_samples": 2992,
+        "confidence": 1.0,
+        "uniform": true
+      },
+      {
+        "block": 1,
+        "box": [
+          18.08,
+          58.08,
+          201.92,
+          97.92
+        ],
+        "mode": "std",
+        "std": 0.0,
+        "robust_spread_mad": 0.0,
+        "robust_spread_iqr": 0.0,
+        "n_samples": 5984,
+        "confidence": 1.0,
+        "uniform": true
+      }
+    ],
+    "whitespace_band": null,
+    "mask_perspective": [
+      {
+        "block": 0,
+        "frames": 10,
+        "max_error": 0.0,
+        "polygon_clip": false
+      },
+      {
+        "block": 1,
+        "frames": 10,
+        "max_error": 0.0,
+        "polygon_clip": false
+      }
+    ]
+  },
+  "events": [
+    {
+      "layer": 0,
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "Scene",
+      "name": "motion",
+      "tags": "{\\an7\\p1\\bord0\\1c&HFAFAFA&\\move(20.1,18.1,34.1,18.1,0,360)}m 0 0 l 184 0 184 20 0 20{\\p0}",
+      "body": ""
+    },
+    {
+      "layer": 0,
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "Scene",
+      "name": "motion",
+      "tags": "{\\an7\\p1\\bord0\\1c&HFAFAFA&\\move(20.1,58.1,34.1,58.1,0,360)}m 0 0 l 184 0 184 40 0 40{\\p0}",
+      "body": ""
+    },
+    {
+      "layer": 1,
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "Scene",
+      "name": "motion",
+      "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+      "body": "标题"
+    },
+    {
+      "layer": 1,
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "Scene",
+      "name": "motion",
+      "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+      "body": "正文一"
+    },
+    {
+      "layer": 1,
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "Scene",
+      "name": "motion",
+      "tags": "{\\an5\\move(0.0,0.0,0.0,0.0)}",
+      "body": "正文二"
+    }
+  ]
+}

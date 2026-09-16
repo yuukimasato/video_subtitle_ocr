@@ -1,0 +1,13 @@
+{
+  "mode": "overlap",
+  "summary_events": 26,
+  "summary_policy": "overlap",
+  "keyframes": [
+    11,
+    3,
+    81
+  ],
+  "ok_frames": 174,
+  "total_frames": 246,
+  "apply_policy_calls": []
+}

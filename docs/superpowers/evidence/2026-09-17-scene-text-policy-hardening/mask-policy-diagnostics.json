@@ -1,0 +1,190 @@
+{
+  "mode": "mask",
+  "summary_events": 40,
+  "summary_policy": "mask",
+  "keyframes": [
+    11,
+    3,
+    81
+  ],
+  "ok_frames": 174,
+  "total_frames": 246,
+  "apply_policy_calls": [
+    {
+      "requested_mode": "mask",
+      "applied_mode": "mask",
+      "notes": [],
+      "diagnostics": {
+        "requested_mode": "mask",
+        "applied_mode": "mask",
+        "ref_frame": 0,
+        "ref_frame_source": "inferred",
+        "total_rows": 13,
+        "valid_rows": 13,
+        "invalid_rows": 0,
+        "clipped_rows": 0,
+        "invalid_reasons": [],
+        "background_blocks": [
+          {
+            "block": 0,
+            "box": [
+              717.02,
+              292.52,
+              926.98,
+              328.48
+            ],
+            "mode": "std",
+            "std": 14.42,
+            "robust_spread_mad": 16.31,
+            "robust_spread_iqr": 17.05,
+            "n_samples": 6722,
+            "confidence": 0.1986,
+            "uniform": true
+          },
+          {
+            "block": 1,
+            "box": [
+              765.4,
+              358.4,
+              894.6,
+              395.6
+            ],
+            "mode": "std",
+            "std": 7.91,
+            "robust_spread_mad": 0.0,
+            "robust_spread_iqr": 0.74,
+            "n_samples": 3646,
+            "confidence": 0.5606,
+            "uniform": true
+          },
+          {
+            "block": 2,
+            "box": [
+              642.38,
+              431.88,
+              1012.62,
+              464.12
+            ],
+            "mode": "std",
+            "std": 7.58,
+            "robust_spread_mad": 0.0,
+            "robust_spread_iqr": 0.74,
+            "n_samples": 10050,
+            "confidence": 0.5791,
+            "uniform": true
+          },
+          {
+            "block": 3,
+            "box": [
+              643.78,
+              502.28,
+              806.22,
+              540.72
+            ],
+            "mode": "std",
+            "std": 6.7,
+            "robust_spread_mad": 0.0,
+            "robust_spread_iqr": 0.0,
+            "n_samples": 5629,
+            "confidence": 0.6278,
+            "uniform": true
+          },
+          {
+            "block": 4,
+            "box": [
+              593.16,
+              561.4,
+              1324.0,
+              784.48
+            ],
+            "mode": "std",
+            "std": 7.14,
+            "robust_spread_mad": 0.0,
+            "robust_spread_iqr": 0.0,
+            "n_samples": 129504,
+            "confidence": 0.6031,
+            "uniform": true
+          },
+          {
+            "block": 5,
+            "box": [
+              634.02,
+              810.52,
+              1017.98,
+              846.48
+            ],
+            "mode": "std",
+            "std": 8.04,
+            "robust_spread_mad": 1.48,
+            "robust_spread_iqr": 1.48,
+            "n_samples": 10285,
+            "confidence": 0.5534,
+            "uniform": true
+          },
+          {
+            "block": 6,
+            "box": [
+              689.92,
+              1034.92,
+              732.08,
+              1077.08
+            ],
+            "mode": "std",
+            "std": 7.49,
+            "robust_spread_mad": 1.48,
+            "robust_spread_iqr": 1.48,
+            "n_samples": 1598,
+            "confidence": 0.5838,
+            "uniform": true
+          }
+        ],
+        "whitespace_band": null,
+        "mask_perspective": [
+          {
+            "block": 0,
+            "frames": 174,
+            "max_error": 0.0004,
+            "polygon_clip": false
+          },
+          {
+            "block": 1,
+            "frames": 174,
+            "max_error": 0.0006,
+            "polygon_clip": false
+          },
+          {
+            "block": 2,
+            "frames": 174,
+            "max_error": 0.0002,
+            "polygon_clip": false
+          },
+          {
+            "block": 3,
+            "frames": 174,
+            "max_error": 0.0004,
+            "polygon_clip": false
+          },
+          {
+            "block": 4,
+            "frames": 174,
+            "max_error": 0.0008,
+            "polygon_clip": false
+          },
+          {
+            "block": 5,
+            "frames": 174,
+            "max_error": 0.0001,
+            "polygon_clip": false
+          },
+          {
+            "block": 6,
+            "frames": 174,
+            "max_error": 0.001,
+            "polygon_clip": false
+          }
+        ]
+      },
+      "n_events_out": 40
+    }
+  ]
+}

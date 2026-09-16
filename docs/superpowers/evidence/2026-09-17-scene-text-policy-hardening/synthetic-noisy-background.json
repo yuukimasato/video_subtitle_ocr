@@ -1,0 +1,49 @@
+{
+  "case": "noisy-background",
+  "requested_mode": "mask",
+  "applied_mode": "external",
+  "notes": [
+    "mask->external: block 0 background channel std 74.0 > bg_max_std 18"
+  ],
+  "diagnostics": {
+    "requested_mode": "mask",
+    "applied_mode": "external",
+    "ref_frame": 0,
+    "ref_frame_source": "inferred",
+    "total_rows": 3,
+    "valid_rows": 3,
+    "invalid_rows": 0,
+    "clipped_rows": 0,
+    "invalid_reasons": [],
+    "background_blocks": [
+      {
+        "block": 0,
+        "box": [
+          18.08,
+          18.08,
+          201.92,
+          37.92
+        ],
+        "mode": "std",
+        "std": 73.98,
+        "robust_spread_mad": 94.89,
+        "robust_spread_iqr": 95.63,
+        "n_samples": 2860,
+        "confidence": 0.0,
+        "uniform": false
+      }
+    ],
+    "whitespace_band": null,
+    "mask_perspective": []
+  },
+  "events": [
+    {
+      "start_time": "0:00:00.00",
+      "end_time": "0:00:00.36",
+      "style": "NoteBox",
+      "name": "motion",
+      "tags": "{\\an2\\pos(960.0,1040.0)\\fs40}",
+      "body": "标题\\N正文一\\N正文二"
+    }
+  ]
+}

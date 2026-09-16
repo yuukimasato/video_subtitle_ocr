@@ -296,3 +296,39 @@ python scripts/benchmark_regression.py \
 | deb 构建 | 2.6.3 版本号四处同步（cli.py / DEBIAN/control / man ×2）；`./build_deb.sh` 构建成功（11.3MB，181 项），`dpkg-deb -I/-c` 校验通过；体积较 2.6.2（5.7MB）增长源于 docs/superpowers 轨迹字幕验收证据 PNG 随 docs/ 入包 |
 | deb 抽查 | `dpkg-deb -x` 解包：cli.py `__version__` 2.6.3、`scripts/{motion_ass,track_plane,verify_motion_ass}.py` 在包内、4 语言 .qm 齐全、man 页 2.6.3、无 `__pycache__`/`tests/`/`.venv`/`*.pyc` 泄漏 |
 | 发布 | 推送 main 后创建 GitHub Release v2.6.3，deb 附于 Release 资产 |
+
+### 场景文字策略验收可复现命令（2026-09-17，Task 6）
+
+> 四种场景文字显示策略（overlap/mask/external/whitespace）的端到端 ASS 生成、
+> libass 烧录抽帧与对比方法。完整验收记录与产物见
+> `docs/superpowers/evidence/2026-09-17-scene-text-policy-hardening/acceptance.md`。
+> 工作目录 = 仓库根；`V` = 测试视频路径，`E` = 上述证据目录。
+
+```bash
+# 1) 四份 ASS：同一 quad、同一 OCR 引擎，仅策略不同（stderr 含 applied
+#    policy、回退 note；whitespace 在该视频按设计回退 mask）
+for mode in overlap mask external whitespace; do
+  .venv/bin/python scripts/motion_ass.py --video "$V" \
+    --quad-file /home/hope/Tools/video_subtitle_ocr/test/motion-quad.json \
+    --start-frame 0 --end-frame 245 --ocr-engine rapid \
+    --scene-text-policy "$mode" --out "$E/$mode.ass" \
+    2> "$E/run-stderr-$mode.txt"
+done
+
+# 2) libass 烧录抽帧（相同帧号；select=eq(n,F) 按解码帧号精确抽样，
+#    路径单引号包裹，同 scripts/verify_motion_ass.py 的做法）
+ffmpeg -nostdin -hide_banner -loglevel error -y -i "$V" \
+  -vf "ass='$E/mask.ass',select='eq(n,36)'" -vsync 0 -frames:v 1 "$E/mask-f36.png"
+
+# 3) overlap 基线一致性：不带策略参数重跑，输出应与 overlap.ass 逐字节一致
+.venv/bin/python scripts/motion_ass.py --video "$V" \
+  --quad-file /home/hope/Tools/video_subtitle_ocr/test/motion-quad.json \
+  --start-frame 0 --end-frame 245 --ocr-engine rapid --out /tmp/no-policy.ass
+diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
+
+# 4) 对比方法：原帧 vs 烧录帧目检/差分（mask 无原字透出）、多帧 NoteBox
+#    位置比对（external 上沿/列范围跨帧一致）、whitespace 与 mask 逐字节
+#    diff（回退生效）、指标见证据目录 pixel-checks.json
+```
+
+静态主流水线等价命令：`cli.py "$V" --roi "604,282,713,796@0-10.26" --scene-text-policy mask -o out.ass`（全时段 mask 在移动场景会按移动门限降级 external，属静态路径边界行为；移动文字请用轨迹管线）。透视/杂色降级与单/多 ROI 读取对比的复现脚本口径记录在验收 md §3.5/§4。

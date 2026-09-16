@@ -1,0 +1,17 @@
+[1/5] tracking plane on frames [0, 245] ...
+      174/246 frames ok
+[2/5] keyframes (sharpest first): [11, 3, 81]
+[32m[INFO] 2026-09-17 06:01:18,988 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-17 06:01:19,017 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx[0m
+[32m[INFO] 2026-09-17 06:01:19,017 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx[0m
+[32m[INFO] 2026-09-17 06:01:19,056 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-17 06:01:19,057 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx[0m
+[32m[INFO] 2026-09-17 06:01:19,057 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx[0m
+[32m[INFO] 2026-09-17 06:01:19,090 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-17 06:01:19,098 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx[0m
+[32m[INFO] 2026-09-17 06:01:19,098 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx[0m
+      1 hard line(s) (stage-1: no VLM refine): [12]
+[3/5] fused OCR lines: ['受信メールー覧', '安芸倫也', 'Title:金曜日サークルあります', '久しぶり。', '早速だけどサークルの次回ミーティングについて。', '新学期からの体制とか、次の企画とか、いろいろ決', 'めたいと思ってる。', '最初は、ます加藤とざっくりした方向性を決めたい', 'から、', 'とりあえず俺たちだけで金曜日の放課後どうかな。', '場所は視聴覚室で。', '都合の悪い場合は連絡くれ。', '血']
+      scene-text-policy: mask -> mask
+[4/5] synthesized 40 event(s) for 13 line(s)
+[5/5] wrote 40 dialogue line(s) -> docs/superpowers/evidence/2026-09-17-scene-text-policy-hardening/mask.ass
