@@ -13,6 +13,7 @@ from core import subtitle_generator
 from core import chunk_planner, chunk_parallel_runner
 from core import pipeline_stages
 from core.pipeline_stages import PipelineContext, PipelineCancelled
+from core.scene_text_policy import POLICY_MODES
 from core.subtitle_llm_polish import SubtitlePolisherConfig
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,11 @@ def collect_roi_scene_text_options(
 
     - 仅收集非 overlap 策略:缺省/overlap 不传,构造参数缺省 None、行为
       与旧版本完全一致;外接矩形对全部 ROI 收集(策略分析图裁剪窗口);
+    - 未知策略名(不在 POLICY_MODES)在此统一 ValueError——本函数是 CLI
+      静态路径与 GUI 主流水线共用的收集入口,不静默透传;
     - ``merge_rois`` 时全部 ROI 合成同一张画布 ``roi_merged``:策略取第一
-      个非 overlap,出现互不相同的策略时 logger.warning;
+      个非 overlap,出现互不相同的策略时 logger.warning 并记录最终采用者
+      (画布路径无法逐 ROI 拆分);
     - 返回 ``(policies, rects)`` 两个 dict,可能为空。
     """
     policies: Dict[str, str] = {}
@@ -63,6 +67,10 @@ def collect_roi_scene_text_options(
             continue
         policy = str(roi.get("scene_text_policy") or "overlap")
         if policy != "overlap":
+            if policy not in POLICY_MODES:
+                raise ValueError(
+                    f"unknown scene text policy {policy!r} for roi_{idx}; "
+                    f"valid modes: {', '.join(POLICY_MODES)}")
             policies[f"roi_{idx}"] = policy
         rect = _roi_analysis_rect(roi)
         if rect is not None:
@@ -91,6 +99,22 @@ def collect_roi_scene_text_options(
             rects = {}
         policies = {"roi_merged": distinct[0]}
     return policies, rects
+
+
+def apply_cli_scene_text_policy(entries: Optional[List[Dict]],
+                                cli_policy: Optional[str]) -> None:
+    """CLI ``--scene-text-policy`` 覆盖 ROI 配置的固定优先级(就地修改)。
+
+    - CLI 显式传入非 overlap 策略 → 覆盖全部 ROI 条目的策略(既有语义);
+    - CLI 为缺省 overlap/空 → 不动条目,ROI JSON 内的逐 ROI 配置生效;
+    - 合法性由 CLI argparse choices 校验,此处不重复校验。
+    """
+    if not cli_policy or cli_policy == "overlap":
+        return
+    for entry in entries or []:
+        if isinstance(entry, dict):
+            entry["scene_text_policy"] = cli_policy
+
 
 def _normalize_plane_quad(points: List) -> Optional[List[List[float]]]:
     """把手绘多边形顶点归一化为文字平面四角（quad）。

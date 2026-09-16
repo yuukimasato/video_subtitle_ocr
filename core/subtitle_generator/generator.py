@@ -65,6 +65,61 @@ def _shift_pos_tag(tags: str, dx: float, dy: float) -> str:
         tags)
 
 
+# 场景策略分析图的取帧模式:单帧(旧规则,缺省) | 时间邻域多帧中位合成。
+ANALYSIS_FRAME_MODES = ("single", "median")
+# median 模式下每个候选帧的邻域半径(取 ±r 共 2r+1 帧做中位合成)。
+ANALYSIS_MEDIAN_RADIUS = 2
+
+
+class FrameReader:
+    """可缓存的视频分析帧读取器:单个 VideoCapture + 按帧号缓存。
+
+    多个 ROI 共享同一 reader:无论 ROI 数与探测帧数多少,视频只打开一次
+    (``opens`` 计数);同一帧号的重复探测直接命中缓存,不再重复解码
+    (``seeks`` 计数)。``read`` 返回该帧(未失败)或 None(打不开/读帧
+    失败/越界);``close`` 释放句柄。读取内容与逐次独立打开 VideoCapture
+    + seek 逐字节一致。
+    """
+
+    def __init__(self, video_path):
+        self._path = str(video_path)
+        self._cap = None
+        self._frames: Dict[int, Optional[np.ndarray]] = {}
+        self.opens = 0
+        self.seeks = 0
+        self.open_failed = False
+
+    def _ensure_cap(self):
+        if self._cap is None:
+            cap = cv2.VideoCapture(self._path)
+            self.opens += 1
+            if not cap.isOpened():
+                cap.release()
+                self.open_failed = True
+                return None
+            self._cap = cap
+        return self._cap
+
+    def read(self, frame_num) -> Optional[np.ndarray]:
+        num = int(frame_num)
+        if num in self._frames:
+            return self._frames[num]
+        cap = self._ensure_cap()
+        if cap is None:
+            self._frames[num] = None
+            return None
+        self.seeks += 1
+        cap.set(cv2.CAP_PROP_POS_FRAMES, num)
+        ok, frame = cap.read()
+        self._frames[num] = frame if (ok and frame is not None) else None
+        return self._frames[num]
+
+    def close(self) -> None:
+        if self._cap is not None:
+            self._cap.release()
+            self._cap = None
+
+
 class OCRToASSOptimizer(
     _DataGroupingMixin,
     _TimelineMixin,
@@ -119,6 +174,7 @@ class OCRToASSOptimizer(
         roi_analysis_rects: Optional[Dict[str, Tuple]] = None,
         motion_events: Optional[List[Dict[str, str]]] = None,
         motion_roi_ids: Optional[set] = None,
+        analysis_frame_mode: str = "single",
     ):
         self.video_path = Path(video_path)
         self.output_path = Path(output_path)
@@ -153,6 +209,17 @@ class OCRToASSOptimizer(
         # 轨迹接管成功的 ROI:该 ROI 的静态 OCR 事件整体跳过(避免同区域
         # 双份文本);轨迹失败回退时为空,静态路径照常。
         self.motion_roi_ids = set(motion_roi_ids or ())
+        # 策略分析图取帧模式:single=单帧最高亮度(旧规则,缺省,行为
+        # 不变);median=每个候选帧取时间邻域多帧中位合成(动态背景更稳)。
+        if analysis_frame_mode not in ANALYSIS_FRAME_MODES:
+            raise ValueError(
+                f"unknown analysis frame mode: {analysis_frame_mode!r}; "
+                f"valid modes: {', '.join(ANALYSIS_FRAME_MODES)}")
+        self.analysis_frame_mode = analysis_frame_mode
+        # 策略分析帧共享读取器(懒创建,convert_from_memory 结束时释放):
+        # 多 ROI 共用单个 VideoCapture,按帧号缓存,读取次数不随 ROI 数
+        # 线性增长。
+        self._analysis_reader: Optional[FrameReader] = None
         logger.info(_tr("OCRToASSOptimizer", "Subtitle generator initialized: {}x{} @ {:.2f} FPS").format(self.width, self.height, self.fps))
         if self.template_path and self.template_path.exists():
             logger.info(_tr("OCRToASSOptimizer", "Using style template: {}").format(self.template_path))
@@ -173,33 +240,51 @@ class OCRToASSOptimizer(
         return not (y_center > self.height * self.VIDEO_BOTTOM_AREA
                     or y_center < self.height * self.VIDEO_TOP_AREA)
 
+    def _get_analysis_reader(self) -> FrameReader:
+        """懒创建跨 ROI 共享的分析帧读取器(单 VideoCapture + 帧缓存)。"""
+        if self._analysis_reader is None:
+            self._analysis_reader = FrameReader(self.video_path)
+        return self._analysis_reader
+
+    def _close_analysis_reader(self) -> None:
+        if self._analysis_reader is not None:
+            self._analysis_reader.close()
+
+    def _roi_policy_mode(self, roi_id: str) -> Optional[str]:
+        """该 ROI 生效的非 overlap 策略名;overlap/未知策略名返回 None。
+
+        未知策略名不在此处报错(由收集入口统一 ValueError),仅视作未
+        启用策略,保持其余行为与旧版本一致。
+        """
+        policy = str(self.roi_scene_text_policies.get(roi_id) or "overlap")
+        if policy == "overlap" or policy not in POLICY_MODES:
+            return None
+        return policy
+
     def _grab_frame_crop(self, frame_num: int, rect) -> Tuple[Optional[np.ndarray], Optional[Tuple[int, int]]]:
         """读取单帧并按外接矩形裁剪,返回 (平面图, 平面原点(视频坐标))。
 
-        每 ROI 策略仅取一帧(VideoCapture seek 一次);视频打不开/读帧失败/
-        矩形完全出界时返回 (None, None),由调用方回退 overlap。
+        帧读取走跨 ROI 共享的 :class:`FrameReader`(单 VideoCapture、按
+        帧号缓存):多 ROI/多探测帧不重复打开或解码同一视频。视频打不开/
+        读帧失败/矩形完全出界时返回 (None, None),由调用方回退 overlap。
         """
         try:
             x1, y1, x2, y2 = (int(round(float(v))) for v in rect)
         except (TypeError, ValueError):
             return None, None
-        cap = cv2.VideoCapture(str(self.video_path))
-        if not cap.isOpened():
-            logger.warning(
-                _tr("OCRToASSOptimizer",
-                    "Scene text policy: cannot open video {} for analysis frame; keeping original placement."
-                    ).format(self.video_path))
-            return None, None
-        try:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_num))
-            ok, frame = cap.read()
-        finally:
-            cap.release()
-        if not ok or frame is None:
-            logger.warning(
-                _tr("OCRToASSOptimizer",
-                    "Scene text policy: failed to read frame {} for analysis; keeping original placement."
-                    ).format(frame_num))
+        reader = self._get_analysis_reader()
+        frame = reader.read(frame_num)
+        if frame is None:
+            if reader.open_failed:
+                logger.warning(
+                    _tr("OCRToASSOptimizer",
+                        "Scene text policy: cannot open video {} for analysis frame; keeping original placement."
+                        ).format(self.video_path))
+            else:
+                logger.warning(
+                    _tr("OCRToASSOptimizer",
+                        "Scene text policy: failed to read frame {} for analysis; keeping original placement."
+                        ).format(frame_num))
             return None, None
         fh, fw = frame.shape[:2]
         ox1, oy1 = max(0, x1), max(0, y1)
@@ -245,17 +330,40 @@ class OCRToASSOptimizer(
             lo + int(round(span * f))
             for f in (0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0)
         })
+        # 取帧模式:single=每个候选帧单张(旧规则,缺省);median=候选帧
+        # 的时间邻域(±ANALYSIS_MEDIAN_RADIUS)多帧中位合成,动态背景/噪声
+        # 下取色更稳定。默认 single,输出与旧版本逐字节一致。
+        median_mode = self.analysis_frame_mode == "median"
         plane_img = origin = None
         best_luma = -1.0
         probes: List[Tuple[int, float]] = []
         for frame_num in candidates:
-            img, org = self._grab_frame_crop(frame_num, rect)
-            if img is None:
+            samples: List[np.ndarray] = []
+            sample_origin: Optional[Tuple[int, int]] = None
+            if median_mode:
+                for offset in range(-ANALYSIS_MEDIAN_RADIUS,
+                                    ANALYSIS_MEDIAN_RADIUS + 1):
+                    if frame_num + offset < 0:
+                        continue
+                    img, org = self._grab_frame_crop(frame_num + offset, rect)
+                    if img is None:
+                        continue
+                    if sample_origin is None:
+                        sample_origin = org
+                    samples.append(img)
+            else:
+                img, org = self._grab_frame_crop(frame_num, rect)
+                if img is not None:
+                    sample_origin = org
+                    samples.append(img)
+            if not samples:
                 continue
-            luma = float(np.median(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)))
+            plane = (np.median(np.stack(samples), axis=0).astype(np.uint8)
+                     if median_mode else samples[0])
+            luma = float(np.median(cv2.cvtColor(plane, cv2.COLOR_BGR2GRAY)))
             probes.append((frame_num, round(luma, 1)))
             if luma > best_luma:
-                plane_img, origin, best_luma = img, org, luma
+                plane_img, origin, best_luma = plane, sample_origin, luma
         if plane_img is None:
             return None
         logger.info(
@@ -270,6 +378,28 @@ class OCRToASSOptimizer(
             "rows_motion": [],  # [(text, 视频坐标行框)] 逐帧行,仅供移动门限
             "row_times": [],   # 与 rows 对齐的 (start_time, end_time)
         }
+
+    def _split_policy_scene_lines(self, group, styled_lines) -> tuple:
+        """把组的 styled 行拆成 (进策略的 OCR 行, 保持原路径的 styled 行)。
+
+        SCENE 组的 styled 行与按 y 排序的 OCR 行一一对应;同一组里混有
+        非 Scene 样式(对白/顶部)时只让 Scene 行进策略,其余保持原样,
+        两类都不丢失。无 Scene 行时返回 ([], 全部 styled 行)。
+        """
+        scene_flags = [info["style"] == "Scene" for info in styled_lines]
+        other_lines = [info for info in styled_lines
+                       if info["style"] != "Scene"]
+        if not any(scene_flags):
+            return [], list(styled_lines)
+        sorted_lines = sorted(group.lines, key=lambda ln: ln.box[1])
+        if len(sorted_lines) == len(scene_flags):
+            scene_lines = [ln for ln, flag in zip(sorted_lines, scene_flags)
+                           if flag]
+        else:
+            # 样式行与 OCR 行数不一致时保守回退:全部行进策略(与旧
+            # is_scene 整组接管行为一致;SCENE 组逐行产样式,正常不可达)。
+            scene_lines = list(sorted_lines)
+        return scene_lines, other_lines
 
     def _finish_scene_policy_events(self, ctx: Dict, roi_id: str) -> List[Dict]:
         """收集完成后生成策略事件,替换该 ROI 的原 SCENE styled 事件。"""
@@ -401,7 +531,11 @@ class OCRToASSOptimizer(
                 groups = self._group_consecutive_frames(frame_list)
                 for group in groups:
                     group.lines = self._select_representative_lines(group)
-                groups = self._filter_groups_by_roi_profile(groups)
+                if self._roi_policy_mode(str(roi_id)) is None:
+                    # 未启用场景策略的 ROI 保持 ROI 画像过滤(默认行为不变);
+                    # 策略 ROI 里场景行与对白行都必须进入各自路径,不按画像
+                    # 静默丢弃任一类。
+                    groups = self._filter_groups_by_roi_profile(groups)
                 logger.info(_tr("OCRToASSOptimizer", "ROI: {} generated {} subtitle groups.").format(roi_id, len(groups)))
 
                 # 场景文字显示策略(仅非 overlap 生效;准备失败回退原路径)。
@@ -422,21 +556,24 @@ class OCRToASSOptimizer(
                         start_time = self._format_time(group.start_frame)
                         end_time = self._format_time(group.end_frame + 1)
                     styled_lines = self._determine_style_and_position(group)
-                    is_scene = bool(styled_lines) and all(
-                        line["style"] == "Scene" for line in styled_lines)
-                    if policy_ctx is not None and is_scene:
-                        # 策略接管:收集行与时间,原 SCENE styled 事件被策略
-                        # 事件替换(在 ROI 分组循环末尾统一生成)。
-                        for line in sorted(group.lines, key=lambda ln: ln.box[1]):
+                    if policy_ctx is not None and styled_lines:
+                        # 逐行拆分:Scene 行进策略,对白/顶部行保持原路径,
+                        # 同一批行里两类都不丢失。
+                        scene_lines, other_lines = self._split_policy_scene_lines(
+                            group, styled_lines)
+                        for line in scene_lines:
                             policy_ctx["rows"].append(
                                 (line.text, tuple(float(v) for v in line.box)))
                             policy_ctx["row_times"].append((start_time, end_time))
-                        for fr in group_frames:
-                            for line in fr.lines:
-                                policy_ctx["rows_motion"].append(
-                                    (line.text,
-                                     tuple(float(v) for v in line.box)))
-                        continue
+                        if scene_lines:
+                            for fr in group_frames:
+                                for line in fr.lines:
+                                    policy_ctx["rows_motion"].append(
+                                        (line.text,
+                                         tuple(float(v) for v in line.box)))
+                        if not other_lines:
+                            continue
+                        styled_lines = other_lines
                     pose = self.roi_pose_tags.get(str(roi_id))
                     if pose:
                         styled_lines = self._apply_roi_pose_tags(styled_lines, pose)
@@ -608,6 +745,9 @@ class OCRToASSOptimizer(
             logger.error(_tr("OCRToASSOptimizer", "--- Conversion failed ---"))
             logger.error(_tr("OCRToASSOptimizer", "Error: {}").format(e), exc_info=True)
             raise
+        finally:
+            # 释放跨 ROI 共享的分析帧读取器(若曾创建)。
+            self._close_analysis_reader()
 
     def _write_final_file(self, subtitle_events: List[Dict[str, str]]) -> None:
         """事件表(+ 轨迹事件)→ Dialogue 行 → 按起始时间排序 → 写 .ass。

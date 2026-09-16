@@ -655,11 +655,12 @@ def run_pipeline(args: argparse.Namespace) -> int:
             f"roi_{i}": str(entry.get("text_filter_policy") or "keep_all")
             for i, entry in enumerate(roi_entries)
         }
-        # Per-ROI scene-text display policy (overlap/mask/external/whitespace).
-        if args.scene_text_policy and args.scene_text_policy != "overlap":
-            for entry in roi_entries:
-                entry["scene_text_policy"] = args.scene_text_policy
-        from core.pipeline_worker import collect_roi_scene_text_options
+        # Per-ROI scene-text display policy (overlap/mask/external/whitespace):
+        # an explicit (non-overlap) --scene-text-policy overrides the ROI
+        # JSON policies; the overlap default leaves them untouched.
+        from core.pipeline_worker import (
+            apply_cli_scene_text_policy, collect_roi_scene_text_options)
+        apply_cli_scene_text_policy(roi_entries, args.scene_text_policy)
         roi_scene_policies, roi_analysis_rects = collect_roi_scene_text_options(
             roi_entries
         )
