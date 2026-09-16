@@ -53,6 +53,7 @@ class OcclusionConfig:
     diff_tol: float = 26.0            # 展开图灰度差 > 此值记为变化像素
     min_area_px: float = 400.0        # 变化区最小面积(平面 px),滤噪
     min_line_overlap: float = 0.06    # 与行框相交面积占比下限才计入裁剪
+    max_coverage: float = 0.55        # 变化像素覆盖率超过此值视为全局变化
     epsilon_px: float = 2.0           # approxPolyDP 简化容差
     morph_kernel: int = 5             # 闭+开核(奇数)
     sample_stride_frames: int = 3     # 每 N 个好帧检测一次遮挡
@@ -73,6 +74,7 @@ def detect_occlusion_polygons(
     *,
     diff_tol: float = 26.0,
     min_area_px: float = 400.0,
+    max_coverage: float = 0.55,
     epsilon_px: float = 2.0,
     morph_kernel: int = 5,
 ) -> List[np.ndarray]:
@@ -80,8 +82,11 @@ def detect_occlusion_polygons(
 
     展开窗口与 ``scripts.motion_ass._unwarp_quad_window`` 同一约定:窗口
     像素 (u, v) = 平面点 (qx1+u, qy1+v),故轮廓点加回 ``origin`` 即平面
-    坐标。展开图无效(退化单应抛错由调用方处理)、窗口尺寸与锚定图不符
-    或无显著变化区时返回空列表。
+    坐标。两处防误报:①当前展开图先按自身灰度中位值相对锚定图归一
+    (屏幕整体变暗/变亮时逐像素等比缩放,差分≈0,而局部遮挡不受影响);
+    ②形态学清理后变化像素覆盖率 > ``max_coverage`` 视为全局外观变化
+    (调暗/切镜)而非遮挡,返回空列表。展开图无效(退化单应抛错由调用方
+    处理)、窗口尺寸与锚定图不符或无显著变化区时也返回空列表。
     """
     import cv2
 
@@ -96,12 +101,23 @@ def detect_occlusion_polygons(
     gray = cv2.cvtColor(window, cv2.COLOR_BGR2GRAY)
     if gray.shape != anchor_gray.shape:
         return []
-    changed = (cv2.absdiff(gray, anchor_gray) > float(diff_tol)).astype(np.uint8)
+    # 亮度归一:整平面明暗变化(背光调节/调暗剧情)不应产生差分
+    frame_med = float(np.median(gray))
+    anchor_med = float(np.median(anchor_gray))
+    if frame_med > 1.0 and anchor_med > 1.0 and abs(frame_med - anchor_med) > 1e-6:
+        scaled = np.clip(
+            gray.astype(np.float64) * (anchor_med / frame_med), 0.0, 255.0)
+        diff = cv2.absdiff(scaled.astype(np.uint8), anchor_gray)
+    else:
+        diff = cv2.absdiff(gray, anchor_gray)
+    changed = (diff > float(diff_tol)).astype(np.uint8)
     k = int(morph_kernel)
     if k >= 3:
         kernel = np.ones((k, k), np.uint8)
         changed = cv2.morphologyEx(changed, cv2.MORPH_CLOSE, kernel)
         changed = cv2.morphologyEx(changed, cv2.MORPH_OPEN, kernel)
+    if float(changed.mean()) > float(max_coverage):
+        return []  # 大半平面都变了:调暗/切镜等全局变化,不是局部遮挡
     contours, _ = cv2.findContours(
         changed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     polys: List[np.ndarray] = []
@@ -162,6 +178,7 @@ def collect_occlusions(
                         frame, tq.homography_inv, anchor_gray,
                         plane_size, origin,
                         diff_tol=cfg.diff_tol, min_area_px=cfg.min_area_px,
+                        max_coverage=cfg.max_coverage,
                         epsilon_px=cfg.epsilon_px,
                         morph_kernel=cfg.morph_kernel)
                 except (ValueError, cv2.error):

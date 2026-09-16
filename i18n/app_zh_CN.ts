@@ -350,7 +350,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+18"/>
+        <source>自动检测移动文字（轨迹字幕）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
         <source>加载视频后自动检测字幕 ROI</source>
         <translation type="unfinished"></translation>
     </message>
@@ -451,12 +461,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+460"/>
+        <location line="+461"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-458"/>
+        <location line="-459"/>
         <source>清除已存密钥</source>
         <translation type="unfinished"></translation>
     </message>
@@ -491,7 +501,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+179"/>
+        <location line="+180"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -516,7 +526,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+229"/>
+        <location line="+230"/>
         <source>（无可用引擎）</source>
         <translation type="unfinished"></translation>
     </message>
@@ -608,7 +618,7 @@
         <translation type="vanished">Medium(最准)</translation>
     </message>
     <message>
-        <location line="-720"/>
+        <location line="-741"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大模型润色（DeepSeek / OpenAI，可选）</translation>
     </message>
@@ -1107,6 +1117,16 @@
     <message>
         <location line="+8"/>
         <source>需勾选「写入画面位置标签」且 ROI 为四点多边形（此时走移动文字轨迹管线）。开启后逐帧测量文字平面亮度，为轨迹事件追加 \1c/\alpha \t 标签链，字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。默认关闭。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>遮挡蒙版（\iclip，手部遮挡时不渲染字幕）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>需勾选「写入画面位置标签」（轨迹模式）。开启后检测手部等遮挡物覆盖文字平面的帧，为受影响的事件追加 \iclip 逆向蒙版，字幕不再渲染到遮挡物上（遮挡结束时自动恢复显示）。默认关闭。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1705,7 +1725,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+211"/>
+        <location line="+214"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1715,7 +1735,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="-1"/>
-        <location filename="../main_window/roi_editing.py" line="-156"/>
+        <location filename="../main_window/roi_editing.py" line="-159"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1727,7 +1747,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+59"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1891,7 +1911,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+50"/>
         <source>正在识别…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2306,7 +2326,7 @@
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+281"/>
+        <location filename="../core/pipeline_worker.py" line="+389"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中间文件将保存到：{}</translation>
     </message>
@@ -2457,17 +2477,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="-213"/>
+        <location filename="../core/pipeline_worker.py" line="-321"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+151"/>
+        <location line="+214"/>
+        <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+44"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+25"/>
         <source>Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).</source>
         <translation type="unfinished"></translation>
     </message>

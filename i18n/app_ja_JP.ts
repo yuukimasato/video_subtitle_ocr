@@ -353,7 +353,17 @@
         <translation>秒</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+18"/>
+        <source>自动检测移动文字（轨迹字幕）</source>
+        <translation>移動テキストを自動検出（軌跡字幕）</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。</source>
+        <translation>「画面位置タグを書き込む」を手動でチェックする必要はありません:認識開始時に各 ROI 範囲をサンプリング OCR し、テキスト行中心の移動がしきい値（24px）を超えると、その領域を自動的に移動テキスト軌跡パイプラインに回し、静的な断片イベントを抑制します。検出コストはサンプリング密度（0.5 秒/フレーム）に比例するため、ROI は移動テキストにぴったり合わせることを推奨します。</translation>
+    </message>
+    <message>
+        <location line="+10"/>
         <source>加载视频后自动检测字幕 ROI</source>
         <translation>動画読み込み後に字幕 ROI を自動検出</translation>
     </message>
@@ -454,12 +464,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+460"/>
+        <location line="+461"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
-        <location line="-458"/>
+        <location line="-459"/>
         <source>清除已存密钥</source>
         <translation>保存済みキーを削除</translation>
     </message>
@@ -494,7 +504,7 @@
         <translation>ワンクリックのシンプル表示に戻り、詳細設定を隠します。すべての選択肢は変わりません。</translation>
     </message>
     <message>
-        <location line="+179"/>
+        <location line="+180"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
@@ -519,7 +529,7 @@
         <translation>カラーゲート：確認済み。次の「字幕 OCR 認識」のステージ 1 で使用されます。</translation>
     </message>
     <message>
-        <location line="+229"/>
+        <location line="+230"/>
         <source>（无可用引擎）</source>
         <translation>（利用可能なエンジンなし）</translation>
     </message>
@@ -611,7 +621,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-720"/>
+        <location line="-741"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -1111,6 +1121,16 @@
         <location line="+8"/>
         <source>需勾选「写入画面位置标签」且 ROI 为四点多边形（此时走移动文字轨迹管线）。开启后逐帧测量文字平面亮度，为轨迹事件追加 \1c/\alpha \t 标签链，字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。默认关闭。</source>
         <translation>「画面位置タグを書き込む」にチェックがあり、かつ 4 点多角形 ROI の場合（軌跡パイプラインが有効）に使用可能。文字平面の輝度を逐フレーム測定し、軌跡イベントに \1c/\alpha \t タグチェーンを追加して、字幕の色と不透明度が画面の暗転/明転（スマホ画面の消灯など）に忠実に追従します。既定はオフ。</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>遮挡蒙版（\iclip，手部遮挡时不渲染字幕）</source>
+        <translation>遮蔽マスク（\iclip、手で隠れた部分に字幕を描画しない）</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>需勾选「写入画面位置标签」（轨迹模式）。开启后检测手部等遮挡物覆盖文字平面的帧，为受影响的事件追加 \iclip 逆向蒙版，字幕不再渲染到遮挡物上（遮挡结束时自动恢复显示）。默认关闭。</source>
+        <translation>「画面位置タグを書き込む」（軌跡モード）のチェックが必要です。有効にすると、手などが文字平面を覆うフレームを検出し、該当イベントに \iclip 逆マスクを追加して、字幕が遮蔽物の上に描画されないようにします（遮蔽が終わると自動的に表示を再開）。既定はオフ。</translation>
     </message>
     <message>
         <location line="+15"/>
@@ -1708,7 +1728,7 @@
         <translation>無効にしました</translation>
     </message>
     <message>
-        <location line="+211"/>
+        <location line="+214"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
@@ -1718,7 +1738,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="-1"/>
-        <location filename="../main_window/roi_editing.py" line="-156"/>
+        <location filename="../main_window/roi_editing.py" line="-159"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1730,7 +1750,7 @@
         <translation>開始時刻を終了時刻より後にすることはできません。</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+59"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>ROI 項目の作成中にエラー：{}</translation>
     </message>
@@ -1894,7 +1914,7 @@
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+50"/>
         <source>正在识别…</source>
         <translation>認識中…</translation>
     </message>
@@ -2314,7 +2334,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+281"/>
+        <location filename="../core/pipeline_worker.py" line="+389"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中間ファイルは以下に保存されます: {}</translation>
     </message>
@@ -2465,17 +2485,22 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="-213"/>
+        <location filename="../core/pipeline_worker.py" line="-321"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+151"/>
+        <location line="+214"/>
+        <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+44"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+25"/>
         <source>Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).</source>
         <translation type="unfinished"></translation>
     </message>

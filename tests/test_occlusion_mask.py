@@ -130,6 +130,32 @@ class TestDetectOcclusionPolygons:
         assert detect_occlusion_polygons(
             frame, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0)) == []
 
+    def test_global_dimming_is_not_occlusion(self):
+        # 整平面调暗(背光调节/调暗剧情):亮度归一后差分≈0;覆盖率门限兜底
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        dim = cv2.convertScaleAbs(make_plane(), alpha=0.15)  # 245→≈37
+        assert detect_occlusion_polygons(
+            dim, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0)) == []
+
+    def test_partial_dim_plus_occluder_still_detected(self):
+        # 调暗背景上的真实局部遮挡(手)仍应检出:归一只抵消等比明暗
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        dim_occluder = cv2.convertScaleAbs(make_plane(occluder=True),
+                                           alpha=0.15)
+        # 手在调暗平面上:亮度归一(anchor_med/frame_med)后手区域差分保留
+        polys = detect_occlusion_polygons(
+            dim_occluder, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0),
+            diff_tol=CFG.diff_tol, min_area_px=CFG.min_area_px)
+        assert polys, "partial occluder on dimmed plane must be detected"
+
+    def test_coverage_gate_filters_whole_plane_change(self):
+        # 内容大幅变化且非等比(噪声整屏重铺)→ 覆盖率超门限 → 不判遮挡
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        rng = np.random.default_rng(5)
+        noise = rng.integers(0, 256, (PLANE_H, PLANE_W, 3), dtype=np.uint8)
+        assert detect_occlusion_polygons(
+            noise, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0)) == []
+
 
 # ---------------------------------------------------------------------------
 # collect_occlusions

@@ -319,7 +319,17 @@
         <translation>秒</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+18"/>
+        <source>自动检测移动文字（轨迹字幕）</source>
+        <translation>自動偵測移動文字（軌跡字幕）</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。</source>
+        <translation>無需手動勾選「寫入畫面位置標籤」：開始辨識時在每個 ROI 範圍內取樣 OCR，若文字行心位移超過移動門檻（24px），自動對該區域走移動文字軌跡管線並抑制靜態碎片事件。偵測成本與取樣密度（0.5 秒/影格）成正比，建議 ROI 盡量圈緊移動文字。</translation>
+    </message>
+    <message>
+        <location line="+10"/>
         <source>加载视频后自动检测字幕 ROI</source>
         <translation>載入影片後自動偵測字幕 ROI</translation>
     </message>
@@ -420,12 +430,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+460"/>
+        <location line="+461"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>使用 API Key 和 Base URL 拉取 /v1/models。</translation>
     </message>
     <message>
-        <location line="-458"/>
+        <location line="-459"/>
         <source>清除已存密钥</source>
         <translation>清除已存金鑰</translation>
     </message>
@@ -460,7 +470,7 @@
         <translation>返回一鍵簡潔檢視，隱藏進階設定。所有選項保持不變。</translation>
     </message>
     <message>
-        <location line="+179"/>
+        <location line="+180"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 文字來源過濾已關閉，將保留所有辨識到的文字。</translation>
     </message>
@@ -485,7 +495,7 @@
         <translation>顏色門檻：已確認，將用於下一輪「字幕 OCR 辨識」階段一擷取。</translation>
     </message>
     <message>
-        <location line="+222"/>
+        <location line="+223"/>
         <source>自动(Auto)</source>
         <translation>自動(Auto)</translation>
     </message>
@@ -949,6 +959,16 @@
         <translation>需勾選「寫入畫面位置標籤」且 ROI 為四點多邊形（此時走移動文字軌跡管線）。開啟後逐幀測量文字平面亮度，為軌跡事件追加 \1c/\alpha \t 標籤鏈，字幕顏色與透明度忠實跟隨螢幕變暗/變亮（如手機息屏）。預設關閉。</translation>
     </message>
     <message>
+        <location line="+14"/>
+        <source>遮挡蒙版（\iclip，手部遮挡时不渲染字幕）</source>
+        <translation>遮罩蒙版（\iclip，手部遮擋時不渲染字幕）</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>需勾选「写入画面位置标签」（轨迹模式）。开启后检测手部等遮挡物覆盖文字平面的帧，为受影响的事件追加 \iclip 逆向蒙版，字幕不再渲染到遮挡物上（遮挡结束时自动恢复显示）。默认关闭。</source>
+        <translation>需勾選「寫入畫面位置標籤」（軌跡模式）。開啟後偵測手部等遮擋物覆蓋文字平面的影格，為受影響的事件追加 \iclip 逆向蒙版，字幕不再渲染到遮擋物上（遮擋結束時自動恢復顯示）。預設關閉。</translation>
+    </message>
+    <message>
         <location line="+15"/>
         <source>叠加（默认）</source>
         <translation>疊加（預設）</translation>
@@ -1306,7 +1326,7 @@
         <translation>取消</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+50"/>
         <source>正在识别…</source>
         <translation>正在辨識…</translation>
     </message>
@@ -1349,7 +1369,7 @@
         <location line="+4"/>
         <location filename="../main_window/roi_config_io.py" line="-52"/>
         <location line="+85"/>
-        <location filename="../main_window/roi_editing.py" line="+59"/>
+        <location filename="../main_window/roi_editing.py" line="+62"/>
         <location filename="../main_window/scan_control.py" line="+338"/>
         <location filename="../main_window/video_playback.py" line="+28"/>
         <source>错误</source>
@@ -1429,7 +1449,7 @@
         <translation>ASS 字幕檔案 (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_editing.py" line="-199"/>
+        <location filename="../main_window/roi_editing.py" line="-202"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
         <translation>已新增 ROI，影格範圍：{}-{}</translation>
     </message>
@@ -1479,7 +1499,7 @@
         <translation>開始時間不能晚於結束時間。</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+59"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>建立 ROI 項目時發生錯誤：{}</translation>
     </message>
@@ -2003,12 +2023,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+151"/>
+        <location line="+214"/>
+        <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+44"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+25"/>
         <source>Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).</source>
         <translation type="unfinished"></translation>
     </message>

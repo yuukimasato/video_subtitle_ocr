@@ -154,6 +154,24 @@ def load_roi_file(path: str) -> list:
     return out
 
 
+def _time_to_sec(value) -> float:
+    """ROI 时间字段 → 秒(兼容数值秒与 GUI 的 HH:MM:SS.mmm 字符串)。"""
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    m = re.match(r"^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$", text)
+    if m:
+        h, mi, sec = (float(g) for g in m.groups())
+        return h * 3600 + mi * 60 + sec
+    return 0.0
+
+
 def _entry_rect(entry: dict):
     """ROI entry → 画面坐标外接矩形 (x1, y1, x2, y2);无法解析返回 None。"""
     rtype = str(entry.get("type", ""))
@@ -365,8 +383,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             r["end_time"] = duration_sec
     for r in roi_entries:
         _info(
-            f"ROI: {r['points']} time=[{r['start_time']}, {r['end_time']}]",
-            args.quiet,
+            f"ROI: {r['points']} time=[{r.get('start_time', 0)}, "
+            f"{r.get('end_time')}]", args.quiet
         )
 
     work_dir = tempfile.mkdtemp(prefix="vso_cli_")
@@ -582,10 +600,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     rect = _entry_rect(entry)
                     if rect is None:
                         continue
-                    t0f = int(round(float(entry.get("start_time") or 0)
+                    t0f = int(round(_time_to_sec(entry.get("start_time"))
                                     * info["fps"]))
                     t1 = entry.get("end_time")
-                    t1f = (int(round(float(t1) * info["fps"]))
+                    t1f = (int(round(_time_to_sec(t1) * info["fps"]))
                            if t1 is not None else None)
                     try:
                         regions = detect_moving_text(

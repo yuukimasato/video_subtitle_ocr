@@ -386,6 +386,25 @@ class ControlPanelWidget(QWidget):
         options_layout.addWidget(self.merge_roi_checkbox, 2, 1)
         options_layout.addWidget(self.time_slice_seconds_edit, 2, 2)
         options_layout.addWidget(seconds_label, 2, 3)
+        # FR-1:自动检测移动文字(无勾选「写入画面位置标签」的 ROI 时,
+        # 在各 ROI 范围内采样 OCR 行心位移,检出区域自动走轨迹管线)。
+        self.motion_auto_detect_checkbox = QCheckBox(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "自动检测移动文字（轨迹字幕）",
+            )
+        )
+        self.motion_auto_detect_checkbox.setChecked(False)
+        self.motion_auto_detect_checkbox.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内"
+                "采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域"
+                "走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度"
+                "（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。",
+            )
+        )
+        options_layout.addWidget(self.motion_auto_detect_checkbox, 0, 2)
         self.auto_roi_on_load_checkbox = QCheckBox(
             QCoreApplication.translate("ControlPanelWidget", "加载视频后自动检测字幕 ROI")
         )
@@ -701,6 +720,7 @@ class ControlPanelWidget(QWidget):
             self.save_intermediate_checkbox,
             self.time_slice_checkbox,
             self.merge_roi_checkbox,
+            self.motion_auto_detect_checkbox,
             self.time_slice_seconds_edit,
             self.chunk_workers_combo,
             self.auto_roi_on_load_checkbox,
@@ -1052,6 +1072,7 @@ class ControlPanelWidget(QWidget):
             "time_slice_enabled": self.time_slice_checkbox.isChecked(),
             "time_slice_seconds": slice_seconds,
             "merge_rois": self.merge_roi_checkbox.isChecked(),
+            "motion_auto_detect": self.motion_auto_detect_checkbox.isChecked(),
             "chunk_workers": int(self.chunk_workers_combo.currentData() or 0),
             "deepseek_polish": self.deepseek_polish_checkbox.isChecked(),
             "deepseek_fragment_merge": self.deepseek_fragment_merge_checkbox.isChecked(),

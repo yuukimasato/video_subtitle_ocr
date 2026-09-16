@@ -164,6 +164,28 @@ class RoiDefinitionWidget(QGroupBox):
             self.motion_brightness_checkbox.setEnabled)
         roi_layout.addRow(self.motion_brightness_checkbox)
 
+        # 轨迹字幕 \iclip 遮挡蒙版(FR-9):仅 pose 勾选(轨迹模式)时生效;
+        # 随 ROI json(motion_occlusion_clip 键)持久化。
+        self.motion_occlusion_checkbox = QCheckBox(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "遮挡蒙版（\\iclip，手部遮挡时不渲染字幕）",
+            )
+        )
+        self.motion_occlusion_checkbox.setChecked(False)
+        self.motion_occlusion_checkbox.setEnabled(False)
+        self.motion_occlusion_checkbox.setToolTip(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "需勾选「写入画面位置标签」（轨迹模式）。开启后检测手部等遮挡物"
+                "覆盖文字平面的帧，为受影响的事件追加 \\iclip 逆向蒙版，"
+                "字幕不再渲染到遮挡物上（遮挡结束时自动恢复显示）。默认关闭。",
+            )
+        )
+        self.pose_tags_checkbox.toggled.connect(
+            self.motion_occlusion_checkbox.setEnabled)
+        roi_layout.addRow(self.motion_occlusion_checkbox)
+
         # 场景文字显示策略(每 ROI 独立):仅作用于场景文字(画面文字)事件;
         # 所选模式不可用时按 空白区 → 遮罩 → 外置 自动回退。
         self.scene_text_policy_combo = QComboBox()
@@ -333,8 +355,11 @@ class RoiDefinitionWidget(QGroupBox):
         self.blur_checkbox.setEnabled(enabled)
         self.fade_in_refine_checkbox.setEnabled(enabled)
         self.pose_tags_checkbox.setEnabled(enabled)
-        # 亮度自适应随 pose 联动:总开关关闭时必然不可用;pose 关闭时也不可用。
+        # 亮度自适应/遮挡蒙版随 pose 联动:总开关关闭时必然不可用;
+        # pose 关闭时也不可用。
         self.motion_brightness_checkbox.setEnabled(
+            enabled and self.pose_tags_checkbox.isChecked())
+        self.motion_occlusion_checkbox.setEnabled(
             enabled and self.pose_tags_checkbox.isChecked())
         self.scene_text_policy_combo.setEnabled(enabled)
 
@@ -357,8 +382,9 @@ class RoiDefinitionWidget(QGroupBox):
             # Default for a NEW ROI: boundary refinement on (frame-accurate timing).
             self.fade_in_refine_checkbox.setChecked(True)
             self.pose_tags_checkbox.setChecked(False)
-            # 新 ROI 复位:亮度自适应回到默认关(pose 联动会同时禁用)。
+            # 新 ROI 复位:亮度自适应/遮挡蒙版回到默认关(pose 联动会同时禁用)。
             self.motion_brightness_checkbox.setChecked(False)
+            self.motion_occlusion_checkbox.setChecked(False)
             # 新 ROI 复位:场景文字显示策略回到默认「叠加」。
             self.scene_text_policy_combo.setCurrentIndex(0)
             self._text_bgr = [255, 255, 255]
@@ -379,6 +405,11 @@ class RoiDefinitionWidget(QGroupBox):
         self.motion_brightness_checkbox.setChecked(
             bool(roi.get("motion_auto_brightness", False)))
         self.motion_brightness_checkbox.setEnabled(
+            self.pose_tags_checkbox.isChecked())
+        # 回填轨迹遮挡蒙版(旧配置缺省关;勾选状态受 pose 联动启用)。
+        self.motion_occlusion_checkbox.setChecked(
+            bool(roi.get("motion_occlusion_clip", False)))
+        self.motion_occlusion_checkbox.setEnabled(
             self.pose_tags_checkbox.isChecked())
         # 回填场景文字显示策略(旧配置缺省/未知值 → 叠加)。
         policy_idx = self.scene_text_policy_combo.findData(

@@ -41,6 +41,39 @@
   与基线 motion-bright.ass 逐事件同构、位置偏差 ≤0.5px（\fs 数值差异来
   自四边形尺寸不同的平面坐标比例，经单应映射后渲染物理尺寸一致）。单元
   测试 616 → **624**。
+- **移动文字轨迹「阶段三」四项收尾全部落地**（需求文档 FR 表待做清零）：
+  1. **FR-1 自动检测触发**：`core/motion_detector.py` 在 ROI 外接矩形内按
+     `--motion-auto-stride`（默认 0.5s）采样 OCR，同文本行心按时间串链
+     （跳变超 max(48px, 2.5×行高) 断链），链内最大位移超移动门限（默认
+     24px，与主流水线同源）即产出「quad + 时间范围」（minAreaRect 外扩
+     0.5×行高；同动多行并块供跟踪取更多特征），自动走既有轨迹管线并抑制
+     该 ROI 静态碎片。项目 CLI 新增 `--motion-auto[/-stride/-threshold]`；
+     GUI 控制面板新增「自动检测移动文字（轨迹字幕）」复选框 →
+     `PipelineWorker(motion_auto_detect=)`（无手动 pose ROI 时生效）。
+  2. **FR-9 `\iclip` 手部遮挡蒙版**：`core/occlusion_mask.py` 把采样 ok 帧
+     展开到平面坐标、与锚定关键帧差分得遮挡多边形（亮度归一 + 覆盖率
+     门限防把「屏幕调暗/切镜」误判为遮挡），与行框相交达标者以
+     `\iclip` 追加到事件——段端点多边形等结构时 `\t` 动画插值（与
+     `\move` 线性假设一致），个数变化时退化为保守静态并集（宁多勿漏）；
+     lost 大遮挡仍由切段兜底。CLI `--occlusion-clip`；GUI「遮挡蒙版」
+     复选框随 pose 联动、`motion_occlusion_clip` 随 ROI json 持久化。
+     DMG 实测：遮挡检测运行、输出与关闭时逐字节一致（真实遮挡区间由
+     lost 兜底，蒙版保守 no-op）；防误报 3 项单测（整体调暗/调暗+局部
+     遮挡/整屏噪声）。
+  3. **屏幕局部调暗背景适配**：`core.screen_luma.measure_line_luma_curves`
+     逐行独立测亮度曲线（行框四角经 H(ref→t) 映射、投影多边形内中位值，
+     基线/截断语义与整平面一致），事件按 `line_idx` 取所属行曲线
+     （`brightness_per_line`，默认关；独立 CLI `--brightness-per-line`；
+     whitespace/external 重建事件与缺失行回退整平面曲线）。
+  4. **行尾全角标点字形补偿**：`punct_comp_offset_px` 对行尾「。，、」等
+     墨迹偏左标点右移 min(上限, 0.25×行高)（上限 `punct_comp_max_px=7`
+     随 PlayRes 高度缩放，默认开、可经 config 关闭），`\move/\pos` 阶梯
+     与 mask 遮罩块同步平移；DMG 正常流程实测 7 行行尾标点精确 +7.0px
+     （短行 +6.7 未触顶）、非标点行零偏移，2026-09-16 记录的 dx −5.3~
+     −7.2px 渲染偏移限制按度量补偿消除。
+  另:`cli.py` ROI 时间字段解析兼容 GUI 的 HH:MM:SS.mmm 字符串与数值秒；
+  三语 i18n 补齐（遮挡蒙版/自动检测文案，.qm 实测加载）。单元测试
+  624 → **661+**。
 
 ### 修复
 

@@ -595,6 +595,79 @@ class TestGuiBrightnessCheckbox:
         entry = win._create_roi_entry_from_ui()
         assert entry["motion_auto_brightness"] is False
 
+    def test_occlusion_checkbox_defaults_and_pose_binding(self):
+        roi_def = _make_roi_def()
+        cb = roi_def.motion_occlusion_checkbox
+        assert cb.isChecked() is False
+        assert cb.isEnabled() is False  # pose 未勾选时不可用
+        roi_def.pose_tags_checkbox.setChecked(True)
+        assert cb.isEnabled() is True
+        roi_def.pose_tags_checkbox.setChecked(False)
+        assert cb.isEnabled() is False
+
+    def test_occlusion_checkbox_backfill_and_assembly(self):
+        roi_def = _make_roi_def()
+        roi_def.set_color_restrict_from_roi(
+            {"write_pose_tags": True, "motion_occlusion_clip": True})
+        assert roi_def.motion_occlusion_checkbox.isChecked() is True
+        assert roi_def.motion_occlusion_checkbox.isEnabled() is True
+        roi_def.set_color_restrict_from_roi(None)  # 新 ROI 复位
+        assert roi_def.motion_occlusion_checkbox.isChecked() is False
+
+        # 条目组装携带 motion_occlusion_clip
+        from main_window.roi_editing import RoiEditingMixin
+
+        class _FakeVideoLabel:
+            def __init__(self):
+                self._poly = [SimpleNamespace(x=lambda: 90, y=lambda: 80),
+                              SimpleNamespace(x=lambda: 250, y=lambda: 80),
+                              SimpleNamespace(x=lambda: 250, y=lambda: 180),
+                              SimpleNamespace(x=lambda: 90, y=lambda: 180)]
+
+            def get_draw_mode(self):
+                return "poly"
+
+            def get_base_pixmap(self):
+                return object()
+
+            def get_current_drawing_poly(self):
+                return self._poly
+
+        class _FakeWindow(RoiEditingMixin):
+            def __init__(self, roi_def):
+                self.roi_def_widget = roi_def
+                self.video_display_widget = SimpleNamespace(
+                    video_label=_FakeVideoLabel())
+                self.roi_list_widget = SimpleNamespace(
+                    roi_list_widget=SimpleNamespace(
+                        currentItem=lambda: None, row=lambda item: -1,
+                        setCurrentRow=lambda i: None))
+                self.control_panel_widget = SimpleNamespace(
+                    invalidate_color_gate_confirmation=lambda: None)
+                self.cap = object()
+                self.fps = FPS
+                self.roi_data = []
+                self.logger = logging.getLogger("test_motion_integration")
+                self.clipboard_roi = None
+                self._suppress_selection_seek = True
+                self.seek_video = lambda frame: None
+                self.update_all_rois_visibility = lambda: None
+                self.update_ui_state = lambda: None
+                self.update_roi_list = lambda: None
+
+            def parse_time_or_frame(self, text):
+                text = text.strip()
+                return int(text) if text.isdigit() else 0
+
+        roi_def = _make_roi_def()
+        win = _FakeWindow(roi_def)
+        roi_def.pose_tags_checkbox.setChecked(True)
+        roi_def.motion_occlusion_checkbox.setChecked(True)
+        entry = win._create_roi_entry_from_ui()
+        assert entry["motion_occlusion_clip"] is True
+        roi_def.motion_occlusion_checkbox.setChecked(False)
+        assert win._create_roi_entry_from_ui()["motion_occlusion_clip"] is False
+
 
 # ---------------------------------------------------------------------------
 # cli.load_roi_file(--roi-file)

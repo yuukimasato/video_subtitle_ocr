@@ -266,10 +266,12 @@ def detect_moving_text(
         if quad is None:
             continue
         pad_frames = int(round(float(pad_sec) * fps))
+        end_cap = (last_frame if last_frame is not None
+                   else items[-1][0] + pad_frames)
         regions.append(MotionRegion(
             quad=quad,
             start_frame=max(start, items[0][0] - pad_frames),
-            end_frame=items[-1][0] + pad_frames,
+            end_frame=min(items[-1][0] + pad_frames, end_cap),
             max_displacement_px=disp,
             sample_count=len(items),
             texts=[it[5] for it in items],

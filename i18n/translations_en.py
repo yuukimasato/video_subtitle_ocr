@@ -368,4 +368,13 @@ DICT = {
     '开启': 'enabled',
     '关闭': 'disabled',
     '[LLM] 已取消 —— 未生成字幕文件。': '[LLM] Cancelled - no subtitle file was generated.',
+    '遮挡蒙版（\\iclip，手部遮挡时不渲染字幕）':
+        'Occlusion mask (\\iclip: hide subtitles where the hand covers the screen)',
+    '需勾选「写入画面位置标签」（轨迹模式）。开启后检测手部等遮挡物覆盖文字平面的帧，为受影响的事件追加 \\iclip 逆向蒙版，字幕不再渲染到遮挡物上（遮挡结束时自动恢复显示）。默认关闭。':
+        'Requires "Write plane-position tags" (trajectory mode). Detects frames where a hand or another occluder covers the text plane and appends an \\iclip inverse mask to affected events, so subtitles never render over the occluder (display resumes when the occlusion ends). Off by default.',
+    '自动检测移动文字（轨迹字幕）':
+        'Auto-detect moving text (trajectory subtitles)',
+    '无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。':
+        'No need to tick "Write plane-position tags" manually: at recognition start, each ROI is sample-OCR\'ed, and any text line whose centre moves beyond the movement threshold (24 px) is handed to the motion-trajectory pipeline, suppressing its static fragment events. Detection cost scales with sampling density (0.5 s/frame); keep the ROI tight around the moving text.',
+
 }

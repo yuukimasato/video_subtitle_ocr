@@ -139,6 +139,7 @@ class PipelineControlMixin:
             time_slice_seconds=float(options.get("time_slice_seconds", 10.0)),
             merge_rois=bool(options.get("merge_rois", False)),
             chunk_workers=int(options.get("chunk_workers", 0) or 0),
+            motion_auto_detect=bool(options.get("motion_auto_detect", False)),
             subtitle_polisher=subtitle_polisher,
             color_presence_gate_spec=gate_spec,
             ocr_engine_id=options.get("ocr_engine_id", ""),

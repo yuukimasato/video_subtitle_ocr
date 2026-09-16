@@ -89,6 +89,7 @@ class MotionAssConfig:
     occlusion_diff_tol: float = 26.0              # 展开图灰度差阈值(变化像素判定)
     occlusion_min_area_px: float = 400.0          # 变化区最小面积(平面 px)
     occlusion_min_line_overlap: float = 0.06      # 与行框相交面积占比下限
+    occlusion_max_coverage: float = 0.55          # 变化覆盖率上限(超过=调暗/切镜,不判遮挡)
     occlusion_sample_max_frames: int = 7          # 每条事件最多取的遮挡采样帧数
 
 

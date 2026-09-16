@@ -218,6 +218,9 @@ class RoiEditingMixin:
             # 轨迹字幕亮度自适应(pose + 四点多边形走轨迹管线时生效)。
             roi_entry["motion_auto_brightness"] = bool(
                 self.roi_def_widget.motion_brightness_checkbox.isChecked())
+            # 轨迹字幕 \iclip 遮挡蒙版(FR-9,生效条件同上)。
+            roi_entry["motion_occlusion_clip"] = bool(
+                self.roi_def_widget.motion_occlusion_checkbox.isChecked())
             # 场景文字显示策略(仅作用于场景文字事件;缺省 overlap)。
             roi_entry["scene_text_policy"] = (
                 self.roi_def_widget.scene_text_policy_combo.currentData() or "overlap")
