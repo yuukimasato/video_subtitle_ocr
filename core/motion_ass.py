@@ -6,8 +6,8 @@
 - :func:`build_line_tracks` —— 参考关键帧平面坐标的行框,经帧间单应链乘
   ``H(ref→t) = H(init→t)·inv(H(init→ref))`` 逐 ok 帧映射为行四边形,
   得到每行逐帧的 ``LinePose``(中心 / 角度 / 缩放);lost 帧无条目。
-- :func:`smooth_line_track` —— 滑动平均去抖(窗口只数有 pose 的帧),
-  只去高频抖动、不改缓慢运动趋势。
+- :func:`smooth_line_track` —— 滑动平均去抖(窗口只数有 pose 的帧,且不
+  跨越长 lost 遮挡段),只去高频抖动、不改缓慢运动趋势。
 - :func:`simplify_and_segment` —— 中心序列 Douglas-Peucker 简化得分段点,
   并入角度/缩放显著变化帧,强制最小段长,输出连续无缝的帧号区间。
 - :func:`synthesize_events` —— 标签阶梯:单段直线 → 一条 ``\\move`` 事件;
@@ -66,6 +66,7 @@ class MotionAssConfig:
     move_tol_px: float = 2.0        # DP 简化/单段判定容差
     min_seg_frames: int = 3         # 最小段长(帧)
     smooth_window: int = 5          # 滑动平均窗口(帧,只数有 pose 的帧)
+    smooth_max_gap: int = 2         # 平滑可跨越的最大帧号间隔(更长 lost 段分段平滑)
     rot_thresh_deg: float = 1.0     # 分段点/±t 叠加的角度阈值
     scale_thresh: float = 0.02      # 缩放变化阈值
     dense_pos_fallback: bool = True
@@ -278,26 +279,45 @@ def build_line_tracks(
 # 平滑
 # ---------------------------------------------------------------------------
 
-def smooth_line_track(track: LineTrack, window: int = 5) -> None:
+def smooth_line_track(track: LineTrack, window: int = 5, max_gap: int = 2) -> None:
     """原地滑动平均 center/angle/scale;窗口(帧)只数有 pose 的帧。
 
     中心窗口 ``[f - window//2, f + window//2]`` 内的缺失(lost)帧自然跳过;
     角度先按序列展开(unwrap)再平均,避免 ±180° 边界跳变。窗口 <2 时不变。
+    相邻 OK 帧号差 > ``max_gap`` 视为长遮挡段:平滑窗口不跨越(按连续 OK
+    run 分段平滑),两侧姿态各自平均;短间隙(默认 ≤2 帧)保持旧行为可跨越
+    (窗口半径内的缺失帧跳过后两侧仍落入同一窗口)。
     """
     if window is None or window < 2 or len(track.poses) < 2:
         return
     frames = sorted(track.poses)
     radius = max(1, int(window) // 2)
+    max_gap = max(0, int(max_gap))
     angles = np.unwrap(np.deg2rad(
         [track.poses[f].angle_deg for f in frames]))
     xs = np.array([track.poses[f].center[0] for f in frames])
     ys = np.array([track.poses[f].center[1] for f in frames])
     scales = np.array([track.poses[f].scale for f in frames])
 
+    # 连续 OK run(帧号差 > max_gap 处切段):每个窗口限制在自己的 run 内
+    n = len(frames)
+    run_lo = [0] * n
+    run_hi = [0] * n
+    rl = 0
+    for i in range(n):
+        if i and frames[i] - frames[i - 1] > max_gap:
+            rl = i
+        run_lo[i] = rl
+    rr = n - 1
+    for i in range(n - 1, -1, -1):
+        if i < n - 1 and frames[i + 1] - frames[i] > max_gap:
+            rr = i
+        run_hi[i] = rr
+
     new_poses: Dict[int, LinePose] = {}
     for i, f in enumerate(frames):
-        lo = bisect_left(frames, f - radius)
-        hi = bisect_right(frames, f + radius)
+        lo = bisect_left(frames, f - radius, run_lo[i], run_hi[i] + 1)
+        hi = bisect_right(frames, f + radius, run_lo[i], run_hi[i] + 1)
         new_poses[f] = LinePose(
             center=(float(xs[lo:hi].mean()), float(ys[lo:hi].mean())),
             angle_deg=float(math.degrees(angles[lo:hi].mean())),

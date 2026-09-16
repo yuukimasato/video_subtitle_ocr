@@ -311,6 +311,51 @@ class TestSmoothLineTrack:
 
 
 # ---------------------------------------------------------------------------
+# 平滑窗口限制:长 lost 间隔(遮挡段)不得跨越平滑
+# ---------------------------------------------------------------------------
+
+class TestSmoothMaxGap:
+    """连续 OK run 之间的长 lost 间隔两侧姿态不得被平滑窗口连接。"""
+
+    def test_long_lost_gap_not_bridged(self):
+        # 3 帧 lost(遮挡段):window=9(半径 4)时旧实现把间隔两侧姿态平均
+        # (帧 9 的窗口并入了帧 13,x 被拉向间隔后轨迹);按连续 OK run 限制
+        # 窗口后,两侧各自独立平滑(线性轨迹窗口内均值 = 窗口中点位姿)。
+        n = 20
+        lost = {10, 11, 12}
+        tracks = translation_tracks(n, dx=1.0, lost=lost)
+        (lt,) = build_line_tracks([BOX], ["x"], tracks, ref_frame=0)
+        smooth_line_track(lt, window=9)
+        assert sorted(lt.poses) == [f for f in range(n) if f not in lost]
+        # 帧 9:窗口限制在间隔前 run,取帧 {5..9} → x = 150 + 7
+        assert lt.poses[9].center[0] == pytest.approx(
+            BOX_CENTER[0] + 7.0, abs=1e-6), lt.poses[9]
+        # 帧 13:窗口限制在间隔后 run,取帧 {13..17} → x = 150 + 15
+        assert lt.poses[13].center[0] == pytest.approx(
+            BOX_CENTER[0] + 15.0, abs=1e-6), lt.poses[13]
+
+    def test_short_gap_still_bridged(self):
+        # 1 帧间隔(帧 10 lost)保持旧行为:帧 9 的窗口仍含间隔后帧
+        # {5,6,7,8,9,11,12,13} → 均值偏移 71/8
+        n = 14
+        tracks = translation_tracks(n, dx=1.0, lost={10})
+        (lt,) = build_line_tracks([BOX], ["x"], tracks, ref_frame=0)
+        smooth_line_track(lt, window=9)
+        mean_off = (5 + 6 + 7 + 8 + 9 + 11 + 12 + 13) / 8.0
+        assert lt.poses[9].center[0] == pytest.approx(
+            BOX_CENTER[0] + mean_off, abs=1e-6)
+
+    def test_max_gap_caller_override(self):
+        # max_gap=0:任何帧号间隔都切段,每个窗口退化为单帧(不平均)
+        n = 6
+        tracks = translation_tracks(n, dx=1.0, lost={3})
+        (lt,) = build_line_tracks([BOX], ["x"], tracks, ref_frame=0)
+        before = {f: lt.poses[f].center[0] for f in lt.poses}
+        smooth_line_track(lt, window=9, max_gap=0)
+        assert {f: lt.poses[f].center[0] for f in lt.poses} == before
+
+
+# ---------------------------------------------------------------------------
 # Task 5: simplify_and_segment(先写失败测试,实现见 Task 5 轮次)
 # ---------------------------------------------------------------------------
 

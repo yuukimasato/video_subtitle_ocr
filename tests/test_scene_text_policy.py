@@ -1019,3 +1019,137 @@ class TestRowBoxValidation:
         assert specs == [] and applied == "mask"  # 静态路径既有约定
         assert notes and "invalid" in notes[0]
         assert res.diagnostics["invalid_rows"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 事件归属:重复 body 不得按正文合并(line_idx 优先,正文仅兼容回退)
+# ---------------------------------------------------------------------------
+
+class TestDuplicateBodyEventIdentity:
+    """两行文案完全相同但时间跨度不同:external 块跨度按行归属,不按 body。"""
+
+    def test_external_block_spans_follow_line_idx(self):
+        # 旧实现按 body 匹配:两个块都把两条事件并入自己的跨度 → 全部并成
+        # [0,5] 一条 NoteBox;正确行为是每块只归属自己 line_idx 的事件。
+        rows = [("重复台词", (20.0, 20.0, 200.0, 36.0)),
+                ("重复台词", (20.0, 60.0, 200.0, 76.0))]
+        events = [dict(simple_event("重复台词", 0.0, 1.0), line_idx=0),
+                  dict(simple_event("重复台词", 4.0, 5.0), line_idx=1)]
+        out, applied, _notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert len(out) == 2, out
+        spans = sorted((ev["start_time"], ev["end_time"]) for ev in out)
+        assert spans == [("0:00:00.00", "0:00:01.00"),
+                         ("0:00:04.00", "0:00:05.00")]
+
+    def test_body_match_still_works_without_line_idx(self):
+        # 兼容回退:事件不带 line_idx 时保持按正文归属(既有行为)
+        rows = [("标题", (20.0, 20.0, 200.0, 36.0))]
+        events = [simple_event("标题", 0.0, 1.0)]
+        out, applied, _notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert len(out) == 1
+        assert out[0]["start_time"] == "0:00:00.00"
+        assert out[0]["end_time"] == "0:00:01.00"
+
+
+# ---------------------------------------------------------------------------
+# style 传递:自定义 style 必须出现在 mask/whitespace 事件
+# ---------------------------------------------------------------------------
+
+class TestCustomStyleThreading:
+    """调用者传入自定义 style 名时,mask/whitespace 事件携带该 style。"""
+
+    def test_dynamic_mask_events_use_custom_style(self):
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        out, applied, _notes = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H, style="MyScene")
+        assert applied == "mask"
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert masks
+        assert all(ev["style"] == "MyScene" for ev in masks)
+
+    def test_dynamic_whitespace_events_use_custom_style(self):
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        out, applied, _notes = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("whitespace"), PLANE_W, PLANE_H, style="MyScene")
+        assert applied == "whitespace"
+        assert out
+        assert all(ev["style"] == "MyScene" for ev in out)
+
+    def test_static_mask_and_text_specs_use_custom_style(self):
+        specs, applied, _notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("mask"), PLANE_W, PLANE_H,
+            style="MyScene")
+        assert applied == "mask"
+        assert specs
+        assert all(s["style"] == "MyScene" for s in specs
+                   if s["kind"] in ("mask", "text"))
+
+    def test_static_whitespace_spec_uses_custom_style(self):
+        specs, applied, _notes = apply_policy_static(
+            ROWS, make_white_plane(), policy_cfg("whitespace"), PLANE_W,
+            PLANE_H, style="MyScene")
+        assert applied == "whitespace"
+        assert specs
+        assert specs[0]["style"] == "MyScene"
+
+    def test_default_style_unchanged(self):
+        # 缺省 style 保持 "Scene"(动态 mask 硬编码消除后不得改变默认值)
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
+        out, applied, _notes = apply_policy(
+            events, ROWS, make_white_plane(), make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "mask"
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert masks
+        assert all(ev["style"] == "Scene" for ev in masks)
+
+
+# ---------------------------------------------------------------------------
+# 多行块遮罩:按行补偿后求 union
+# ---------------------------------------------------------------------------
+
+class TestMaskPerLineUnion:
+    """块内各行渲染宽度/标点补偿不同:按行外扩+补偿后求 union,逐行覆盖。"""
+
+    def test_per_line_union_covers_each_row(self):
+        # 两行并成一个块:x 框相同 (20..90)。
+        # 行 0「ああああああ」渲染宽 6×16=96(块内最宽,无标点补偿);
+        # 行 1「あああ。」渲染宽 64、行尾。补偿 dx=min(7, 0.25×16)=4@1080p。
+        # 旧实现取块级最大补偿把整块遮罩右移 4 → 行 0 渲染左缘 7 悬出
+        # 遮罩左缘 9.08;按行 union 后遮罩左缘 5.08 ≤ 7,行 0 被覆盖。
+        plane = np.full((PLANE_H, PLANE_W, 3), 250, np.uint8)
+        rows = [("ああああああ", (20.0, 20.0, 90.0, 36.0)),
+                ("あああ。", (20.0, 40.0, 90.0, 56.0))]
+        events = [simple_event(t, 0.0, 9 / FPS) for t, _b in rows]
+        # video_h=1080:标点补偿上限 = 7(0.25×16=4 更小,取 4)
+        out, applied, _notes = apply_policy(
+            events, rows, plane, make_translation_tracks(),
+            policy_cfg("mask"), PLANE_W, 1080)
+        assert applied == "mask"
+        masks = [ev for ev in out if "\\p1" in ev["tags"]]
+        assert len(masks) == 1  # 两行并一块,单条遮罩
+        mask = masks[0]
+        x1, y1, x2, y2 = move_points(mask["tags"])
+        m = re.search(r"m 0 0 l (\d+) 0 (\d+) (\d+) 0 (\d+)", mask["tags"])
+        assert m
+        w, h = int(m.group(1)), int(m.group(3))
+        # window=5 平滑把帧 0 位姿移到帧 1 位置(线性轨迹 +2px):比较时减掉
+        left = x1 - 2.0
+        right = x1 + w - 2.0
+        # 行 0 渲染跨度 = 55±48 → [7, 103];必须被遮罩覆盖
+        assert left <= 7.0 + 0.05, mask["tags"]
+        assert right >= 103.0 - 0.5, mask["tags"]
+        # 行 1 文本事件右移 dx=4 → 渲染跨度 [27, 91]
+        assert left <= 27.0 + 0.05, mask["tags"]
+        assert right >= 91.0 - 0.5, mask["tags"]
+        # 垂直方向覆盖两行(含 pad)
+        assert y1 <= 20.0 - 1.92 + 0.5
+        assert y1 + h >= 56.0 + 1.92 - 0.5
