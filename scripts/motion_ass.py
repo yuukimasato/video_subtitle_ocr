@@ -431,6 +431,7 @@ def build_motion_events(
     vlm_min_confidence: float = 0.0,
     auto_brightness: bool = False,
     brightness_per_line: Optional[bool] = None,
+    occlusion_clip: Optional[bool] = None,
     scene_text_policy: str = "overlap",
     ocr_fn: Optional[OcrFn] = None,
     log: Optional[Callable[[str], None]] = None,
@@ -463,6 +464,8 @@ def build_motion_events(
     cfg, policy_cfg = build_config(config_data)
     if brightness_per_line is not None:  # CLI 显式开关覆盖 config
         cfg.brightness_per_line = bool(brightness_per_line)
+    if occlusion_clip is not None:
+        cfg.occlusion_clip = bool(occlusion_clip)
     from core.keyframe_selector import _plane_size_from_quad, select_keyframes
     from core.motion_ass import (
         build_line_tracks,
@@ -565,6 +568,36 @@ def build_motion_events(
     width, height = _video_size(video_path)
     events = synthesize_events(line_tracks, tracks, cfg, style="Scene",
                                video_height=height)
+
+    # 5.4 \iclip 手部遮挡蒙版(可选;策略回放前追加,whitespace/external
+    #     重建事件时自然丢弃,mask 的文本事件标签原样保留):展开图 vs 锚定
+    #     帧灰度差 → 遮挡多边形 → 事件跨度内与行框相交者以 \iclip(± \t
+    #     动画)裁掉,字幕不再渲染到手上。
+    if cfg.occlusion_clip:
+        import cv2 as _cv2
+
+        from core.occlusion_mask import (
+            OcclusionConfig,
+            attach_occlusion_clips,
+            collect_occlusions,
+        )
+
+        anchor_frame = int(keyframes[0])
+        anchor_window = _unwarp_quad_window(
+            frames[anchor_frame], by_frame[anchor_frame].homography_inv,
+            plane_size, origin)
+        occl_cfg = OcclusionConfig(
+            diff_tol=cfg.occlusion_diff_tol,
+            min_area_px=cfg.occlusion_min_area_px,
+            min_line_overlap=cfg.occlusion_min_line_overlap,
+            sample_max_frames=cfg.occlusion_sample_max_frames)
+        anchor_gray = _cv2.cvtColor(anchor_window, _cv2.COLOR_BGR2GRAY)
+        occlusions = collect_occlusions(
+            video_path, tracks, anchor_gray=anchor_gray,
+            plane_size=plane_size, origin=origin, cfg=occl_cfg, log=log)
+        events = attach_occlusion_clips(
+            events, tracks=tracks, line_tracks=line_tracks,
+            occlusions=occlusions, cfg=occl_cfg)
 
     # 5.5 场景文字显示策略(默认 overlap:原样返回,输出与既有版本逐事件一致)。
     #     需要锚定关键帧(最清晰帧)的统一坐标展开图与平面坐标行框——均为
@@ -685,6 +718,7 @@ def run_pipeline(
     vlm_min_confidence: float = 0.0,
     auto_brightness: bool = False,
     brightness_per_line: Optional[bool] = None,
+    occlusion_clip: Optional[bool] = None,
     scene_text_policy: str = "overlap",
     ocr_fn: Optional[OcrFn] = None,
     quiet: bool = False,
@@ -707,6 +741,7 @@ def run_pipeline(
         vlm_min_confidence=vlm_min_confidence,
         auto_brightness=auto_brightness,
         brightness_per_line=brightness_per_line,
+        occlusion_clip=occlusion_clip,
         scene_text_policy=scene_text_policy,
         ocr_fn=ocr_fn, log=log)
     title = os.path.splitext(os.path.basename(str(video_path)))[0]
@@ -788,6 +823,11 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
                              "brightness separately so subtitles follow partial "
                              "dimming (a darkened top bar leaves bright lines "
                              "bright; default: off)")
+    parser.add_argument("--occlusion-clip", action="store_true",
+                        help="detect partial hand occlusion (unwarped frame vs "
+                             "anchor-keyframe difference) and clip affected events "
+                             "with \\iclip(\\t-animated) so subtitles never render "
+                             "over the occluder (default: off)")
     parser.add_argument("--scene-text-policy", choices=["overlap", "mask", "external", "whitespace"],
                         default="overlap",
                         help="how to display recognized text over the scene text: "
@@ -822,6 +862,7 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
             vlm_min_confidence=args.vlm_min_confidence,
             auto_brightness=args.auto_brightness,
             brightness_per_line=args.brightness_per_line or None,
+            occlusion_clip=args.occlusion_clip or None,
             scene_text_policy=args.scene_text_policy,
             ocr_fn=ocr_fn,
         )

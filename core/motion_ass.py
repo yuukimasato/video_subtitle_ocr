@@ -84,6 +84,13 @@ class MotionAssConfig:
     punct_comp_enabled: bool = True
     punct_comp_max_px: float = 7.0                # 补偿上限(1080p 基准,随 PlayRes 高度缩放)
 
+    # —— \iclip 手部遮挡蒙版(FR-9;core.occlusion_mask 参数,--occlusion-clip 开启)——
+    occlusion_clip: bool = False                  # 部分遮挡跨度内的事件追加 \iclip
+    occlusion_diff_tol: float = 26.0              # 展开图灰度差阈值(变化像素判定)
+    occlusion_min_area_px: float = 400.0          # 变化区最小面积(平面 px)
+    occlusion_min_line_overlap: float = 0.06      # 与行框相交面积占比下限
+    occlusion_sample_max_frames: int = 7          # 每条事件最多取的遮挡采样帧数
+
 
 @dataclass
 class LinePose:

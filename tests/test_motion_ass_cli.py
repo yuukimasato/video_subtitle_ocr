@@ -556,6 +556,42 @@ def test_auto_brightness_per_line_uses_line_curves(tmp_path, monkeypatch):
     assert len(tagged) == 1
 
 
+def test_occlusion_clip_end_to_end(tmp_path, monkeypatch):
+    r"""--occlusion-clip:遮挡多边形(平面坐标)映射进事件 \iclip 标签。"""
+    video_path, quad0 = build_case(tmp_path)
+    quad_file = tmp_path / "quad.json"
+    quad_file.write_text(json.dumps(
+        {"video": os.path.basename(video_path), "frame": 0, "quad": quad0}),
+        encoding="utf-8")
+    out_plain = tmp_path / "noclip.ass"
+    out_clip = tmp_path / "clip.ass"
+    # 手工遮挡表:多边形(平面坐标)盖住两行行框(≈108..216/102..116 与
+    # 130..186/142..156);遮挡帧取事件跨度(末时间按 centisecond 截断回
+    # 解析,故取 22 而非 23)内的采样帧 0 与 22 → 动画路径;真检测归
+    # test_occlusion_mask。
+    poly = [[130.0, 100.0], [200.0, 100.0], [200.0, 160.0], [130.0, 160.0]]
+    import copy
+
+    occl = {f: [copy.deepcopy(poly)] for f in (0, 22)}
+    monkeypatch.setattr(
+        "core.occlusion_mask.collect_occlusions", lambda *a, **k: dict(occl))
+    common = ["--video", video_path, "--quad-file", str(quad_file)]
+    assert motion_cli.main(common + ["--out", str(out_plain)],
+                           ocr_fn=make_mock_ocr([])) == 0
+    assert motion_cli.main(common + ["--out", str(out_clip),
+                                     "--occlusion-clip"],
+                           ocr_fn=make_mock_ocr([])) == 0
+    plain = _text_fields(out_plain.read_text(encoding="utf-8-sig"))
+    clipped = _text_fields(out_clip.read_text(encoding="utf-8-sig"))
+    assert len(plain) == len(clipped) == 2
+    assert all("\\iclip(" not in t for t in plain)
+    assert all("\\iclip(" in t for t in clipped)
+    # 首末采样帧(0、12)都有遮挡且多边形个数相同 → 动画形式
+    # \iclip + \t(0,段长ms,\iclip(...))
+    assert all(t.count("\\iclip(") == 2 for t in clipped)
+    assert all("\\t(0,2870,\\iclip(" in t for t in clipped)
+
+
 # ---------------------------------------------------------------------------
 # 场景文字显示策略(--scene-text-policy,设计 §3/§4/§5)
 # ---------------------------------------------------------------------------
