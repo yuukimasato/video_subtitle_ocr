@@ -430,6 +430,7 @@ def build_motion_events(
     min_gap_sec: float = 0.33,
     vlm_min_confidence: float = 0.0,
     auto_brightness: bool = False,
+    brightness_per_line: Optional[bool] = None,
     scene_text_policy: str = "overlap",
     ocr_fn: Optional[OcrFn] = None,
     log: Optional[Callable[[str], None]] = None,
@@ -460,6 +461,8 @@ def build_motion_events(
     quad = normalize_quad_winding(quad)
     quad = validate_quad(quad)
     cfg, policy_cfg = build_config(config_data)
+    if brightness_per_line is not None:  # CLI 显式开关覆盖 config
+        cfg.brightness_per_line = bool(brightness_per_line)
     from core.keyframe_selector import _plane_size_from_quad, select_keyframes
     from core.motion_ass import (
         build_line_tracks,
@@ -587,9 +590,15 @@ def build_motion_events(
     #     独立的亮度 override 块({原有tags}{亮度标签}body),不改既有标签。
     #     遮罩事件(带 base_color)按采样色做通道缩放、不用 \alpha,与字幕
     #     一起忠实调暗。
+    #     brightness_per_line(屏幕局部调暗的背景适配):逐行独立测亮度曲线,
+    #     事件经 line_idx 取所属行的曲线;整平面曲线仍作为缺省(行曲线缺失、
+    #     遮罩事件)与 whitespace/external(文本被重新布局,行归属失效)回退。
     if auto_brightness:
         from core.motion_ass import brightness_tag_chain, simplify_luma_curve
-        from core.screen_luma import measure_luma_curve_with_baseline
+        from core.screen_luma import (
+            measure_line_luma_curves,
+            measure_luma_curve_with_baseline,
+        )
 
         curve, baseline_luma = measure_luma_curve_with_baseline(
             video_path, tracks,
@@ -601,11 +610,35 @@ def build_motion_events(
         else:
             simplified = simplify_luma_curve(
                 curve, tol_luma=cfg.brightness_tol, baseline_luma=baseline_luma)
+            per_line = None
+            if cfg.brightness_per_line:
+                if applied_policy in ("whitespace", "external"):
+                    log("      brightness: per-line skipped (policy "
+                        f"{applied_policy} repositions text; using plane curve)")
+                else:
+                    raw_curves, line_baselines = measure_line_luma_curves(
+                        video_path, tracks, line_boxes,
+                        ref_frame=int(start_frame),
+                        baseline_percentile=cfg.brightness_baseline_percentile)
+                    per_line = [
+                        simplify_luma_curve(
+                            c, tol_luma=cfg.brightness_tol, baseline_luma=bl)
+                        if c and bl > 0 else []
+                        for c, bl in zip(raw_curves, line_baselines)
+                    ]
+                    log("      brightness: per-line curves for "
+                        f"{sum(1 for c in per_line if c)}/{len(per_line)} line(s)")
             n_tagged = 0
             for ev in events:
                 base_color = ev.pop("base_color", None)
+                ev_curve = simplified
+                if per_line:
+                    li = ev.get("line_idx")
+                    if (isinstance(li, int) and 0 <= li < len(per_line)
+                            and per_line[li]):
+                        ev_curve = per_line[li]
                 chain = brightness_tag_chain(
-                    simplified,
+                    ev_curve,
                     _parse_ass_time(ev["start_time"]),
                     _parse_ass_time(ev["end_time"]),
                     use_color=cfg.brightness_use_color,
@@ -651,6 +684,7 @@ def run_pipeline(
     min_gap_sec: float = 0.33,
     vlm_min_confidence: float = 0.0,
     auto_brightness: bool = False,
+    brightness_per_line: Optional[bool] = None,
     scene_text_policy: str = "overlap",
     ocr_fn: Optional[OcrFn] = None,
     quiet: bool = False,
@@ -672,6 +706,7 @@ def run_pipeline(
         keyframe_count=keyframe_count, min_gap_sec=min_gap_sec,
         vlm_min_confidence=vlm_min_confidence,
         auto_brightness=auto_brightness,
+        brightness_per_line=brightness_per_line,
         scene_text_policy=scene_text_policy,
         ocr_fn=ocr_fn, log=log)
     title = os.path.splitext(os.path.basename(str(video_path)))[0]
@@ -748,6 +783,11 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
                         help="measure text-plane brightness per ok frame and append "
                              "\\1c/\\alpha \\t chains so subtitles faithfully follow "
                              "screen dimming/brightening (default: off)")
+    parser.add_argument("--brightness-per-line", action="store_true",
+                        help="with --auto-brightness: measure each text line's "
+                             "brightness separately so subtitles follow partial "
+                             "dimming (a darkened top bar leaves bright lines "
+                             "bright; default: off)")
     parser.add_argument("--scene-text-policy", choices=["overlap", "mask", "external", "whitespace"],
                         default="overlap",
                         help="how to display recognized text over the scene text: "
@@ -781,6 +821,7 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
             min_gap_sec=args.min_gap_sec,
             vlm_min_confidence=args.vlm_min_confidence,
             auto_brightness=args.auto_brightness,
+            brightness_per_line=args.brightness_per_line or None,
             scene_text_policy=args.scene_text_policy,
             ocr_fn=ocr_fn,
         )

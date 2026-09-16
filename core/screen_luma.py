@@ -33,6 +33,7 @@ from core.scene_plane_tracker import TrackedQuad
 __all__ = [
     "measure_luma_curve",
     "measure_luma_curve_with_baseline",
+    "measure_line_luma_curves",
 ]
 
 # luma=0、baseline>0 时的比值下界:落在 (0, 1] 内的最小可表示灰度级。
@@ -128,3 +129,123 @@ def measure_luma_curve(
     curve, _baseline = measure_luma_curve_with_baseline(
         video_path, tracks, baseline_percentile=baseline_percentile)
     return curve
+
+
+# ---------------------------------------------------------------------------
+# 逐行亮度(屏幕局部调暗的背景适配)
+# ---------------------------------------------------------------------------
+
+def _nearest_ok(
+    by_frame: Dict[int, TrackedQuad], ref_frame: int,
+) -> Optional[TrackedQuad]:
+    """最近 ok 轨迹((距离, 帧号) 最小,并列取更早帧);无 ok 帧返回 None。"""
+    best: Optional[Tuple[Tuple[int, int], TrackedQuad]] = None
+    for f, tq in by_frame.items():
+        key = (abs(f - ref_frame), f)
+        if best is None or key < best[0]:
+            best = (key, tq)
+    return best[1] if best else None
+
+
+def measure_line_luma_curves(
+    video_path: str,
+    tracks: List[TrackedQuad],
+    line_boxes: Sequence[Sequence[float]],
+    ref_frame: int,
+    *,
+    baseline_percentile: float = 90.0,
+) -> Tuple[List[List[Tuple[float, float]]], List[float]]:
+    """逐行亮度曲线:每行行框在逐 ok 帧的局部亮度 ``[(time_sec, ratio)]``。
+
+    「屏幕局部调暗的背景适配」:整平面单条曲线会抹平局部明暗(如只有屏幕
+    顶栏调暗、正文依旧全亮),本函数对每个行框独立测量——行框四角(参考帧
+    平面坐标)经 ``H(ref→t) = H(init→t)·inv(H(init→ref))`` 逐帧映射为画面
+    四边形,投影多边形(裁到画面内)内像素的灰度中位值为该行该帧亮度。
+    参考帧 lost 时与 :func:`core.motion_ass.build_line_tracks` 同法重锚定到
+    最近 ok 帧;baseline 取该行各帧中位值的 ``baseline_percentile`` 分位,
+    ratio 截到 (0, 1],退化语义与 :func:`measure_luma_curve_with_baseline`
+    一致(按行独立)。
+
+    返回 ``(curves, baselines)``,与 ``line_boxes`` 等长;某行全程无有效样本
+    (行框一直在画面外/无 ok 帧)时其曲线为 ``[]``、基线为 ``0.0``。
+    """
+    ok_tracks = [t for t in tracks if t.status == "ok" and t.homography is not None]
+    if not ok_tracks or not line_boxes:
+        return [[] for _ in line_boxes], [0.0] * len(line_boxes)
+    by_frame = {t.frame_num: t for t in ok_tracks}
+    ref = by_frame.get(int(ref_frame))
+    if ref is None:
+        ref_tq = _nearest_ok(by_frame, int(ref_frame))
+        if ref_tq is None:
+            return [[] for _ in line_boxes], [0.0] * len(line_boxes)
+        ref = ref_tq
+    h_ref = np.asarray(ref.homography, dtype=np.float64)
+
+    corners_all = []
+    for box in line_boxes:
+        x1, y1, x2, y2 = (float(v) for v in box[:4])
+        corners_all.append(np.array(
+            [[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float64))
+
+    samples: List[List[Tuple[float, float]]] = [[] for _ in line_boxes]
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    try:
+        frame_idx = 0
+        while True:
+            ok_flag, frame = cap.read()
+            if not ok_flag or frame is None:
+                break
+            tq = by_frame.get(frame_idx)
+            if tq is not None and tq.homography is not None:
+                h_t = np.asarray(tq.homography, dtype=np.float64)
+                h_map = h_t @ np.linalg.inv(h_ref)
+                fh, fw = frame.shape[:2]
+                gray_full = None
+                for li, corners in enumerate(corners_all):
+                    proj = cv2.perspectiveTransform(
+                        corners.reshape(-1, 1, 2).astype(np.float32),
+                        h_map.astype(np.float32),
+                    ).reshape(-1, 2).astype(np.float64)
+                    x0 = max(0, int(math.floor(float(proj[:, 0].min()))))
+                    y0 = max(0, int(math.floor(float(proj[:, 1].min()))))
+                    x1 = min(fw, int(math.ceil(float(proj[:, 0].max()))))
+                    y1 = min(fh, int(math.ceil(float(proj[:, 1].max()))))
+                    if x1 - x0 < 1 or y1 - y0 < 1:
+                        continue  # 行框投影整体在画面外:该帧无样本
+                    if gray_full is None:
+                        gray_full = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    mask = np.zeros((y1 - y0, x1 - x0), np.uint8)
+                    cv2.fillPoly(mask, [(proj - [x0, y0]).astype(np.int32)], 255)
+                    pixels = gray_full[y0:y1, x0:x1][mask > 0]
+                    if pixels.size:
+                        samples[li].append(
+                            (tq.time_sec, float(np.median(pixels))))
+            frame_idx += 1
+    finally:
+        cap.release()
+
+    curves: List[List[Tuple[float, float]]] = []
+    baselines: List[float] = []
+    for line_samples in samples:
+        if not line_samples:
+            curves.append([])
+            baselines.append(0.0)
+            continue
+        lumas = np.array([luma for _t, luma in line_samples], dtype=np.float64)
+        baseline = float(np.percentile(lumas, float(baseline_percentile)))
+        baselines.append(baseline)
+        if baseline <= 0.0:
+            curves.append([(t, 1.0) for t, _l in line_samples])
+            continue
+        curve: List[Tuple[float, float]] = []
+        for t, luma in line_samples:
+            ratio = luma / baseline
+            if ratio > 1.0:
+                ratio = 1.0
+            elif ratio <= 0.0:
+                ratio = MIN_RATIO
+            curve.append((t, ratio))
+        curves.append(curve)
+    return curves, baselines

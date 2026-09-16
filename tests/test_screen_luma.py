@@ -29,12 +29,17 @@ if PROJECT_ROOT not in sys.path:
 from core.screen_luma import (  # noqa: E402
     measure_luma_curve,
     measure_luma_curve_with_baseline,
+    measure_line_luma_curves,
 )
 from core.scene_plane_tracker import TrackedQuad  # noqa: E402
 
 FRAME_W, FRAME_H = 320, 240
 QUAD = [[40.0, 70.0], [200.0, 70.0], [200.0, 170.0], [40.0, 170.0]]
 FPS = 8  # 整数帧率:time_sec = frame_num / 8 均为精确二进制小数
+
+# 两行行框(静止平面坐标 = 画面坐标):顶行在 quad 上半、底行在下半,
+# 供逐行亮度用例构造「只有上半调暗」的局部明暗。
+LINE_BOXES = [(60.0, 80.0, 180.0, 100.0), (60.0, 140.0, 180.0, 160.0)]
 
 # 仿真实数据(基线 247 = 90 分位):8 帧恒亮 → 174 → 3 帧暗 30 → 过渡 100
 # → 174 → 回亮 247;16 帧的 90 分位恰为 247。
@@ -216,3 +221,80 @@ def test_frame_nums_not_starting_at_zero(tmp_path):
         (7 / FPS, 1.0),
         (8 / FPS, 1.0),
     ]
+
+
+# ---------------------------------------------------------------------------
+# 逐行亮度(屏幕局部调暗的背景适配)
+# ---------------------------------------------------------------------------
+
+def test_per_line_partial_dim_follows_local_luma(tmp_path):
+    # 局部调暗:quad 上半(顶行区域)变暗 30,下半(底行区域)保持 247。
+    # 逐行曲线各自跟随;整平面中位曲线被调暗多数区主导,无法表达下半仍亮。
+    frames = [solid_frame(247) for _ in range(8)]
+    for _ in range(8):
+        f = solid_frame(247)
+        f[70:130, 40:200] = 30  # quad 上半区调暗
+        frames.append(f)
+    video = write_video(tmp_path / "partial.avi", frames)
+    tracks = [make_track(i) for i in range(16)]
+
+    curves, baselines = measure_line_luma_curves(
+        video, tracks, LINE_BOXES, ref_frame=0)
+
+    assert len(curves) == len(baselines) == 2
+    top, bottom = curves
+    assert baselines[0] == pytest.approx(247.0)
+    assert baselines[1] == pytest.approx(247.0)
+    assert [t for t, _ in top] == [i / FPS for i in range(16)]
+    assert all(r == pytest.approx(1.0) for _t, r in top[:8])
+    assert all(r == pytest.approx(30.0 / 247.0) for _t, r in top[8:])
+    assert all(r == pytest.approx(1.0) for _t, r in bottom)
+    # 对照:整平面中位被调暗区(>半)拖暗,底行比值随之失真
+    quad_curve = measure_luma_curve(video, tracks)
+    assert quad_curve[10][1] < 0.5
+
+
+def test_per_line_lost_ref_reanchored_to_nearest_ok(tmp_path):
+    # ref_frame=0 lost → 重锚定最近 ok 帧(帧 1);静止平面下曲线不受影响。
+    video = write_levels(tmp_path / "ref.avi", [247] * 4 + [30] * 4)
+    tracks = [make_track(i, ok=(i != 0)) for i in range(8)]
+
+    curves, baselines = measure_line_luma_curves(
+        video, tracks, LINE_BOXES, ref_frame=0)
+
+    top = curves[0]
+    assert baselines[0] == pytest.approx(247.0)
+    assert [t for t, _ in top] == [i / FPS for i in range(1, 8)]
+    assert top[0][1] == pytest.approx(1.0)
+    assert top[-1][1] == pytest.approx(30.0 / 247.0)
+
+
+def test_per_line_no_ok_frames_returns_empty_curves(tmp_path):
+    video = write_levels(tmp_path / "none.avi", [247] * 2)
+    tracks = [make_track(i, ok=False) for i in range(2)]
+
+    curves, baselines = measure_line_luma_curves(
+        video, tracks, LINE_BOXES, ref_frame=0)
+
+    assert curves == [[], []]
+    assert baselines == [0.0, 0.0]
+
+
+def test_per_line_box_outside_frame_has_no_samples(tmp_path):
+    # 行框投影整体在画面外 → 该行无样本(曲线空、基线 0),另一行正常。
+    video = write_levels(tmp_path / "oob.avi", [247] * 3 + [30] * 3)
+    boxes = [(60.0, 80.0, 180.0, 100.0), (FRAME_W + 10.0, 80.0,
+                                          FRAME_W + 110.0, 100.0)]
+    tracks = [make_track(i) for i in range(6)]
+
+    curves, baselines = measure_line_luma_curves(video, tracks, boxes, ref_frame=0)
+
+    assert len(curves[0]) == 6
+    assert curves[1] == [] and baselines[1] == 0.0
+
+
+def test_per_line_unopenable_video_raises_runtimeerror():
+    with pytest.raises(RuntimeError):
+        measure_line_luma_curves(
+            "/nonexistent/no_such_video.avi", [make_track(0)],
+            LINE_BOXES, ref_frame=0)

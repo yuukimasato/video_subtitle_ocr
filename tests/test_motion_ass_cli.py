@@ -523,6 +523,39 @@ def test_auto_brightness_use_color_off_via_config(tmp_path, monkeypatch):
         assert "\\alpha&H" in field
 
 
+def test_auto_brightness_per_line_uses_line_curves(tmp_path, monkeypatch):
+    """brightness_per_line(屏幕局部调暗的背景适配):事件经 line_idx 取
+    所属行的亮度曲线;行曲线缺失/恒亮时回退整平面曲线。"""
+    video_path, quad0 = build_case(tmp_path)
+    quad_file = tmp_path / "quad.json"
+    quad_file.write_text(json.dumps(
+        {"video": os.path.basename(video_path), "frame": 0, "quad": quad0}),
+        encoding="utf-8")
+    out = tmp_path / "perline.ass"
+    # 整平面曲线恒亮(若被误用,两行都不带标签);行曲线:行 0 恒亮、
+    # 行 1 恒暗 0.5 → 只有行 1 的事件带 \1c&H808080&\alpha&H80& 基值。
+    monkeypatch.setattr(
+        "core.screen_luma.measure_luma_curve_with_baseline",
+        lambda *a, **k: ([(0.0, 1.0), (3.0, 1.0)], 247.0))
+    monkeypatch.setattr(
+        "core.screen_luma.measure_line_luma_curves",
+        lambda *a, **k: ([[(0.0, 1.0), (3.0, 1.0)], [(0.0, 0.5)]],
+                         [247.0, 247.0]))
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"brightness_per_line": True}), encoding="utf-8")
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--quad-file", str(quad_file),
+         "--out", str(out), "--auto-brightness", "--config-json", str(cfg)],
+        ocr_fn=make_mock_ocr([]))
+
+    assert rc == 0
+    texts = _text_fields(out.read_text(encoding="utf-8-sig"))
+    assert len(texts) == 2
+    tagged = [t for t in texts if "\\1c&H808080&\\alpha&H80&" in t]
+    assert len(tagged) == 1
+
+
 # ---------------------------------------------------------------------------
 # 场景文字显示策略(--scene-text-policy,设计 §3/§4/§5)
 # ---------------------------------------------------------------------------
