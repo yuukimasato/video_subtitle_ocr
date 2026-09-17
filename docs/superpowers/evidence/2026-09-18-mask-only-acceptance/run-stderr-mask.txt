@@ -1,0 +1,18 @@
+[1/5] tracking plane on frames [0, 245] ...
+      174/246 frames ok
+[2/5] keyframes (sharpest first): [11, 3, 81]
+[32m[INFO] 2026-09-18 05:43:37,894 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-18 05:43:37,923 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx[0m
+[32m[INFO] 2026-09-18 05:43:37,923 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx[0m
+[32m[INFO] 2026-09-18 05:43:37,953 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-18 05:43:37,954 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx[0m
+[32m[INFO] 2026-09-18 05:43:37,954 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx[0m
+[32m[INFO] 2026-09-18 05:43:37,986 [RapidOCR] base.py:23: Using engine_name: onnxruntime[0m
+[32m[INFO] 2026-09-18 05:43:37,995 [RapidOCR] download_file.py:60: File exists and is valid: /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx[0m
+[32m[INFO] 2026-09-18 05:43:37,995 [RapidOCR] main.py:63: Using /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx[0m
+      1 hard line(s) (stage-1: no VLM refine): [12]
+      junk filter: dropped 1 noise line(s): ['血']
+[3/5] fused OCR lines: ['受信メールー覧', '安芸倫也', 'Title:金曜日サークルあります', '久しぶり。', '早速だけどサークルの次回ミーティングについて。', '新学期からの体制とか、次の企画とか、いろいろ決', 'めたいと思ってる。', '最初は、ます加藤とざっくりした方向性を決めたい', 'から、', 'とりあえず俺たちだけで金曜日の放課後どうかな。', '場所は視聴覚室で。', '都合の悪い場合は連絡くれ。']
+      scene-text-policy: mask -> mask
+[4/5] synthesized 36 event(s) for 12 line(s)
+[5/5] wrote 36 dialogue line(s) -> /tmp/accept-mask2.ass

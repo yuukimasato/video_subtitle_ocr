@@ -332,3 +332,11 @@ diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
 ```
 
 静态主流水线等价命令：`cli.py "$V" --roi "604,282,713,796@0-10.26" --scene-text-policy mask -o out.ass`（全时段 mask 在移动场景会按移动门限降级 external，属静态路径边界行为；移动文字请用轨迹管线）。透视/杂色降级与单/多 ROI 读取对比的复现脚本口径记录在验收 md §3.5/§4。
+
+### mask / mask_only（仅遮罩）验收可复现命令（2026-09-18）
+
+> `mask`（遮罩 + layer-1 重渲染）与 `mask_only`（仅遮罩，原文写 `Comment:`
+> 行供排版覆写）在 DMG 手机场景的端到端产物、libass 烧录抽帧与链尾
+> +1 帧对齐修复的实证见
+> `docs/superpowers/evidence/2026-09-18-mask-only-acceptance/acceptance.md`
+> （含完整复现命令；基线 764 passed, 1 skipped + ruff F 全绿）。

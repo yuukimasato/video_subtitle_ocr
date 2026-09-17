@@ -8,6 +8,27 @@
 
 ### 新增
 
+- **「仅遮罩」场景文字策略（`mask_only`，typesetting 遮罩蒙版）**：面向
+  字幕组排版工作流——片源画面带烧录文字（场记板/招牌/手机屏幕等）时，
+  工具生成 `\p1` 纯色遮罩盖住原文字，**layer 1 留空**供在遮罩上自行
+  排版覆写（重铺译文或 `\p` 矢量字）。与既有 `mask` 模式的区别：`mask`
+  会把识别文本以 Dialogue 重渲染在 layer 1（同语言清晰重渲染），
+  `mask_only` 把识别文本改写为 ASS **`Comment:` 行**——播放器不渲染、
+  Aegisub 等编辑器网格仍可见原文与时间，作排版/翻译参考。遮罩生成完全
+  复用 mask（背景取色/渲染宽度外扩/透视安全边界/轨迹 `\move`+`\t` 跟随/
+  亮度 `base_color` 联动），可用性不足时按 `mask_only → external` 自动
+  回退并留痕；静态路径的「文本移动 > 容差 → 降级 external」守卫同扩。
+  接入：GUI 每 ROI「场景文字显示」下拉框新增「仅遮罩（供排版覆写）」
+  （随 ROI json 持久化）、项目 CLI `--scene-text-policy mask_only`、
+  轨迹 CLI `scripts/motion_ass.py` 同名参数；三语 i18n 补齐。
+  单元测试 **764 passed, 1 skipped**（含新增
+  `tests/test_scene_text_policy_mask_only.py` 11 项：动态/静态 spec、
+  回退链、Comment 行写入、主流水线端到端）。
+  DMG 手机场景实测（验收记录见
+  `docs/superpowers/evidence/2026-09-18-mask-only-acceptance/`）：动态管线
+  12 行 → 12 条遮罩 Dialogue（6 块 × 2 链，layer 0，采样色 `\p1` 随
+  `\move` 跟踪）+ 12 条 Comment 参考行，零渲染正文残留；libass 烧录
+  目检原字被无缝覆盖、链尾帧无透字。
 - **移动文字轨迹管线接入项目 CLI 与主流水线 GUI（阶段二：pose 绑定）**：
   2.6.3 的轨迹字幕此前只能手动跑 `scripts/motion_ass.py`，现与 GUI
   「写入画面位置标签」复选框绑定——**四点多边形 ROI + 勾选 pose** 即走
@@ -92,8 +113,100 @@
   数不变）；DMG 真机四策略验收与单/多 ROI 读取对比见
   `docs/superpowers/evidence/2026-09-17-scene-text-policy-hardening/`。
 
+- **deb 安装下载加速（镜像自动测速 + 代理/离线配置）**：postinst 此前固定
+  从官方 PyPI 下载数百 MB wheel，弱网环境实测仅 ~38KB/s。现安装时并发
+  探测官方 PyPI 与清华 TUNA/阿里云/腾讯云/华为云镜像（每家实测下载
+  512KB 的含 TTFB 耗时，探测单请求超时 4–6s、整体预算 ≤12s，有界不卡
+  安装），最快者先行，失败的安装尝试自动轮换下一候选（重试仍为有界
+  退避：5 次、5/10/20/40/60s、总等待上限 135s 不变）。新增可选配置
+  `/etc/video-subtitle-ocr/install.conf`：`PIP_INDEX_URL` 钉定镜像（免
+  探测）、`http(s)_proxy` 等 VPN/HTTP 代理透传（检测到代理即经代理走
+  官方 PyPI）、`PIP_FIND_LINKS` 本地 wheel 离线安装、
+  `PIP_EXTRA_INDEX_URL`/`PIP_EXTRA_ARGS`/`PIP_TIMEOUT` 细调；环境变量
+  （`sudo -E`）同样生效。失败指引与 README/packaging.md 补充配置示例；
+  内网 http 源自动补 `--trusted-host`；pip 自升级改走所选镜像并加
+  `timeout 90s` 上限。实测：探测本机选出 TUNA（512KB 0.61s vs PyPI
+  1.74s）。
+
 ### 修复
 
+- **矩形遮罩链尾 +1 帧延伸（mask/mask_only 遮罩与文本时间对齐）**：
+  `core/scene_text_policy.py` 的 `_mask_events_for_block` 此前链尾结束时间
+  取尾帧自身 `time_sec`，而文本事件已经过 motion_ass 的「链尾 +1 帧距」
+  修复——链尾最后一帧文本仍在而遮罩已消失，原字透出约 1 帧时长。现套用
+  同款修复（末段 `t1 = _next_frame_time(...)`，与多边形
+  `mask_polygon_clip`/external NoteBox/whitespace 路径既有语义一致），
+  遮罩与文本事件结束时间逐条相同；回归基线字面量同步（遮罩 0.36→0.40，
+  文本/external 不变）。DMG 实测：链 1/链 2 遮罩与文本均止于
+  `0:00:03.54`/`0:00:10.26`，链 1 尾帧（f84，t=3.504）遮罩仍覆盖。
+  另修两处 `ruff --select F`：`core/screen_luma.py` 补 `Dict` 导入
+  （F821）、`tests/test_review_fixes_2.py` 删未用导入（F401）。
+  验收记录：`docs/superpowers/evidence/2026-09-18-mask-only-acceptance/`。
+- **轨迹字幕三项收尾修复**（DMG 手机场景实测 + 单测 765 项零回归）：
+  1. **融合行噪声过滤**：轨迹管线此前把手机状态栏/导航栏图标的误读
+     （`<`、`>`、`000`、单字象形误读「血」「言」）原样合成为 Scene 事件
+     （DMG 实测底缘 y≈1050 处产出垃圾行）。现将静态路径的噪声判据抽为
+     `core.text_utils.is_noise_text`（`_is_noise_body` 完全委托，行为不变），
+     `build_motion_events` 行融合后按其剔除（`MotionAssConfig.junk_line_filter`，
+     默认开、`--config-json` 可关，剔除经 log 留痕）。DMG 实测：4 行噪声
+     全部剔除，事件 32→24 且全部为真实文本。
+  2. **遮挡检测边缘假阳性**：展开窗口四边由单应边界采样/插值产生稳定的
+     贴边窄条伪影（DMG 实测顶部 5px 整幅条 + 左缘 ≤28px×72% 高条带，共
+     20 个采样帧误报），此前仅靠行框重叠门槛无害过滤——文字贴近平面
+     边缘时会被误加 `\iclip` 藏字。现 `detect_occlusion_polygons` 在
+     形态学清理后清零四边 `edge_margin_px`（默认 8）忽略带，并按
+     「贴有效边界 + 厚度 ≤ `edge_sliver_max_px`（24）+ 覆盖 ≥
+     `edge_sliver_min_frac`（0.5）×边长」剔除贴边细长条带；真实贴边
+     遮挡物（厚度超上限的块状区域）不受影响。DMG 实测误报帧 20→9
+     （余下为平面内部的滚动内容差异，不与行框相交达标，最终 `\iclip`
+     仍为 0——该片段无真实遮挡）。
+  3. **ROI 列表轨迹标记**：列表条目此前只显示 [颜色掩膜]/[模糊]/
+     [淡入淡出微调]/[自动过滤]，勾选「写入画面位置标签/亮度自适应/
+     遮挡蒙版」后从列表完全看不出设置已写入（易误判「勾了没生效」）。
+     现随 ROI 状态显示 [位置标签]/[亮度自适应]/[遮挡蒙版]，三语 i18n
+     补齐。新增 `tests/test_roi_list_tags.py`（3 项）、
+     `tests/test_text_utils_noise.py`（9 项）、遮挡边缘伪影单测 3 项与
+     垃圾行过滤端到端 2 项；单元测试 745 → **765**。
+
+- **全库代码审查修复七项**（编译 + 745 项测试零回归）：
+  1. **chunk 并行协调器死循环**：窗口第二次失败由心跳/存活检测
+     （`_check_liveness`，worker 被 OOM kill 等静默死亡场景）检出时，
+     顺序兜底只置 `done` 不发消息，该窗口 index 永远留在 `pending`
+     ——主循环空转、进度条永久卡死（唯一出口是用户取消）；现在
+     liveness 扫描对已 done 窗口同步出队，运行能正常收敛返回。
+  2. **ASS 数值标签误带圆括号（静默失效）**：`\frz(8.0)`、`\fs(30)`
+     不是合法 ASS 语法（数值标签参数直接跟数值，仅 `\pos/\move/\t/
+     \clip` 用括号），libass 解析失败即忽略——pose 旋转、场景字静态
+     mask 的字号设置全部无效。修复 `styling.py` 两处与
+     `scene_text_policy.py` 一处，与 `core/motion_ass.py` 的正确写法
+     对齐；`\iclip` 遮挡跨度随链尾结束时间 +1 帧同步修正测试。
+  3. **`motion_ass.format_ass_time` 浮点截断缺 epsilon**：
+     `POS_MSEC/1000` 秒值常落在真值一个 ULP 之下（`1.16*100 ==
+     115.999…`），直接截断把约 5% 的帧时间戳提前 1cs；补 `+1e-6`
+     与主流水线 `timeline.py` 的同源修复对齐。
+  4. **轨迹 `\move` 链尾少 1 帧**：末段（含单段）结束时间取尾帧自身
+     时刻，而 ASS 的 End 是排他边界——最后一个被跟踪 ok 帧整帧无
+     字幕；现延伸到下一帧时刻（与 dense 兜底、主流水线 generator 的
+     「尾帧 + 1 帧」语义一致）。
+  5. **SCENE 主导 ROI 误丢边缘组**：`roi_filters` 中「主导是场景字时
+     不去过滤 BOTTOM/TOP」的注释与实现相反，旧 `continue` 把组中心
+     落在画面顶/底位置带的组静默丢弃——恰好误杀靠近边缘的真实场景
+     字（招牌/手机屏等）；按注释与 generator 常量注释的既定意图删除
+     该分支，位置分类对场景字不可靠，杂项仅靠高度比过滤兜底。
+  6. **OCR 引擎 `_predict_lock` 串行化并行精修**：两个引擎的锁此前是
+     **类属性**，`build_standalone_engine` 为每个精修线程构建的独立
+     实例全部争抢同一把锁，OCR 推理退化为单线程，与
+     `refine_executor`/`ocr_engine_manager` 文档声明的「独立实例不在
+     共享锁上串行」直接矛盾；锁改为实例级（每实例一个 predictor，
+     符合 Paddle/ORT 官方并发建议）。
+  7. **关窗时模型列表拉取线程未收尾（qFatal 风险）**：`_FetchOpenAIModelsThread`
+     超时未结束既不 cancel 也不 terminate，窗口销毁运行中的 QThread
+     触发 Qt qFatal；被新拉取顶替的旧线程更是完全脱离跟踪（连退出
+     确认框都不弹）。现在全部 fetch 线程登记在 `_fetch_threads` 列表，
+     `shutdown_background_threads` 超时后按 closeEvent 同策略强杀并
+     恢复按钮状态。另修 `test_occlusion_mask` docstring 的
+     `\i` 转义 SyntaxWarning。单元测试 739 → **745**（新增
+     `tests/test_roi_filters.py` 3 项 + 死循环/时间戳/实例锁回归各 1）。
 - **轨迹字幕配套选项（亮度自适应/遮挡蒙版/场景文字显示）勾选即生效**：
   此前只有「写入画面位置标签」复选框有即时写回（勾选后直接开始识别不再
   静默丢失），亮度自适应/遮挡蒙版复选框与场景策略下拉仍要靠 添加/更新
