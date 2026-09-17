@@ -784,9 +784,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--template", help="external .ass file as style template")
     parser.add_argument(
         "--scene-text-policy", default="overlap",
-        choices=["overlap", "mask", "external", "whitespace"],
+        choices=["overlap", "mask", "mask_only", "external", "whitespace"],
         help="scene-text display policy for --roi entries (default: overlap; "
-             "unavailable modes fall back whitespace->mask->external)",
+             "mask_only = cover patch only, recognized text written as "
+             "Comment lines for hand re-typesetting; unavailable modes fall "
+             "back whitespace->mask->external, mask_only->external)",
     )
     parser.add_argument(
         "--motion-quad", action="append", metavar="SPEC",

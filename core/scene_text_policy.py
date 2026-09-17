@@ -3,11 +3,14 @@
 
 对应《场景文字显示策略(mask / external / whitespace)设计》§3/§4/§6:
 识别字幕锚定在原文字位置时,替换字体与原排版的字宽字重不可能一致,原字从
-字幕笔画缝隙透出形成「双重曝光式重影」。本模块提供四种显示模式的事件生成:
+字幕笔画缝隙透出形成「双重曝光式重影」。本模块提供场景文字显示模式的事件生成:
 
 - :func:`apply_policy` —— 模式入口:overlap 原样返回;mask 生成 ``\\p1``
-  矢量遮罩盖住原文字(识别文本升到 layer 1);external 把文本挪出原区域、
-  底带 ``NoteBox`` 展示框;whitespace 把文本放进原文字空白带(合成行框喂
+  矢量遮罩盖住原文字(识别文本升到 layer 1);mask_only 只出遮罩——识别
+  文本改写为 ASS ``Comment:`` 行(编辑器可见、播放器不渲染),layer 1 留给
+  用户在遮罩上自行排版覆写(typesetting 工作流:盖掉片源烧录文字、重绘
+  译文/矢量字);external 把文本挪出原区域、底带 ``NoteBox`` 展示框;
+  whitespace 把文本放进原文字空白带(合成行框喂
   :func:`core.motion_ass.build_line_tracks`,轨迹与亮度标签零成本复用);
 - :func:`apply_policy_static` —— 同一回退链的静态 ``\\pos`` 变体(主流水线
   用):输入行框 + 单帧平面图,输出不带时间的 spec dict(时间由调用方按
@@ -88,7 +91,7 @@ __all__ = [
     "apply_policy_static",
 ]
 
-POLICY_MODES = ("overlap", "mask", "external", "whitespace")
+POLICY_MODES = ("overlap", "mask", "mask_only", "external", "whitespace")
 
 # sample_background_stats 的 background_mode 取值:
 # "std"    —— 旧规则:非墨像素逐通道 std 的最大值 vs bg_max_std(默认,兼容);
@@ -122,7 +125,7 @@ _QUAD_DEGENERATE_AREA_RATIO = 1e-3
 class SceneTextPolicyConfig:
     """场景文字显示策略参数;``mode`` 为所选模式(CLI ``--scene-text-policy``)。"""
 
-    mode: str = "overlap"          # overlap | mask | external | whitespace
+    mode: str = "overlap"          # overlap | mask | mask_only | external | whitespace
     mask_pad_ratio: float = 0.12   # 遮罩外扩(×行高)
     block_vgap_ratio: float = 0.35 # 并块的垂直间距阈值(×两行平均行高)
     bg_max_std: float = 18.0       # 遮罩降级的背景通道标准差上限
@@ -1014,8 +1017,14 @@ def _apply_mask(
     ref_frame: Optional[int] = None,
     orig_indices: Optional[Sequence[int]] = None,
     diag_extra: Optional[Dict[str, object]] = None,
+    include_text: bool = True,
 ) -> Tuple[List[Dict], str, List[str]]:
-    """mask 模式:低层纯色遮罩盖住原文字(layer 0)+ 原文本事件(layer 1)。
+    """mask / mask_only 模式:低层纯色遮罩盖住原文字(layer 0)+ 文本事件。
+
+    ``include_text=True``(mask)时识别文本事件升到 layer 1 正常渲染;
+    ``False``(mask_only,排版覆写工作流)时改写为 ``comment=True``——
+    writer 输出 ASS ``Comment:`` 行,播放器不渲染,编辑器仍可见原文与
+    时间供排版对照。其余行为两者完全一致。
 
     每块取色并检查背景均匀性:默认 ``background_mode="std"`` 任一块非墨
     像素通道 std > ``bg_max_std`` → 整体回退 external(旧规则不变);
@@ -1033,10 +1042,12 @@ def _apply_mask(
     四角映射退化(:func:`_mask_quad_frames`),或矩形模式(实验开关
     ``mask_polygon_clip`` 关闭)下矩形近似误差超过
     ``mask_max_perspective_error`` 时,整体沿既定回退链降级 external 并在
-    notes 记录 ``mask->external`` 原因(含误差值/帧号)。开关打开时改生成
-    逐帧四角 ``\\p1`` 多边形遮罩(:func:`_polygon_mask_events_for_block`),
-    精确覆盖透视形变,不再做误差降级(退化仍降级)。
+    notes 记录 ``mask->external`` / ``mask_only->external`` 原因(含误差
+    值/帧号)。开关打开时改生成逐帧四角 ``\\p1`` 多边形遮罩
+    (:func:`_polygon_mask_events_for_block`),精确覆盖透视形变,不再做
+    误差降级(退化仍降级)。
     """
+    mode_label = "mask" if include_text else "mask_only"
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
     for bi, (s, e) in enumerate(blocks):
@@ -1059,7 +1070,7 @@ def _apply_mask(
             # 降级 external 并记录原因(旧行为经空采样窗判 uniform=False
             # 降级,结果一致,原因更明确)
             notes.append(
-                f"mask->external: block {bi} degenerate mask box after "
+                f"{mode_label}->external: block {bi} degenerate mask box after "
                 f"clipping (w={mbox_w:g}, h={mbox_h:g})")
             ext = _apply_external(events, rows, blocks, tracks, cfg,
                                   video_w, video_h, motion_cfg, style, notes,
@@ -1098,7 +1109,7 @@ def _apply_mask(
             else:
                 reason = (f"background channel std {stats.std_max_channel:.1f} "
                           f"> bg_max_std {float(cfg.bg_max_std):g}")
-            notes.append(f"mask->external: block {bi} {reason}")
+            notes.append(f"{mode_label}->external: block {bi} {reason}")
             ext = _apply_external(events, rows, blocks, tracks, cfg,
                                   video_w, video_h, motion_cfg, style, notes,
                                   orig_indices=orig_indices)
@@ -1116,7 +1127,7 @@ def _apply_mask(
                 "polygon_clip": bool(cfg.mask_polygon_clip),
             })
         if degenerate is not None:
-            notes.append(f"mask->external: block {bi} {degenerate}")
+            notes.append(f"{mode_label}->external: block {bi} {degenerate}")
             ext = _apply_external(events, rows, blocks, tracks, cfg,
                                   video_w, video_h, motion_cfg, style, notes,
                                   orig_indices=orig_indices)
@@ -1124,7 +1135,7 @@ def _apply_mask(
         if (not cfg.mask_polygon_clip
                 and persp_err > float(cfg.mask_max_perspective_error)):
             notes.append(
-                f"mask->external: block {bi} perspective rectangle "
+                f"{mode_label}->external: block {bi} perspective rectangle "
                 f"approximation error {persp_err:.3f} > "
                 f"mask_max_perspective_error "
                 f"{float(cfg.mask_max_perspective_error):g} (max corner "
@@ -1141,9 +1152,13 @@ def _apply_mask(
             out.extend(_mask_events_for_block(mbox, stats.color_bgr, tracks,
                                               motion_cfg,
                                               ref_frame=ref_frame, style=style))
-    # 所有识别行都归属某块 → 文本事件整体升到 layer 1(遮罩之下)
-    out.extend(dict(ev, layer=1) for ev in events)
-    return out, "mask", notes
+    # mask:所有识别行都归属某块 → 文本事件整体升到 layer 1(遮罩之下);
+    # mask_only:同样升层并标记 comment,由 writer 写成 Comment 行(不渲染)。
+    if include_text:
+        out.extend(dict(ev, layer=1) for ev in events)
+    else:
+        out.extend(dict(ev, layer=1, comment=True) for ev in events)
+    return out, mode_label, notes
 
 
 def _apply_external(
@@ -1377,17 +1392,19 @@ def apply_policy(
     留痕(不抛异常)。
 
     返回 :class:`PolicyResult`:兼容 ``(events, applied_policy, notes)``
-    三元组解包;notes 记录回退原因(whitespace→mask→external,仅所选模式
-    不可用时降级;overlap 不回退),由 CLI 打 warn 日志。diagnostics 携带
+    三元组解包;notes 记录回退原因(whitespace→mask→external、
+    mask_only→external,仅所选模式不可用时降级;overlap 不回退),由 CLI
+    打 warn 日志。diagnostics 携带
     requested/applied mode、参考帧、行框有效性统计,以及逐块背景统计
     (``background_blocks``:std、robust spread、样本数、confidence)、
     候选空白带(``whitespace_band``:box、confidence 及评分分量)与逐块
     透视误差(``mask_perspective``:帧数、最大角点偏移比、多边形开关)。
     ``tracks`` 为空时
-    mask/whitespace 沿回退链降级 external(记录原因),overlap 原样返回
-    事件(不修改输入)。mask 模式另有透视安全边界:退化裁剪框/退化四角/
-    矩形近似误差超 ``mask_max_perspective_error`` 时降级 external 并留痕
-    (``mask_polygon_clip`` 开启时改生成逐帧 ``\\p1`` 多边形遮罩)。
+    mask/mask_only/whitespace 沿回退链降级 external(记录原因),overlap
+    原样返回事件(不修改输入)。mask/mask_only 模式另有透视安全边界:退化
+    裁剪框/退化四角/矩形近似误差超 ``mask_max_perspective_error`` 时降级
+    external 并留痕(``mask_polygon_clip`` 开启时改生成逐帧 ``\\p1``
+    多边形遮罩)。
     """
     mode = cfg.mode
     plane_h, plane_w = plane_img_bgr.shape[:2]
@@ -1428,7 +1445,7 @@ def apply_policy(
         range(len(rows_kept)),
         key=lambda j: (float(rows_kept[j][1][1]), float(rows_kept[j][1][0])))
     orig_indices = [valid_indices[j] for j in order]
-    if mode in ("mask", "whitespace") and not tracks:
+    if mode in ("mask", "mask_only", "whitespace") and not tracks:
         # 轨迹重建需要至少一帧跟踪结果;空轨迹沿回退链降级 external
         #(external 只按事件时间排版,不依赖轨迹几何)。
         notes = [f"{mode}->external: no tracking frames (empty tracks)"]
@@ -1438,11 +1455,12 @@ def apply_policy(
         diag["applied_mode"] = "external"
         return PolicyResult(out, "external", notes, mode,
                             _merge_bg_diag(diag, diag_extra))
-    if mode == "mask":
+    if mode in ("mask", "mask_only"):
         out, applied, notes = _apply_mask(
             list(events), rows, blocks, plane_img_bgr, tracks, cfg,
             video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
-            ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra)
+            ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra,
+            include_text=(mode == "mask"))
     elif mode == "external":
         out, applied, notes = (_apply_external(list(events), rows, blocks,
                                                tracks, cfg, video_w, video_h,
@@ -1545,14 +1563,19 @@ def _apply_static_mask(
     base_fs: int = _WRAP_BASE_FS,
     style: str = "Scene",
     diag_extra: Optional[Dict[str, object]] = None,
+    include_text: bool = True,
 ) -> Tuple[List[Dict], str, List[str]]:
-    """mask 静态路径:每块一条静态矩形 + 全部原行(layer 1)。
+    """mask / mask_only 静态路径:每块一条静态矩形 + 全部原行(layer 1)。
 
+    ``include_text=False``(mask_only)时 text spec 附 ``comment=True``,
+    由生成器写成 ``Comment:`` 行(不渲染,layer 1 留给用户自行排版)。
     取色/背景杂色检查/外扩框与 motion 版共用(按行外扩后求 union);默认
     ``background_mode="std"`` 任一块背景 std 超限 → 回退 external(旧规则
     不变),robust 模式按 MAD/IQR + 样本数 + 置信度判定;逐块统计经
-    ``diag_extra`` 累加供入口并入 diagnostics。
+    ``diag_extra`` 累加供入口并入 diagnostics。回退 notes 前缀与 applied
+    模式按实际模式(mask/mask_only)。
     """
+    mode_label = "mask" if include_text else "mask_only"
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
     for bi, (s, e) in enumerate(blocks):
@@ -1591,7 +1614,7 @@ def _apply_static_mask(
             else:
                 reason = (f"background channel std {stats.std_max_channel:.1f} "
                           f"> bg_max_std {float(cfg.bg_max_std):g}")
-            notes.append(f"mask->external: block {bi} {reason}")
+            notes.append(f"{mode_label}->external: block {bi} {reason}")
             spec = _static_external_spec(rows, cfg, video_w, video_h, base_fs)
             return ([spec] if spec else []), "external", notes
         out.append(_static_mask_spec(mbox, stats.color_bgr,
@@ -1601,16 +1624,20 @@ def _apply_static_mask(
         cy = int((float(box[1]) + float(box[3])) / 2.0)
         line_h = max(1.0, float(box[3]) - float(box[1]))
         # 显式 \fs=行高:与遮罩/渲染宽度估算同一尺寸体系(Scene 样式字号
-        # 是画面高度常数,与原文字大小无关,会让字幕远大于原字)
-        out.append({
+        # 是画面高度常数,与原文字大小无关,会让字幕远大于原字)。
+        # \fs 数值标签不带圆括号(带括号会被 libass 静默忽略,字号失效)。
+        spec = {
             "kind": "text",
             "style": str(style),
-            "tags": f"{{\\an5\\pos({cx},{cy})\\fs({round(line_h)})}}",
+            "tags": f"{{\\an5\\pos({cx},{cy})\\fs{round(line_h)}}}",
             "body": text,
             "layer": 1,
             "row": int(orig_indices[i]),
-        })
-    return out, "mask", notes
+        }
+        if not include_text:  # mask_only:排版参考行 → Comment(不渲染)
+            spec["comment"] = True
+        out.append(spec)
+    return out, mode_label, notes
 
 
 def _apply_static_whitespace(
@@ -1704,7 +1731,8 @@ def apply_policy_static(
 ) -> PolicyResult:
     """对静态 ``\\pos`` 路径的识别行应用场景文字显示策略(静态变体)。
 
-    与 :func:`apply_policy` 同一回退链(whitespace → mask → external)与
+    与 :func:`apply_policy` 同一回退链(whitespace → mask → external、
+    mask_only → external)与
     取色/并块/空白带/折行实现,但不读轨迹、不产时间:输入 ``rows_meta`` 为
     ``[(文本, (x1, y1, x2, y2)), ...]]``(行框与 ``plane_img_bgr`` 同一平面
     坐标系);输出为**不带时间**的 spec dict 列表,时间由调用方按所属组回填:
@@ -1712,7 +1740,8 @@ def apply_policy_static(
     - ``{"kind": "mask", "tags", "layer": 0, "rows": [行索引], ...}`` ——
       每块一条静态 ``\\an7\\pos\\p1`` 矩形(平面坐标);
     - ``{"kind": "text", "tags", "body", "layer": 1, "row": 行索引}`` ——
-      原识别行(平面坐标 ``\\an5\\pos`` 中心);
+      原识别行(平面坐标 ``\\an5\\pos`` 中心);mask_only 模式附
+      ``"comment": True``(写成 Comment 行,不渲染);
     - ``{"kind": "note", "style": "NoteBox", "tags", "body"}`` —— external
       单条展示框(``tags`` 已是视频坐标);
     - ``{"kind": "scene_ws", "tags", "body"}`` —— whitespace 单条空白带放置
@@ -1758,11 +1787,12 @@ def apply_policy_static(
     blocks = merge_line_blocks([b for _t, b in rows],
                                vgap_ratio=float(cfg.block_vgap_ratio))
     while True:
-        if mode == "mask":
+        if mode in ("mask", "mask_only"):
             out, applied, notes = _apply_static_mask(
                 rows, blocks, plane_img_bgr, cfg, video_w, video_h, notes,
                 orig_indices, analysis_box=analysis_box, base_fs=base_fs,
-                style=style, diag_extra=diag_extra)
+                style=style, diag_extra=diag_extra,
+                include_text=(mode == "mask"))
             diag["applied_mode"] = applied
             return PolicyResult(out, applied, notes, cfg.mode,
                                 _merge_bg_diag(diag, diag_extra))

@@ -85,6 +85,9 @@ class ControlPanelWidget(QWidget):
 
         self._models_fetch_gen = 0
         self._fetch_thread: Optional[_FetchOpenAIModelsThread] = None
+        # 所有仍在运行的 fetch 线程(含被新拉取顶替的旧线程):窗口关闭时
+        # 必须逐一收尾,否则运行中的 QThread 随 parent 销毁会 qFatal。
+        self._fetch_threads: List[_FetchOpenAIModelsThread] = []
         self._color_gate_spec: Optional[Dict[str, Any]] = None
         self._gate_preview_allowed: bool = False
         self._loading_llm_settings: bool = False
@@ -993,6 +996,7 @@ class ControlPanelWidget(QWidget):
 
         t = _FetchOpenAIModelsThread(key, base, self)
         self._fetch_thread = t
+        self._fetch_threads.append(t)
         t.finished_ok.connect(
             partial(self._apply_models_fetch_result, gen),
             Qt.ConnectionType.SingleShotConnection,
@@ -1008,22 +1012,40 @@ class ControlPanelWidget(QWidget):
     def _on_models_fetch_finished(self, gen: int, thread: _FetchOpenAIModelsThread) -> None:
         if thread is self._fetch_thread:
             self._fetch_thread = None
+        try:
+            self._fetch_threads.remove(thread)
+        except ValueError:
+            pass
         if gen != self._models_fetch_gen:
             # A newer fetch has started; leave the button state to that fetch.
             return
         self.refresh_models_btn.setEnabled(True)
 
     def shutdown_background_threads(self, timeout_ms: int = 5000) -> bool:
-        """Wait for the model-list fetch thread; return True if still running."""
-        t = self._fetch_thread
-        if t is None:
-            return False
-        if not t.isFinished():
+        """Stop the model-list fetch threads; return True if any was running.
+
+        等待至多 ``timeout_ms``;仍未结束的直接 terminate——运行中的
+        QThread 挂在本 widget 下,窗口关闭销毁时会触发 Qt qFatal
+        ("QThread: Destroyed while thread is still running")。被新拉取
+        顶替的旧线程同样在 ``_fetch_threads`` 里跟踪,不会漏网。fetch 只是
+        一次 HTTP GET,强杀无状态损失(按钮状态就地恢复)。
+        """
+        live = [t for t in self._fetch_threads if not t.isFinished()]
+        was_running = bool(live)
+        for t in live:
             t.wait(timeout_ms)
-        still_running = not t.isFinished()
-        if not still_running:
-            self._fetch_thread = None
-        return still_running
+        for t in live:
+            if not t.isFinished():
+                # Last resort at shutdown(与 MainWindow.closeEvent 同策略):
+                # force-kill rather than abort the process by destroying a
+                # live QThread.
+                t.terminate()
+                t.wait(1000)
+                if t is self._fetch_thread:
+                    self._fetch_thread = None
+                self.refresh_models_btn.setEnabled(True)
+        self._fetch_threads.clear()
+        return was_running
 
     def _apply_models_fetch_result(self, gen: int, model_ids: list) -> None:
         if gen != self._models_fetch_gen:

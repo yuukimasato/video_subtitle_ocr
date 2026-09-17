@@ -106,7 +106,7 @@
         <translation type="vanished">インメモリモード（実験的）</translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="+119"/>
+        <location filename="../components/control_panel.py" line="+122"/>
         <source>识别语言：</source>
         <translation>認識言語：</translation>
     </message>
@@ -529,7 +529,7 @@
         <translation>カラーゲート：確認済み。次の「字幕 OCR 認識」のステージ 1 で使用されます。</translation>
     </message>
     <message>
-        <location line="+230"/>
+        <location line="+249"/>
         <source>（无可用引擎）</source>
         <translation>（利用可能なエンジンなし）</translation>
     </message>
@@ -621,7 +621,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-741"/>
+        <location line="-760"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -784,7 +784,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+156"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+224"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -799,12 +799,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+53"/>
         <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+5"/>
         <source>Scene text policy: failed to read frame {} for analysis; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -824,12 +824,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+53"/>
         <source>Scene text policy: analysis frame probes (frame, luma) = {} for {}; picked luma {:.1f}.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+58"/>
         <source>Scene text policy: text moves more than {:.0f}px in {}; static {} would misalign, falling back to external.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -844,7 +844,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+59"/>
         <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -869,12 +869,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+10"/>
         <source>ROI: {} generated {} subtitle groups.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+64"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -919,12 +919,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+37"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-27"/>
+        <location line="-33"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -954,7 +954,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/roi_filters.py" line="+150"/>
+        <location filename="../core/subtitle_generator/roi_filters.py" line="+149"/>
         <source>Watermark filter removed {} text line(s).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -969,7 +969,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+140"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+144"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1026,7 +1026,7 @@
         <translation type="vanished">選択した対象領域(ROI)を削除</translation>
     </message>
     <message>
-        <location filename="../components/roi_definition.py" line="+36"/>
+        <location filename="../components/roi_definition.py" line="+42"/>
         <source>ROI 定义</source>
         <translation>ROI 定義</translation>
     </message>
@@ -1104,11 +1104,16 @@
         <translation>画面位置タグを書き出す（\pos \frz \frx \fry。多角形から位置と傾きを自動計算）</translation>
     </message>
     <message>
+        <location line="+72"/>
+        <source>仅作用于场景文字（画面文字）事件；所选模式不可用时自动回退（空白区→遮罩→外置；仅遮罩→外置）。「仅遮罩」把遮罩下方的识别文本写成 Comment 注释行（播放器不渲染），便于在遮罩上自行排版覆写（如绘制译文或 \p 矢量字）。</source>
+        <translation>シーン文字（画面内テキスト）イベントのみに適用されます。選択したモードが利用できない場合は自動でフォールバックします（空白領域→マスク→外側ボックス；マスクのみ→外側ボックス）。「マスクのみ」はマスク下の認識テキストを Comment 行（再生時は非表示）として出力するため、マスクの上に翻訳や \p ベクター文字などを手動で組版し直せます。</translation>
+    </message>
+    <message>
         <source>开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\pos)与长边倾角(\frz)；\frx/\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。</source>
         <translation type="vanished">有効にすると、この ROI から書き出される字幕イベントに位置と回転のタグが付きます。多角形 ROI では中心点(\pos)と長辺の傾き(\frz)を自動計算し、\frx/\fry は 0 として保存されるため手動調整が可能です。実写シーン文字の原位置再配置に適します。</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-65"/>
         <source>开启后，该 ROI 识别出的字幕事件将附带位置与旋转标签：多边形 ROI 自动计算中心点(\pos)与长边倾角(\frz)；\frx/\fry 保存为 0，可手动微调透视。适合实拍场景文字的原位重铺。四点多边形 ROI 会走移动文字轨迹管线：逐帧跟踪平面并合成 \move 运动字幕，静态标签跟不动的画面由轨迹跟随。</source>
         <translation>有効にすると、この ROI の字幕イベントに位置と回転のタグが付与されます。多角形 ROI は中心点(\pos)と長辺の傾き(\frz)を自動計算し、\frx/\fry は 0 で保存され手動調整できます。実写の画面内文字を原位置に再配置するのに適します。4 点多角形 ROI は移動文字軌跡パイプラインで処理され、平面を逐フレーム追跡して \move の動く字幕を合成します。静的タグでは追従できない動きも軌跡が追従します。</translation>
     </message>
@@ -1144,6 +1149,11 @@
     </message>
     <message>
         <location line="+1"/>
+        <source>仅遮罩（供排版覆写）</source>
+        <translation>マスクのみ（手動組版用）</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>外置展示框</source>
         <translation>外側ボックスで表示</translation>
     </message>
@@ -1153,12 +1163,11 @@
         <translation>空白領域に配置</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。</source>
-        <translation>シーン文字（画面内テキスト）イベントのみに適用されます。選択したモードが利用できない場合は 空白領域→マスク→外側ボックス の順に自動でフォールバックします。</translation>
+        <translation type="vanished">シーン文字（画面内テキスト）イベントのみに適用されます。選択したモードが利用できない場合は 空白領域→マスク→外側ボックス の順に自動でフォールバックします。</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+12"/>
         <source>场景文字显示：</source>
         <translation>シーン文字表示：</translation>
     </message>
@@ -1213,7 +1222,7 @@
         <translation>選択中の ROI を削除</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+78"/>
         <source>字幕文字颜色</source>
         <translation>字幕の文字色</translation>
     </message>
@@ -1623,7 +1632,7 @@
         <translation>動画字幕 OCR ツール</translation>
     </message>
     <message>
-        <location line="+107"/>
+        <location line="+115"/>
         <source>正在深度扫描…</source>
         <translation>詳細スキャン中…</translation>
     </message>
@@ -1713,22 +1722,41 @@
         <translation>すべて保持（フィルタなし）</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+35"/>
         <source>ROI {} 画面位置标签已{}</source>
         <translation>ROI {} の画面位置タグを{}</translation>
     </message>
     <message>
         <location line="+2"/>
+        <location line="+19"/>
+        <location line="+14"/>
         <source>开启</source>
         <translation>有効にしました</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-32"/>
+        <location line="+19"/>
+        <location line="+14"/>
         <source>关闭</source>
         <translation>無効にしました</translation>
     </message>
     <message>
-        <location line="+214"/>
+        <location line="-17"/>
+        <source>ROI {} 亮度自适应已{}</source>
+        <translation>ROI {}: 輝度自動適応を{}</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>ROI {} 遮挡蒙版已{}</source>
+        <translation>ROI {}: 遮蔽マスクを{}</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>ROI {} 场景文字显示已设为 {}</source>
+        <translation>ROI {}: シーンテキスト表示を {} に設定</translation>
+    </message>
+    <message>
+        <location line="+216"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
@@ -2334,7 +2362,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+389"/>
+        <location filename="../core/pipeline_worker.py" line="+413"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中間ファイルは以下に保存されます: {}</translation>
     </message>
@@ -2485,12 +2513,12 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="-321"/>
+        <location filename="../core/pipeline_worker.py" line="-337"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+214"/>
+        <location line="+230"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>

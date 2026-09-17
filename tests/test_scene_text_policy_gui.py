@@ -404,9 +404,9 @@ def test_policy_combo_options_and_default():
     roi_def = _make_roi_def()
     combo = roi_def.scene_text_policy_combo
     assert isinstance(combo, QComboBox)
-    assert combo.count() == 4
+    assert combo.count() == 5
     assert [combo.itemData(i) for i in range(combo.count())] == [
-        "overlap", "mask", "external", "whitespace"]
+        "overlap", "mask", "mask_only", "external", "whitespace"]
     assert combo.currentIndex() == 0
     assert combo.currentData() == "overlap"
     assert combo.toolTip()  # tooltip 说明作用范围与回退链
@@ -428,13 +428,17 @@ def test_policy_combo_backfill_from_roi():
 
 def test_roi_entry_assembly_carries_policy():
     roi_def = _make_roi_def()
-    roi_def.scene_text_policy_combo.setCurrentIndex(2)  # external
+    roi_def.scene_text_policy_combo.setCurrentIndex(3)  # external
     win = _FakeWindow(roi_def, _FakeVideoLabel(rect=(10, 20, 100, 50)))
     entry = win._create_roi_entry_from_ui()
     assert entry is not None
     assert entry["scene_text_policy"] == "external"
     assert entry["blur_enabled"] is False
     assert entry["points"] == [10, 20, 100, 50]
+
+    roi_def.scene_text_policy_combo.setCurrentIndex(2)  # mask_only(仅遮罩)
+    entry = win._create_roi_entry_from_ui()
+    assert entry["scene_text_policy"] == "mask_only"
 
     roi_def.scene_text_policy_combo.setCurrentIndex(0)  # overlap(默认)
     entry = win._create_roi_entry_from_ui()

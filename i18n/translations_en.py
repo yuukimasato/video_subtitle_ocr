@@ -196,10 +196,11 @@ DICT = {
     "场景文字显示：": "Scene text display:",
     "叠加（默认）": "Overlay (default)",
     "遮罩原文字": "Mask original text",
+    "仅遮罩（供排版覆写）": "Mask only (for re-typesetting)",
     "外置展示框": "External note box",
     "空白区放置": "Place in whitespace",
-    "仅作用于场景文字（画面文字）事件；所选模式不可用时按 空白区→遮罩→外置 自动回退。":
-        "Applies to in-scene (picture text) events only; if the chosen mode is unavailable it falls back automatically: whitespace → mask → external.",
+    "仅作用于场景文字（画面文字）事件；所选模式不可用时自动回退（空白区→遮罩→外置；仅遮罩→外置）。「仅遮罩」把遮罩下方的识别文本写成 Comment 注释行（播放器不渲染），便于在遮罩上自行排版覆写（如绘制译文或 \\p 矢量字）。":
+        "Applies to in-scene (picture text) events only; unavailable modes fall back automatically (whitespace → mask → external; mask-only → external). \"Mask only\" writes the recognized text under the patch as Comment lines (not rendered), so you can re-typeset over the patch by hand (e.g. draw translated text or \\p vector art).",
     "文字颜色…": "Text color…",
     "描边颜色…": "Outline color…",
     "阴影颜色…": "Shadow color…",

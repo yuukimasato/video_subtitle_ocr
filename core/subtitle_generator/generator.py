@@ -195,9 +195,10 @@ class OCRToASSOptimizer(
         # written with {\pos} / {\frz} / {\frx} / {\fry} placement tags so the
         # text lands where (and at the angle) the original picture text was.
         self.roi_pose_tags = roi_pose_tags or {}
-        # roi_id -> 场景文字显示策略(overlap/mask/external/whitespace)。
+        # roi_id -> 场景文字显示策略(overlap/mask/mask_only/external/whitespace)。
         # 非 overlap 时该 ROI 的 SCENE 组事件被策略事件替换(场景文字重排,
-        # 消除原字重影);缺省/overlap 保持原路径,输出逐事件一致。
+        # 消除原字重影);mask_only 仅出遮罩、识别文本写成 Comment 行,供
+        # 用户在遮罩上自行排版覆写;缺省/overlap 保持原路径,输出逐事件一致。
         self.roi_scene_text_policies = roi_scene_text_policies or {}
         # roi_id -> ROI 外接矩形 (x1, y1, x2, y2)(视频坐标),策略分析图
         # (最大组中间帧)的裁剪窗口。
@@ -423,7 +424,7 @@ class OCRToASSOptimizer(
             for (cx, cy) in pts for (px, py) in pts
         )
         policy = str(ctx["policy"])
-        if moved and policy in ("mask", "whitespace"):
+        if moved and policy in ("mask", "mask_only", "whitespace"):
             logger.warning(
                 _tr("OCRToASSOptimizer",
                     "Scene text policy: text moves more than {:.0f}px in {}; "
@@ -471,11 +472,14 @@ class OCRToASSOptimizer(
             elif kind == "text":
                 start, end = row_times[spec["row"]]
                 tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
-                events.append({
+                event = {
                     "roi": roi_id, "start_time": start, "end_time": end,
                     "style": "Scene", "tags": tags, "body": spec.get("body", ""),
                     "layer": int(spec.get("layer", 0)), "policy": True,
-                })
+                }
+                if spec.get("comment"):  # mask_only:排版参考行 → Comment 行
+                    event["comment"] = True
+                events.append(event)
             elif kind == "note":
                 events.append({
                     "roi": roi_id, "start_time": union_start, "end_time": union_end,
@@ -750,11 +754,13 @@ class OCRToASSOptimizer(
             self._close_analysis_reader()
 
     def _write_final_file(self, subtitle_events: List[Dict[str, str]]) -> None:
-        """事件表(+ 轨迹事件)→ Dialogue 行 → 按起始时间排序 → 写 .ass。
+        """事件表(+ 轨迹事件)→ Dialogue/Comment 行 → 按起始时间排序 → 写 .ass。
 
         轨迹事件(Name=motion,scripts/motion_ass.build_motion_events 产出)
         在此处并入——位于噪声过滤/合并/LLM 润色之后,脚本产出的 tags/body
         逐字保留,不参与任何重写。Name 列缺省空串,既有事件输出逐字节不变。
+        事件可选 ``comment`` 真值 → 写 ``Comment:`` 行(mask_only 策略的
+        排版参考行,播放器不渲染),缺省 ``Dialogue:``。
         """
         events = list(subtitle_events) + [dict(e) for e in self.motion_events]
         all_dialogue_entries = []
@@ -764,7 +770,8 @@ class OCRToASSOptimizer(
             # motion,供播放器/后续处理识别);缺省 0/空串,与既有输出一致。
             layer = int(ev.get("layer", 0) or 0)
             name = str(ev.get("name", "") or "")
-            entry = f"Dialogue: {layer},{ev['start_time']},{ev['end_time']},{ev['style']},{name},0,0,0,,{text}"
+            kind = "Comment" if ev.get("comment") else "Dialogue"
+            entry = f"{kind}: {layer},{ev['start_time']},{ev['end_time']},{ev['style']},{name},0,0,0,,{text}"
             all_dialogue_entries.append(entry)
 
         if not all_dialogue_entries:
