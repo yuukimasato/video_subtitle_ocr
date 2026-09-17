@@ -60,6 +60,7 @@ from core.motion_ass import (
     _frame_map,
     _homography_between,
     _merge_chains_with_hold,
+    _next_frame_time,
     _overlay_tags,
     _pose_from_quad,
     _seg_ms,
@@ -762,6 +763,14 @@ def _mask_events_for_block(
         _raw, segs = _segment_indices(centers, angles, scales, motion_cfg)
         multi = len(segs) > 1
         last = len(segs) - 1
+        # 链尾(含单段)结束时间延伸到下一帧:与文本事件(motion_ass 同款
+        # 修复)对齐,否则链尾最后一帧遮罩先于文本消失,原字透出
+        chain_times = [tmap[f].time_sec for f in chain]
+        if len(chain_times) >= 2:
+            chain_dts = sorted(b - a for a, b in zip(chain_times, chain_times[1:]))
+            chain_dt = chain_dts[len(chain_dts) // 2]
+        else:
+            chain_dt = 0.0
         for si, (ai, bi) in enumerate(segs):
             f0 = chain[ai]
             # 非末段 end_frame = 下一段 start_frame(共享边界帧)
@@ -770,6 +779,8 @@ def _mask_events_for_block(
                 continue
             t0 = tmap[f0].time_sec
             t1 = tmap[f1].time_sec
+            if si == last:
+                t1 = _next_frame_time(tmap, f1, t1, chain_dt)
             if t1 <= t0:
                 continue
             tl0 = _pose_top_left(lt.poses[f0], w, h)

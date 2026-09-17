@@ -348,9 +348,10 @@ class TestApplyMask:
             assert "m 0 0 l " in ev["tags"]
             assert ev["base_color"] == (250, 250, 250)
             # 单段 \move 带 0,ms 时长端点
-            assert re.search(r"\\move\([^)]+,0,360\)", ev["tags"]), ev["tags"]
+            assert re.search(r"\\move\([^)]+,0,400\)", ev["tags"]), ev["tags"]
             assert ev["start_time"] == "0:00:00.00"
-            assert ev["end_time"] == format_ass_time(9 / FPS)
+            # 链尾 +1 帧距(与文本事件 motion_ass 同款修复)
+            assert ev["end_time"] == format_ass_time(10 / FPS)
         for ev in texts:
             assert ev["layer"] == 1
             assert ev["tags"] == "{\\an5\\move(0.0,0.0,0.0,0.0)}"  # 原样保留
@@ -1727,8 +1728,9 @@ class TestMaskPerspectiveGuard:
         assert all(ev["style"] == "NoteBox" for ev in out)
 
     def test_axis_aligned_mask_output_unchanged(self):
-        # 回归红线:规则矩形 quad 误差为 0,输出与加固前实现逐字段一致
-        # (基线字面量在实现前从当前实现记录)
+        # 回归红线:规则矩形 quad 误差为 0,输出与加固前实现逐字段一致,
+        # 唯一例外是遮罩链尾结束时间按「尾帧 + 1 帧距」延伸(0.36→0.40,
+        # 与文本事件 motion_ass 同款修复对齐,遮罩不再先于文本消失)
         events = [simple_event(t, 0.0, 9 / FPS) for t, _b in ROWS]
         res = apply_policy(
             events, ROWS, make_white_plane(), make_translation_tracks(),
@@ -1737,11 +1739,11 @@ class TestMaskPerspectiveGuard:
         assert [dict(ev) for ev in res.events] == [
             {
                 "start_time": "0:00:00.00",
-                "end_time": "0:00:00.36",
+                "end_time": "0:00:00.40",
                 "style": "Scene",
                 "name": "motion",
                 "tags": ("{\\an7\\p1\\bord0\\1c&HFAFAFA&"
-                         "\\move(20.1,18.1,34.1,18.1,0,360)}"
+                         "\\move(20.1,18.1,34.1,18.1,0,400)}"
                          "m 0 0 l 184 0 184 20 0 20{\\p0}"),
                 "body": "",
                 "layer": 0,
@@ -1749,11 +1751,11 @@ class TestMaskPerspectiveGuard:
             },
             {
                 "start_time": "0:00:00.00",
-                "end_time": "0:00:00.36",
+                "end_time": "0:00:00.40",
                 "style": "Scene",
                 "name": "motion",
                 "tags": ("{\\an7\\p1\\bord0\\1c&HFAFAFA&"
-                         "\\move(20.1,58.1,34.1,58.1,0,360)}"
+                         "\\move(20.1,58.1,34.1,58.1,0,400)}"
                          "m 0 0 l 184 0 184 40 0 40{\\p0}"),
                 "body": "",
                 "layer": 0,
