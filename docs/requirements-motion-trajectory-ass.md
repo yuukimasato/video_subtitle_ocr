@@ -49,7 +49,7 @@
 | FR-5 | 遮挡/出画处理 | lost 切段不外推,恢复后以真实轨迹重新开始;如实呈现(文字消失) | ✅ 已实现 |
 | FR-6 | 渲染误差校验 | libass 烧录抽样帧,字幕中心与期望中心偏差统计(预算:中位 ≤4px、p95 ≤8px),超预算可减半容差复验一次 | ✅ 已实现 |
 | FR-7 | 屏幕亮度自适应标签 | 文字平面渐变变暗/变亮时,`\t` 驱动 `\1c`(颜色变暗)**与** `\alpha`(变透明)**两者结合**;**完全忠实跟随,无保底下限**(用户明确选择;最暗时字幕与原字一起接近隐形) | ✅ 已实现(GUI 复选框/CLI `--auto-brightness`);**增补:屏幕局部调暗的背景适配** = `brightness_per_line`(逐行独立测亮度曲线,`core.screen_luma.measure_line_luma_curves`,事件按 line_idx 取所属行;CLI `--brightness-per-line`),整平面曲线作为缺省/回退 |
-| FR-8 | GUI/CLI 正常流程接入 | GUI:「写入画面位置标签」勾选 + 平面形状 ROI(多边形/矩形,手绘闭合点自动去重、>4 点取最小外接矩形)走轨迹管线;「亮度自适应」复选框随 pose 联动、`motion_auto_brightness` 持久化。CLI:`--motion-quad[/-file]`、`--auto-brightness`、`--roi-file`(GUI 保存的 ROI json,与 GUI 勾选等价);轨迹事件 `Name=motion` 原样并入,同 ROI 静态事件抑制,失败回退静态路径 | ✅ 已落地(提交 `fb19f82`、`f3bdb68`);其中「自动检测触发」归 FR-1 |
+| FR-8 | GUI/CLI 正常流程接入 | GUI:「写入画面位置标签」勾选 + 平面形状 ROI(多边形/矩形,手绘闭合点自动去重、>4 点取最小外接矩形)走轨迹管线;「亮度自适应」/「遮挡蒙版」复选框随 pose 联动、勾选**即时写回** ROI(`motion_auto_brightness`/`motion_occlusion_clip` 持久化,与 pose 复选框同契约,勾选后直接开始识别不丢失)。CLI:`--motion-quad[/-file]`、`--auto-brightness`、`--roi-file`(GUI 保存的 ROI json,与 GUI 勾选等价);轨迹事件 `Name=motion` 原样并入,同 ROI 静态事件抑制,失败回退静态路径 | ✅ 已落地(提交 `fb19f82`、`f3bdb68`);其中「自动检测触发」归 FR-1 |
 | FR-9 | `\iclip` 手部遮挡蒙版 | 阶段三 | ✅ 已实现(`core/occlusion_mask.py`:展开图 vs 锚定帧灰度差 → 遮挡多边形,与行框相交者以 `\iclip`(+`\t` 等结构动画/保守静态并集)裁剪;`MotionAssConfig.occlusion_*`,CLI `--occlusion-clip`,GUI「遮挡蒙版」复选框随 pose 联动、`motion_occlusion_clip` 持久化) |
 | 增补 | 行尾全角标点字形补偿 | 行尾「。，、」等墨迹偏左标点使渲染墨水整体左偏 ≤7px(2026-09-16 验收记录 dx 限制) | ✅ 已实现(`punct_comp_offset_px`:x 右移 min(上限, 0.25×行高),上限 `punct_comp_max_px=7` 随 PlayRes 高度缩放;`\move/\pos` 阶梯与 mask 遮罩块同步平移;默认开,可关) |
 

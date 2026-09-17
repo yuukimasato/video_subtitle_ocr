@@ -595,6 +595,22 @@ class TestGuiBrightnessCheckbox:
         entry = win._create_roi_entry_from_ui()
         assert entry["motion_auto_brightness"] is False
 
+    def test_motion_option_signals_emitted_on_toggle(self):
+        """亮度/遮挡/策略控件变化即发信号(由 window 接到即时写回处理器)。"""
+        roi_def = _make_roi_def()
+        got = {"bright": [], "occl": [], "policy": []}
+        roi_def.motion_brightness_toggled.connect(got["bright"].append)
+        roi_def.motion_occlusion_toggled.connect(got["occl"].append)
+        roi_def.scene_policy_changed.connect(got["policy"].append)
+        roi_def.pose_tags_checkbox.setChecked(True)  # 联动启用两个复选框
+        roi_def.motion_brightness_checkbox.setChecked(True)
+        roi_def.motion_occlusion_checkbox.setChecked(True)
+        idx = roi_def.scene_text_policy_combo.findData("mask")
+        roi_def.scene_text_policy_combo.setCurrentIndex(idx)
+        assert got["bright"] == [True]
+        assert got["occl"] == [True]
+        assert got["policy"] == ["mask"]
+
     def test_occlusion_checkbox_defaults_and_pose_binding(self):
         roi_def = _make_roi_def()
         cb = roi_def.motion_occlusion_checkbox

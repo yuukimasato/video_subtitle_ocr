@@ -377,4 +377,8 @@ DICT = {
     '无需手动勾选「写入画面位置标签」：开始识别时在每个 ROI 范围内采样 OCR，若文字行心位移超过移动门限（24px），自动对该区域走移动文字轨迹管线并抑制静态碎片事件。检测成本与采样密度（0.5 秒/帧）成正比，建议 ROI 尽量圈紧移动文字。':
         'No need to tick "Write plane-position tags" manually: at recognition start, each ROI is sample-OCR\'ed, and any text line whose centre moves beyond the movement threshold (24 px) is handed to the motion-trajectory pipeline, suppressing its static fragment events. Detection cost scales with sampling density (0.5 s/frame); keep the ROI tight around the moving text.',
 
+    'ROI {} 亮度自适应已{}': 'ROI {}: brightness adaptation {}',
+    'ROI {} 遮挡蒙版已{}': 'ROI {}: occlusion mask {}',
+    'ROI {} 场景文字显示已设为 {}': 'ROI {}: scene-text display set to {}',
+
 }

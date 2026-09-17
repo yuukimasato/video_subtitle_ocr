@@ -229,6 +229,40 @@ def test_pose_toggle_without_selection_is_noop():
     assert "write_pose_tags" not in roi
 
 
+# ── Motion companion options apply to the selected ROI immediately ──
+
+def test_motion_flag_toggles_write_selected_roi_immediately():
+    """亮度自适应/遮挡蒙版/场景策略:勾选或切换即写回——勾选后直接开始
+    识别不再静默丢失(GUI 轨迹输出与 --auto-brightness/--occlusion-clip
+    等价的前提)。"""
+    roi = {"type": "poly", "points": [[10, 10], [50, 10], [50, 40], [10, 40]]}
+    host = _make_mixin_host([roi], 0)
+
+    host.on_motion_brightness_toggled(True)
+    assert roi["motion_auto_brightness"] is True
+    host.on_motion_occlusion_toggled(True)
+    assert roi["motion_occlusion_clip"] is True
+    host.on_scene_policy_changed("mask")
+    assert roi["scene_text_policy"] == "mask"
+
+    host.on_motion_brightness_toggled(False)
+    assert roi["motion_auto_brightness"] is False
+    host.on_scene_policy_changed("")  # 空值回退 overlap
+    assert roi["scene_text_policy"] == "overlap"
+
+
+def test_motion_flag_toggles_without_selection_are_noop():
+    roi = {"type": "rect", "points": [100, 200, 400, 80]}
+    host = _make_mixin_host([roi], -1)
+
+    host.on_motion_brightness_toggled(True)
+    host.on_motion_occlusion_toggled(True)
+    host.on_scene_policy_changed("mask")
+    assert "motion_auto_brightness" not in roi
+    assert "motion_occlusion_clip" not in roi
+    assert "scene_text_policy" not in roi
+
+
 # ── Merge keeps rotation tags ───────────────────────────────────
 
 def test_parse_pos_from_tags_accepts_float_positions(tmp_path):

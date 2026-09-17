@@ -31,6 +31,12 @@ class RoiDefinitionWidget(QGroupBox):
     # RoiEditingMixin.on_pose_tags_toggled;此前只有 添加/更新 按钮会保存,
     # 勾选后直接开始识别会静默丢失设置)。
     pose_tags_toggled = Signal(bool)
+    # 轨迹字幕的配套选项同样即时写回(与 pose 同契约):亮度自适应、
+    # 遮挡蒙版(\iclip)、场景文字显示策略——勾选/切换后直接开始识别
+    # 不再静默丢失。
+    motion_brightness_toggled = Signal(bool)
+    motion_occlusion_toggled = Signal(bool)
+    scene_policy_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(QCoreApplication.translate("RoiDefinitionWidget", "ROI 定义"), parent)
@@ -279,6 +285,13 @@ class RoiDefinitionWidget(QGroupBox):
         self.update_roi_btn.clicked.connect(self.update_roi_requested)
         self.delete_roi_btn.clicked.connect(self.delete_roi_requested)
         self.pose_tags_checkbox.toggled.connect(self.pose_tags_toggled.emit)
+        self.motion_brightness_checkbox.toggled.connect(
+            self.motion_brightness_toggled.emit)
+        self.motion_occlusion_checkbox.toggled.connect(
+            self.motion_occlusion_toggled.emit)
+        self.scene_text_policy_combo.currentIndexChanged.connect(
+            lambda _idx: self.scene_policy_changed.emit(
+                self.scene_text_policy_combo.currentData() or "overlap"))
 
         self.color_restrict_checkbox.toggled.connect(self._on_color_restrict_toggled)
         self.text_color_btn.clicked.connect(self._pick_text_color)

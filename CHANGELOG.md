@@ -94,6 +94,17 @@
 
 ### 修复
 
+- **轨迹字幕配套选项（亮度自适应/遮挡蒙版/场景文字显示）勾选即生效**：
+  此前只有「写入画面位置标签」复选框有即时写回（勾选后直接开始识别不再
+  静默丢失），亮度自适应/遮挡蒙版复选框与场景策略下拉仍要靠 添加/更新
+  ROI 按钮才落盘——用户勾选后直接识别，GUI 跑出的轨迹字幕不带变暗跟随
+  与遮挡蒙版效果（ROI autosave 里两标志为 false），与
+  `--auto-brightness`/`--occlusion-clip` 测试产物不一致。现三个控件与
+  pose 同契约：`motion_brightness_toggled`/`motion_occlusion_toggled`/
+  `scene_policy_changed` 信号 → 即时写回当前选中 ROI
+  （`motion_auto_brightness`/`motion_occlusion_clip`/`scene_text_policy`）。
+  用真实手绘 5 点闭合多边形 ROI（autosave 原样）+ 两标志开启经 CLI 验证：
+  暗屏链事件携带 `\1c/\alpha \t` 变暗跟随（与 motion-bright 基线同构）。
 - **「写入画面位置标签」勾选即生效、零倾角也写标签、旋转标签不再泄漏为
   字面文本**（三处关联修复，回应"勾选后输出与不勾选完全一样"的反馈）：
   1. 复选框状态此前只在 添加新 ROI / 更新选中 ROI 时写入 ROI 条目，勾选

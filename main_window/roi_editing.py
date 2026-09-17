@@ -95,6 +95,16 @@ class RoiEditingMixin:
             )
         )
 
+    def _selected_roi_index(self) -> Optional[int]:
+        """当前选中的 ROI 下标;无选中/越界返回 None(写回处理器共用)。"""
+        current_item = self.roi_list_widget.roi_list_widget.currentItem()
+        if not current_item:
+            return None
+        index = self.roi_list_widget.roi_list_widget.row(current_item)
+        if not (0 <= index < len(self.roi_data)):
+            return None
+        return index
+
     @Slot(bool)
     def on_pose_tags_toggled(self, checked: bool):
         """「写入画面位置标签」勾选变化：立即写回当前选中的 ROI。
@@ -104,11 +114,8 @@ class RoiEditingMixin:
         重新选中时把勾选框重置回 ROI 保存值，状态看起来"勾了却不生效"。
         回填触发的 toggled 信号写入的是刚读出的同值，幂等无害。
         """
-        current_item = self.roi_list_widget.roi_list_widget.currentItem()
-        if not current_item:
-            return
-        index = self.roi_list_widget.roi_list_widget.row(current_item)
-        if not (0 <= index < len(self.roi_data)):
+        index = self._selected_roi_index()
+        if index is None:
             return
         roi = self.roi_data[index]
         roi["write_pose_tags"] = bool(checked)
@@ -123,6 +130,52 @@ class RoiEditingMixin:
                 "SubtitleOCRGUI", "ROI {} 画面位置标签已{}"
             ).format(index, QCoreApplication.translate("SubtitleOCRGUI", "开启") if checked
                      else QCoreApplication.translate("SubtitleOCRGUI", "关闭"))
+        )
+
+    @Slot(bool)
+    def on_motion_brightness_toggled(self, checked: bool):
+        """「亮度自适应」勾选变化：立即写回当前选中的 ROI（与 pose 同契约）。
+
+        该标志此前只在 添加/更新 ROI 时随条目写入；勾选后直接开始识别会
+        静默丢失——GUI 跑出的轨迹字幕不带变暗跟随标签，与
+        ``--auto-brightness`` / 测试产物效果不一致的根因。
+        """
+        index = self._selected_roi_index()
+        if index is None:
+            return
+        self.roi_data[index]["motion_auto_brightness"] = bool(checked)
+        self.logger.info(
+            QCoreApplication.translate(
+                "SubtitleOCRGUI", "ROI {} 亮度自适应已{}"
+            ).format(index, QCoreApplication.translate("SubtitleOCRGUI", "开启") if checked
+                     else QCoreApplication.translate("SubtitleOCRGUI", "关闭"))
+        )
+
+    @Slot(bool)
+    def on_motion_occlusion_toggled(self, checked: bool):
+        """「遮挡蒙版」勾选变化：立即写回当前选中的 ROI（与 pose 同契约）。"""
+        index = self._selected_roi_index()
+        if index is None:
+            return
+        self.roi_data[index]["motion_occlusion_clip"] = bool(checked)
+        self.logger.info(
+            QCoreApplication.translate(
+                "SubtitleOCRGUI", "ROI {} 遮挡蒙版已{}"
+            ).format(index, QCoreApplication.translate("SubtitleOCRGUI", "开启") if checked
+                     else QCoreApplication.translate("SubtitleOCRGUI", "关闭"))
+        )
+
+    @Slot(str)
+    def on_scene_policy_changed(self, policy: str):
+        """「场景文字显示」下拉变化：立即写回当前选中的 ROI（与 pose 同契约）。"""
+        index = self._selected_roi_index()
+        if index is None:
+            return
+        self.roi_data[index]["scene_text_policy"] = str(policy or "overlap")
+        self.logger.info(
+            QCoreApplication.translate(
+                "SubtitleOCRGUI", "ROI {} 场景文字显示已设为 {}"
+            ).format(index, str(policy or "overlap"))
         )
 
     @staticmethod

@@ -185,6 +185,14 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
         self.roi_def_widget.update_roi_requested.connect(self.update_selected_roi)
         self.roi_def_widget.delete_roi_requested.connect(self.delete_selected_roi)
         self.roi_def_widget.pose_tags_toggled.connect(self.on_pose_tags_toggled)
+        # 轨迹配套选项同样即时写回(与 pose 同契约;勾选后直接开始识别
+        # 不再静默丢失)。
+        self.roi_def_widget.motion_brightness_toggled.connect(
+            self.on_motion_brightness_toggled)
+        self.roi_def_widget.motion_occlusion_toggled.connect(
+            self.on_motion_occlusion_toggled)
+        self.roi_def_widget.scene_policy_changed.connect(
+            self.on_scene_policy_changed)
 
         self.roi_list_widget.selection_changed.connect(self.on_roi_selection_changed)
         self.roi_list_widget.copy_requested.connect(self.copy_roi)
