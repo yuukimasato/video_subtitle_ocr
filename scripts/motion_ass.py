@@ -15,9 +15,11 @@
    内部不平滑)→ ``synthesize_events``:标签阶梯(单段 \\move / 分段 \\move /
    \\t 旋转缩放 / 帧级 \\pos 兜底,lost 切段);
 6. ``scene_text_policy.apply_policy``(--scene-text-policy,默认 overlap 不改
-   变任何输出):mask 生成 \\p1 纯色遮罩盖原文字、external 挪出区域放底带
+   变任何输出):mask 生成 \\p1 纯色遮罩盖原文字、识别文本升 layer 1;
+   mask_only 只出遮罩——识别文本写成 Comment 行(不渲染),layer 1 留给
+   用户自行排版覆写(typesetting);external 挪出区域放底带
    NoteBox、whitespace 放进原文字空白带;所选模式不可用时按
-   whitespace→mask→external 自动回退(stderr 告警);
+   whitespace→mask→external、mask_only→external 自动回退(stderr 告警);
 7. 写 .ass(UTF-8-sig;头与主流水线默认样式一致,事件 Name=motion,按解析
    start 时间排序)。
 
@@ -36,7 +38,7 @@
         [--config-json cfg.json] [--ocr-engine rapid|paddle] \
         [--keyframe-count 3] [--min-gap-sec 0.33] [--vlm-min-confidence 0.0] \
         [--auto-brightness] \
-        [--scene-text-policy overlap|mask|external|whitespace]
+        [--scene-text-policy overlap|mask|mask_only|external|whitespace]
 
 quad 文件格式:{"video": "...", "frame": 0, "quad": [[x, y] × 4]}
 (兼容裸 4×2 列表,与 scripts/track_plane.py 一致)。顶点顺序必须为顺时针
@@ -395,7 +397,9 @@ def write_ass(
     """事件列表 → .ass 文件(UTF-8-sig),按解析 start 时间排序。
 
     事件行格式(阶段一脚本直写,Name=motion 作为合并豁免标记;事件 dict
-    可选 ``layer`` 字段写入 Layer 列,缺省 0,不影响既有输出):
+    可选 ``layer`` 字段写入 Layer 列,缺省 0,不影响既有输出;可选
+    ``comment`` 真值 → 写 ``Comment:`` 行(mask_only 策略的排版参考行,
+    播放器不渲染),缺省 ``Dialogue:``):
     ``Dialogue: {layer},{start},{end},{style},{name},0,0,0,,{tags}{body}``
     返回写出的事件数。
     """
@@ -403,7 +407,8 @@ def write_ass(
     entries = []
     for ev in ordered:
         entries.append(
-            "Dialogue: {},{},{},{},{},0,0,0,,{}{}".format(
+            "{}: {},{},{},{},{},0,0,0,,{}{}".format(
+                "Comment" if ev.get("comment") else "Dialogue",
                 int(ev.get("layer", 0) or 0),
                 ev["start_time"], ev["end_time"], ev["style"],
                 ev.get("name", ""), ev.get("tags", ""),
@@ -444,12 +449,17 @@ def build_motion_events(
     :func:`normalize_quad_winding` 纠正。
 
     ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``ocr_engine`` 指定的
-    引擎(未指定时取注册表默认)构造独立实例并在结束时清理。
+    引擎(未指定时取注册表默认)构造独立实例并在结束时清理。行融合后按
+    ``cfg.junk_line_filter``(默认开)用 :func:`core.text_utils.is_noise_text`
+    剔除噪声行(纯符号/纯数字/单字非标点——手机状态栏与导航栏图标的
+    典型误读),被剔除的行经 ``log`` 留痕。
     ``auto_brightness`` 开启时,合成事件后逐 ok 帧测量文字平面亮度,对每条
     事件追加独立的亮度 override 块(``{原有tags}{\\1c/\\alpha \\t 链}body``,
     不改动既有标签);无 ok 帧 / 曲线退化(基线 ≤ 0 / 全程恒亮)时告警并
     静默跳过。``scene_text_policy`` 为场景文字显示策略(默认 overlap 不改变
-    任何输出;mask/external/whitespace 不可用时按 whitespace→mask→external
+    任何输出;mask 生成遮罩+识别文本升 layer 1;mask_only 只出遮罩、识别
+    文本写成 Comment 行供排版覆写;mask/mask_only/external/whitespace
+    不可用时按 whitespace→mask→external、mask_only→external
     自动回退并经 ``log`` 告警)。``log`` 缺省打到 stderr。
     返回 ``(events, summary)``,summary 含 ok_frames / total_frames /
     keyframes / hard_lines / policy / width / height / lines / plane_size /
@@ -550,6 +560,15 @@ def build_motion_events(
             f"{hard_lines}")
 
     rows = _fused_line_rows(best_ocr_data)
+    if cfg.junk_line_filter:
+        # 与静态路径同一噪声判据:剔除图标/状态栏误读(<、>、000、单字象形)。
+        from core.text_utils import is_noise_text
+
+        kept_rows = [row for row in rows if not is_noise_text(row[0])]
+        dropped = [row[0] for row in rows if is_noise_text(row[0])]
+        if dropped:
+            log(f"      junk filter: dropped {len(dropped)} noise line(s): {dropped}")
+        rows = kept_rows
     if not rows:
         raise RuntimeError("no text lines recognized on any keyframe")
     # 窗口像素坐标 + 外接矩形偏移 = 初始帧平面坐标(常量平移,见模块 docstring)
@@ -829,15 +848,20 @@ def main(argv: Optional[Sequence[str]] = None, ocr_fn: Optional[OcrFn] = None) -
                              "anchor-keyframe difference) and clip affected events "
                              "with \\iclip(\\t-animated) so subtitles never render "
                              "over the occluder (default: off)")
-    parser.add_argument("--scene-text-policy", choices=["overlap", "mask", "external", "whitespace"],
+    parser.add_argument("--scene-text-policy",
+                        choices=["overlap", "mask", "mask_only", "external", "whitespace"],
                         default="overlap",
                         help="how to display recognized text over the scene text: "
                              "overlap = on top of the original glyphs (default, "
                              "unchanged output); mask = solid \\p1 patch over the "
-                             "original text; external = bottom NoteBox outside the "
-                             "region; whitespace = reuse an empty band of the plane. "
-                             "mask/external/whitespace fall back automatically "
-                             "(whitespace -> mask -> external) when unavailable")
+                             "original text; mask_only = patch only, recognized "
+                             "text written as Comment lines (not rendered) so the "
+                             "patch can be re-typeset by hand; external = bottom "
+                             "NoteBox outside the region; whitespace = reuse an "
+                             "empty band of the plane. mask/mask_only/external/"
+                             "whitespace fall back automatically (whitespace -> "
+                             "mask -> external, mask_only -> external) when "
+                             "unavailable")
     args = parser.parse_args(argv)
 
     if bool(args.quad) == bool(args.quad_file):

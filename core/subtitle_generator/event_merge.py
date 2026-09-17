@@ -48,26 +48,10 @@ class _EventMergeMixin:
         return abs(pa[0] - pb[0]) <= tol and abs(pa[1] - pb[1]) <= tol
 
     def _is_noise_body(self, body: str) -> bool:
-        b = (body or "").replace("\r", "").strip()
-        if not b:
-            return True
-        # Remove ASS explicit line breaks for judgement
-        z = re.sub(r"(?i)\\[nN]", "", b)
-        z = re.sub(r"\s+", "", z)
-        if not z:
-            return True
-        if z in ("()", "（）", "[]", "【】", "{}"):
-            return True
-        if re.fullmatch(r"[\(\)\[\]\{\}（）【】]+", z):
-            return True
-        if re.fullmatch(r"[0-9]+", z):
-            return True
-        if re.fullmatch(r"[0-9]+[A-Za-z]+", z) or re.fullmatch(r"[A-Za-z]+[0-9]+", z):
-            # 常见 OCR 垃圾：短促闪烁的编号/序号
-            return len(z) <= 4
-        if len(z) == 1 and z not in ("，", "。", "！", "？", ".", "!", "?"):
-            return True
-        return False
+        # 判据抽为 core.text_utils.is_noise_text(与轨迹管线 junk filter 共用)
+        from core.text_utils import is_noise_text
+
+        return is_noise_text(body)
 
     def _filter_events(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         if not events:

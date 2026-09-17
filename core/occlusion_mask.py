@@ -59,6 +59,9 @@ class OcclusionConfig:
     sample_stride_frames: int = 3     # 每 N 个好帧检测一次遮挡
     sample_max_frames: int = 7        # 每条事件最多取的遮挡采样帧数
     resample_points: int = 16         # 每个多边形重采样点数(动画插值需等点)
+    edge_margin_px: int = 8           # 展开图四边忽略带(单应边界采样不稳定)
+    edge_sliver_max_px: float = 24.0  # 贴边条带判定的最大厚度(px)
+    edge_sliver_min_frac: float = 0.5  # 条带须覆盖对应边长的比例
 
 
 # ---------------------------------------------------------------------------
@@ -77,16 +80,23 @@ def detect_occlusion_polygons(
     max_coverage: float = 0.55,
     epsilon_px: float = 2.0,
     morph_kernel: int = 5,
+    edge_margin_px: int = 8,
+    edge_sliver_max_px: float = 24.0,
+    edge_sliver_min_frac: float = 0.5,
 ) -> List[np.ndarray]:
     """单帧遮挡检测:展开图 vs 锚定帧灰度差 → 平面坐标多边形列表。
 
     展开窗口与 ``scripts.motion_ass._unwarp_quad_window`` 同一约定:窗口
     像素 (u, v) = 平面点 (qx1+u, qy1+v),故轮廓点加回 ``origin`` 即平面
-    坐标。两处防误报:①当前展开图先按自身灰度中位值相对锚定图归一
+    坐标。三处防误报:①当前展开图先按自身灰度中位值相对锚定图归一
     (屏幕整体变暗/变亮时逐像素等比缩放,差分≈0,而局部遮挡不受影响);
     ②形态学清理后变化像素覆盖率 > ``max_coverage`` 视为全局外观变化
-    (调暗/切镜)而非遮挡,返回空列表。展开图无效(退化单应抛错由调用方
-    处理)、窗口尺寸与锚定图不符或无显著变化区时也返回空列表。
+    (调暗/切镜)而非遮挡,返回空列表;③四边 ``edge_margin_px`` 忽略带内
+    的变化不计(展开窗口边界单应采样不稳定,典型产生贴边的整条窄带
+    伪影),且贴合有效边界的细长条带(厚度 ≤ ``edge_sliver_max_px``、
+    覆盖 ≥ ``edge_sliver_min_frac``×边长)按采样伪影剔除。展开图无效
+    (退化单应抛错由调用方处理)、窗口尺寸与锚定图不符或无显著变化区
+    时也返回空列表。
     """
     import cv2
 
@@ -116,6 +126,15 @@ def detect_occlusion_polygons(
         kernel = np.ones((k, k), np.uint8)
         changed = cv2.morphologyEx(changed, cv2.MORPH_CLOSE, kernel)
         changed = cv2.morphologyEx(changed, cv2.MORPH_OPEN, kernel)
+    h, w = changed.shape
+    m = int(edge_margin_px)
+    if m > 0 and w > 2 * m and h > 2 * m:
+        # 展开窗口边界由单应外采样/插值产生,与锚定帧的差分是稳定伪影
+        # (整圈窄条),不计入遮挡。
+        changed[:m, :] = 0
+        changed[h - m:, :] = 0
+        changed[:, :m] = 0
+        changed[:, w - m:] = 0
     if float(changed.mean()) > float(max_coverage):
         return []  # 大半平面都变了:调暗/切镜等全局变化,不是局部遮挡
     contours, _ = cv2.findContours(
@@ -124,11 +143,34 @@ def detect_occlusion_polygons(
     for contour in contours:
         if cv2.contourArea(contour) < float(min_area_px):
             continue
+        bx, by, bw, bh = cv2.boundingRect(contour)
+        if _is_edge_sliver(bx, by, bw, bh, w, h, m,
+                           float(edge_sliver_max_px), float(edge_sliver_min_frac)):
+            continue  # 贴边细长条带:展开采样伪影,不是遮挡物
         approx = cv2.approxPolyDP(contour, float(epsilon_px), True)
         pts = approx.reshape(-1, 2).astype(np.float64) + np.array([qx1, qy1])
         if len(pts) >= 3:
             polys.append(pts)
     return polys
+
+
+def _is_edge_sliver(
+    bx: int, by: int, bw: int, bh: int,
+    w: int, h: int, margin: int,
+    max_px: float, min_frac: float,
+) -> bool:
+    """贴边细长条带判定:平行于某条有效边界、厚度 ≤ max_px、
+    长度 ≥ min_frac×该边全长。真实遮挡物(手/手指)在平面上是块状
+    区域,跟踪误差产生的接缝伪影则是沿边界平行的窄条。"""
+    x_in = bx <= margin
+    x_out = bx + bw >= w - margin
+    y_in = by <= margin
+    y_out = by + bh >= h - margin
+    if bh <= max_px and (y_in or y_out) and bw >= min_frac * w:
+        return True
+    if bw <= max_px and (x_in or x_out) and bh >= min_frac * h:
+        return True
+    return False
 
 
 def collect_occlusions(
@@ -180,7 +222,10 @@ def collect_occlusions(
                         diff_tol=cfg.diff_tol, min_area_px=cfg.min_area_px,
                         max_coverage=cfg.max_coverage,
                         epsilon_px=cfg.epsilon_px,
-                        morph_kernel=cfg.morph_kernel)
+                        morph_kernel=cfg.morph_kernel,
+                        edge_margin_px=cfg.edge_margin_px,
+                        edge_sliver_max_px=cfg.edge_sliver_max_px,
+                        edge_sliver_min_frac=cfg.edge_sliver_min_frac)
                 except (ValueError, cv2.error):
                     polys = []  # 退化单应等:该帧不判遮挡
                 if polys:

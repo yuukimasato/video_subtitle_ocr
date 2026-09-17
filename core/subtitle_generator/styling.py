@@ -46,7 +46,10 @@ class _StylingMixin:
         frz = float(pose.get("frz", 0.0) or 0.0)
         frx = float(pose.get("frx", 0.0) or 0.0)
         fry = float(pose.get("fry", 0.0) or 0.0)
-        return f"{{\\an5\\pos({px:.1f},{py:.1f})\\frz({frz:.1f})\\frx({frx:.1f})\\fry({fry:.1f})}}"
+        # ASS 数值标签(\frz/\frx/\fry/\fs)参数直接跟数值,不带圆括号:
+        # 只有 \pos/\move/\t/\clip 等才用括号;写成 \frz(8.0) 会被 libass
+        # 静默忽略(与 core/motion_ass.py 的 \frz 写法保持一致)。
+        return f"{{\\an5\\pos({px:.1f},{py:.1f})\\frz{frz:.1f}\\frx{frx:.1f}\\fry{fry:.1f}}}"
 
     def _apply_roi_pose_tags(self, styled_lines: List[Dict], pose: Dict) -> List[Dict]:
         """Apply the ROI's pose tags to a group's styled lines.
@@ -63,7 +66,8 @@ class _StylingMixin:
         # pose 启用即整体写入旋转块(含 0 值):与选项提示「附带 \pos \frz
         # \frx \fry」一致;零倾角(正放矩形 ROI)此前不追加任何标签,勾选
         # 前后输出完全相同,用户无法确认选项已生效。
-        rotation = "\\frz({:.1f})\\frx({:.1f})\\fry({:.1f})".format(frz, frx, fry)
+        # 数值标签不带圆括号(见 _format_pose_tag 同步说明)。
+        rotation = "\\frz{:.1f}\\frx{:.1f}\\fry{:.1f}".format(frz, frx, fry)
 
         out = []
         for line in styled_lines:
@@ -72,7 +76,7 @@ class _StylingMixin:
                 # Keep the line's own detected position, add rotation only.
                 # 旋转必须并入既有 override 块内部:ASS 的 \frz 等标签写在
                 # `}` 之外会被当作字幕字面文本渲染出来(此前 tags + rotation
-                # 直接拼接,倾斜多边形的输出会显示 "\frz(8.0)" 字样)。
+                # 直接拼接,倾斜多边形的输出会显示 "\frz8.0" 字样)。
                 if tags.endswith("}"):
                     line["tags"] = tags[:-1] + rotation + "}"
                 else:  # 防御:无块可并入时包成独立 override 块

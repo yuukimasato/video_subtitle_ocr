@@ -74,6 +74,10 @@ class MotionAssConfig:
     max_segments_per_sec: float = 6.0
     lost_hold_sec: float = 0.0      # lost 保持时长(0=切段)
 
+    # —— 融合行噪声过滤(手机状态栏/导航栏图标误读:<、>、000、单字象形)——
+    # 判据与静态路径共用(core.text_utils.is_noise_text),行融合后、建轨迹前剔除。
+    junk_line_filter: bool = True
+
     # —— 屏幕亮度自适应(增量特性;--auto-brightness 开启,--config-json 可覆盖)——
     brightness_tol: float = 8.0                   # 亮度曲线 DP 简化容差(0-255 亮度级)
     brightness_baseline_percentile: float = 90.0  # 亮度基线分位(各帧中位值的分位)
@@ -92,6 +96,9 @@ class MotionAssConfig:
     occlusion_min_line_overlap: float = 0.06      # 与行框相交面积占比下限
     occlusion_max_coverage: float = 0.55          # 变化覆盖率上限(超过=调暗/切镜,不判遮挡)
     occlusion_sample_max_frames: int = 7          # 每条事件最多取的遮挡采样帧数
+    occlusion_edge_margin_px: int = 8             # 展开图四边忽略带(单应边界采样不稳定)
+    occlusion_edge_sliver_max_px: float = 24.0    # 贴边条带判定的最大厚度(px)
+    occlusion_edge_sliver_min_frac: float = 0.5   # 条带须覆盖对应边长的比例
 
 
 @dataclass
@@ -121,7 +128,10 @@ def format_ass_time(sec: float) -> str:
     """秒 → ASS ``H:MM:SS.CC``(centisecond 截断,与 generator 时间轴一致)。"""
     if sec < 0:
         sec = 0.0
-    cs_total = int(float(sec) * 100)
+    # 1e-6 只抵消浮点表示噪声:POS_MSEC/1000 的秒值经常落在真值一个 ULP
+    # 之下(如 1.16*100 == 115.99999...),直接截断会把整帧时间戳提前 1cs
+    # (与 subtitle_generator/timeline.py 的同源修复保持一致)。
+    cs_total = int(float(sec) * 100 + 1e-6)
     h, rem = divmod(cs_total, 360000)
     m, rem = divmod(rem, 6000)
     s, cs = divmod(rem, 100)
@@ -620,6 +630,15 @@ def _chain_events(
     events: List[Dict] = []
     multi = len(segs) > 1
     last = len(segs) - 1
+    # 链尾(含单段)结束时间延伸到下一帧:ASS 的 End 是排他边界,取尾帧自身
+    # 的 time_sec 会让最后一个 ok 帧整帧无字幕;与 dense 兜底/主流水线
+    # generator 的「尾帧时间 + 1 帧距」语义对齐。
+    chain_times = [tmap[f].time_sec for f in chain]
+    if len(chain_times) >= 2:
+        chain_dts = sorted(b - a for a, b in zip(chain_times, chain_times[1:]))
+        chain_dt = chain_dts[len(chain_dts) // 2]
+    else:
+        chain_dt = 0.0
     for si, (ai, bi) in enumerate(segs):
         f0 = chain[ai]
         # 非末段的 end_frame = 下一段的 start_frame(共享边界帧)
@@ -628,6 +647,8 @@ def _chain_events(
             continue  # 零长段丢弃
         t0 = tmap[f0].time_sec
         t1 = tmap[f1].time_sec
+        if si == last:
+            t1 = _next_frame_time(tmap, f1, t1, chain_dt)
         if t1 <= t0:
             continue
         if multi:

@@ -74,3 +74,33 @@ def count_words(text: str) -> int:
     word_count = len(word_text.strip().split())
 
     return char_count + word_count
+
+
+def is_noise_text(body: str) -> bool:
+    """判定 OCR 文本行是否为噪声(与静态路径 ``_is_noise_body`` 同一判据)。
+
+    噪声 = 空行/纯括号/纯数字/短编号(≤4 位数字母混排)/单字非标点——
+    手机状态栏与导航栏图标(<、>、000、单字象形)的典型误读。轨迹管线
+    (``scripts.motion_ass.build_motion_events`` 的 ``junk_line_filter``)
+    与主流水线静态路径共用本判据,行为完全一致。
+    """
+    b = (body or "").replace("\r", "").strip()
+    if not b:
+        return True
+    # Remove ASS explicit line breaks for judgement
+    z = re.sub(r"(?i)\\[nN]", "", b)
+    z = re.sub(r"\s+", "", z)
+    if not z:
+        return True
+    if z in ("()", "（）", "[]", "【】", "{}"):
+        return True
+    if re.fullmatch(r"[\(\)\[\]\{\}（）【】]+", z):
+        return True
+    if re.fullmatch(r"[0-9]+", z):
+        return True
+    if re.fullmatch(r"[0-9]+[A-Za-z]+", z) or re.fullmatch(r"[A-Za-z]+[0-9]+", z):
+        # 常见 OCR 垃圾：短促闪烁的编号/序号
+        return len(z) <= 4
+    if len(z) == 1 and z not in ("，", "。", "！", "？", ".", "!", "?"):
+        return True
+    return False

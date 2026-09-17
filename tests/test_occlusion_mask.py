@@ -1,5 +1,5 @@
 # tests/test_occlusion_mask.py
-"""手部遮挡检测与 \\iclip 蒙版(core/occlusion_mask.py)离线单元测试。
+r"""手部遮挡检测与 \\iclip 蒙版(core/occlusion_mask.py)离线单元测试。
 
 - detect_occlusion_polygons:恒等单应下,展开图(= 原图)与锚定帧灰度差
   圈出遮挡矩形;无遮挡返回空;尺寸不符防御返回空;
@@ -155,6 +155,43 @@ class TestDetectOcclusionPolygons:
         noise = rng.integers(0, 256, (PLANE_H, PLANE_W, 3), dtype=np.uint8)
         assert detect_occlusion_polygons(
             noise, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0)) == []
+
+    def test_border_sampling_strip_not_reported(self):
+        # 展开窗口边界采样伪影:顶部整幅 5px 变化条(单应边界插值不稳定)
+        # 落在 edge_margin 忽略带内 → 不计遮挡;内部遮挡块照常检出。
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        frame = make_plane(occluder=True)
+        cv2.rectangle(frame, (0, 0), (PLANE_W - 1, 4), (150, 140, 130), -1)
+        polys = detect_occlusion_polygons(
+            frame, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0),
+            diff_tol=CFG.diff_tol, min_area_px=CFG.min_area_px,
+            epsilon_px=CFG.epsilon_px, morph_kernel=CFG.morph_kernel)
+        assert len(polys) == 1, "edge strip must be ignored, occluder kept"
+        pts = polys[0]
+        assert pts[:, 1].min() >= OCCLUDER[1] - 8
+
+    def test_edge_hugging_sliver_not_reported(self):
+        # 贴边细长条带(跟踪误差接缝):左缘 20px 宽 × 70% 高的窄条
+        # 面积过门限但按采样伪影剔除,不产生 \iclip
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        frame = make_plane()
+        cv2.rectangle(frame, (0, 24), (19, 135), (150, 140, 130), -1)
+        assert detect_occlusion_polygons(
+            frame, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0),
+            diff_tol=CFG.diff_tol, min_area_px=CFG.min_area_px,
+            epsilon_px=CFG.epsilon_px, morph_kernel=CFG.morph_kernel) == []
+
+    def test_wide_edge_blob_still_reported(self):
+        # 真实遮挡物允许贴边:60px 宽的大块从左缘伸入(厚度超条带上限)
+        # 不受贴边条带规则影响
+        anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+        frame = make_plane()
+        cv2.rectangle(frame, (0, 40), (59, 119), (150, 140, 130), -1)
+        polys = detect_occlusion_polygons(
+            frame, IDENTITY, anchor, (PLANE_W, PLANE_H), (0, 0),
+            diff_tol=CFG.diff_tol, min_area_px=CFG.min_area_px,
+            epsilon_px=CFG.epsilon_px, morph_kernel=CFG.morph_kernel)
+        assert len(polys) == 1
 
 
 # ---------------------------------------------------------------------------

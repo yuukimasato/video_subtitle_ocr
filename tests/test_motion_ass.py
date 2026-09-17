@@ -169,6 +169,14 @@ class TestFormatAssTime:
     def test_negative_clamped(self):
         assert format_ass_time(-1.0) == "0:00:00.00"
 
+    def test_float_noise_not_truncated_early(self):
+        # Regression: POS_MSEC/1000 的秒值常落在真值一个 ULP 之下
+        # (1.16*100 == 115.99999...),直接截断会把时间戳提前 1cs
+        # (与 subtitle_generator/timeline.py 同源的 epsilon 修复)。
+        assert format_ass_time(1.16) == "0:00:01.16"
+        assert format_ass_time(2.32) == "0:00:02.32"
+        assert format_ass_time(57.81) == "0:00:57.81"
+
 
 # ---------------------------------------------------------------------------
 # Task 4: build_line_tracks
@@ -425,14 +433,15 @@ class TestSynthesizeSingleStraight:
         assert ev["style"] == "Scene"
         assert ev["body"] == "直线"
         assert ev["start_time"] == format_ass_time(0.0)
-        assert ev["end_time"] == format_ass_time((n - 1) / FPS)
+        # 链尾结束时间延伸 1 帧(尾帧时间是排他边界,否则最后 1 帧无字幕)
+        assert ev["end_time"] == format_ass_time(n / FPS)
         tags = ev["tags"]
         assert tags.startswith("{\\an5\\fs50\\move(")
         assert "\\pos(" not in tags
         x1, y1, x2, y2 = move_points(tags)
         assert (x1, y1) == pytest.approx((150.0, 125.0), abs=0.05)
         assert (x2, y2) == pytest.approx((150.0 + 2.0 * (n - 1), 125.0), abs=0.05)
-        t_ms = int(round((n - 1) / FPS * 1000))
+        t_ms = int(round(n / FPS * 1000))
         assert f",0,{t_ms})" in tags
 
 
@@ -478,9 +487,9 @@ class TestSynthesizeRotationTTag:
         assert "\\frz" in tags
         assert "\\t(" in tags
         assert "\\move(" in tags
-        # 基值 + 目标值形式:\frz(0) … \t(0,T,\frz(15))
+        # 基值 + 目标值形式:\frz(0) … \t(0,T,\frz(15));T 覆盖到尾帧+1 帧
         assert "\\frz0.00" in tags
-        t_ms = int(round((n - 1) / FPS * 1000))
+        t_ms = int(round(n / FPS * 1000))
         assert f"\\t(0,{t_ms},\\frz15.00)" in tags
 
 
@@ -503,7 +512,7 @@ class TestSynthesizeScaleFscxTag:
         assert "\\frz" not in tags
         # 基值 \fscx/\fscy 百分比 + \t 到目标百分比
         assert "\\fscx100.0\\fscy100.0" in tags
-        t_ms = int(round((n - 1) / FPS * 1000))
+        t_ms = int(round(n / FPS * 1000))
         assert f"\\t(0,{t_ms},\\fscx150.0\\fscy150.0)" in tags
         # 平滑前 pose 的 scale 逐帧正确
         assert line_tracks[0].poses[0].scale == pytest.approx(1.0, abs=1e-9)
@@ -550,7 +559,8 @@ class TestSynthesizeLostSplit:
         end1 = parse_ass_time(events[0]["end_time"])
         start2 = parse_ass_time(events[1]["start_time"])
         assert end1 < start2  # 不重叠、不外推
-        assert events[0]["end_time"] == format_ass_time(9 / FPS)
+        # 链尾 +1 帧:段 1 最后 ok 帧是 9,结束时间取下一帧(10,lost)时刻
+        assert events[0]["end_time"] == format_ass_time(10 / FPS)
         assert events[1]["start_time"] == format_ass_time(16 / FPS)
         for ev in events:
             assert "\\move(" in ev["tags"]
@@ -564,7 +574,7 @@ class TestSynthesizeLostSplit:
         events = synthesize_events(line_tracks, tracks, cfg)
         assert len(events) == 1
         assert events[0]["start_time"] == format_ass_time(0.0)
-        assert events[0]["end_time"] == format_ass_time((n - 1) / FPS)
+        assert events[0]["end_time"] == format_ass_time(n / FPS)
 
 
 class TestSynthesizeMisc:

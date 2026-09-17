@@ -110,8 +110,8 @@ def test_pose_tags_written_for_bottom_subtitle(tmp_path):
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
     assert "\\an5" in text
     assert "\\pos(640.0,620.0)" in text
-    assert "\\frz(-12.5)" in text
-    assert "\\frx(0.0)" in text and "\\fry(0.0)" in text
+    assert "\\frz-12.5" in text
+    assert "\\frx0.0" in text and "\\fry0.0" in text
 
 
 def test_scene_lines_keep_own_pos_and_gain_rotation(tmp_path):
@@ -126,8 +126,9 @@ def test_scene_lines_keep_own_pos_and_gain_rotation(tmp_path):
 
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
     # rotation goes INSIDE the override block (outside `}` it would render
-    # as literal on-screen text)
-    assert "{\\an5\\pos(300,325)\\frz(8.0)\\frx(0.0)\\fry(0.0)}" in text
+    # as literal on-screen text); numeric tags carry no parentheses
+    # (\frz(8.0) is invalid ASS and silently ignored by libass).
+    assert "{\\an5\\pos(300,325)\\frz8.0\\frx0.0\\fry0.0}" in text
 
 
 def test_zero_tilt_rect_pose_still_writes_rotation_tags(tmp_path):
@@ -143,7 +144,7 @@ def test_zero_tilt_rect_pose_still_writes_rotation_tags(tmp_path):
     conv.convert_from_memory(iter(items))
 
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
-    assert "{\\an5\\pos(300,325)\\frz(0.0)\\frx(0.0)\\fry(0.0)}" in text
+    assert "{\\an5\\pos(300,325)\\frz0.0\\frx0.0\\fry0.0}" in text
     # ... and nothing leaks outside the override block as literal text
     assert "}\\frz" not in text and "}\\frx" not in text
 
@@ -280,11 +281,11 @@ def test_scene_merge_preserves_rotation_tags(tmp_path):
     base = {"roi": "roi_0", "style": "Scene", "body": "店铺招牌"}
     events = [
         dict(base, start_time="0:00:01.00", end_time="0:00:02.00",
-             tags="{\\an5\\pos(300,325)\\frz(8.0)}"),
+             tags="{\\an5\\pos(300,325)\\frz8.0}"),
         dict(base, start_time="0:00:03.00", end_time="0:00:04.00",
-             tags="{\\an5\\pos(302,326)\\frz(8.0)}"),
+             tags="{\\an5\\pos(302,326)\\frz8.0}"),
     ]
     merged = conv._merge_temporal_near_duplicate_events(events)
     assert len(merged) == 1
-    assert "\\frz(8.0)" in merged[0]["tags"]
+    assert "\\frz8.0" in merged[0]["tags"]
     assert "\\pos(30" in merged[0]["tags"]

@@ -566,13 +566,13 @@ def test_occlusion_clip_end_to_end(tmp_path, monkeypatch):
     out_plain = tmp_path / "noclip.ass"
     out_clip = tmp_path / "clip.ass"
     # 手工遮挡表:多边形(平面坐标)盖住两行行框(≈108..216/102..116 与
-    # 130..186/142..156);遮挡帧取事件跨度(末时间按 centisecond 截断回
-    # 解析,故取 22 而非 23)内的采样帧 0 与 22 → 动画路径;真检测归
-    # test_occlusion_mask。
+    # 130..186/142..156);遮挡帧取事件跨度内的采样帧 0 与 23(链尾结束
+    # 时间延伸 1 帧,跨度覆盖到 23;末时间按 centisecond 截断回解析)
+    # → 动画路径;真检测归 test_occlusion_mask。
     poly = [[130.0, 100.0], [200.0, 100.0], [200.0, 160.0], [130.0, 160.0]]
     import copy
 
-    occl = {f: [copy.deepcopy(poly)] for f in (0, 22)}
+    occl = {f: [copy.deepcopy(poly)] for f in (0, 23)}
     monkeypatch.setattr(
         "core.occlusion_mask.collect_occlusions", lambda *a, **k: dict(occl))
     common = ["--video", video_path, "--quad-file", str(quad_file)]
@@ -586,10 +586,10 @@ def test_occlusion_clip_end_to_end(tmp_path, monkeypatch):
     assert len(plain) == len(clipped) == 2
     assert all("\\iclip(" not in t for t in plain)
     assert all("\\iclip(" in t for t in clipped)
-    # 首末采样帧(0、12)都有遮挡且多边形个数相同 → 动画形式
-    # \iclip + \t(0,段长ms,\iclip(...))
+    # 首末采样帧(0、23)都有遮挡且多边形个数相同 → 动画形式
+    # \iclip + \t(0,段长ms,\iclip(...));段长 = 0.00 → 3.00s(链尾 +1 帧)
     assert all(t.count("\\iclip(") == 2 for t in clipped)
-    assert all("\\t(0,2870,\\iclip(" in t for t in clipped)
+    assert all("\\t(0,3000,\\iclip(" in t for t in clipped)
 
 
 # ---------------------------------------------------------------------------
@@ -935,3 +935,70 @@ def test_default_ocr_fn_keeps_available_engine(monkeypatch, capsys):
     motion_cli._default_ocr_fn("rapid")
     assert captured["engine_id"] == "rapid"
     assert "falling back" not in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# 融合行噪声过滤(junk_line_filter;手机状态栏/导航栏图标误读)
+# ---------------------------------------------------------------------------
+
+def _fixed_ocr(texts_boxes):
+    """返回恒定输出的 ocr_fn:每次关键帧都读出同一组(文本, 行框)。"""
+
+    def ocr_fn(img):
+        ocr = {"dt_polys": [], "rec_polys": [], "rec_texts": [],
+               "rec_scores": [], "rec_boxes": []}
+        for text, (x1, y1, x2, y2) in texts_boxes:
+            poly = [[float(x1), float(y1)], [float(x2), float(y1)],
+                    [float(x2), float(y2)], [float(x1), float(y2)]]
+            ocr["dt_polys"].append([list(p) for p in poly])
+            ocr["rec_polys"].append(poly)
+            ocr["rec_texts"].append(text)
+            ocr["rec_scores"].append(0.95)
+            ocr["rec_boxes"].append([int(x1), int(y1), int(x2), int(y2)])
+        return ocr
+
+    return ocr_fn
+
+
+# 两行真实文字 + 三行噪声(导航键 <、时钟 000、单字象形误读 血)
+_JUNK_TEXT_BOXES = [
+    ("メール一覧", (18, 22, 126, 36)),
+    ("次回ミーティング", (40, 62, 96, 76)),
+    ("<", (8, 88, 20, 98)),
+    ("000", (60, 88, 84, 98)),
+    ("血", (110, 88, 124, 98)),
+]
+
+
+def test_junk_lines_filtered_from_motion_events(tmp_path):
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "junk.ass"
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec],
+        ocr_fn=_fixed_ocr(_JUNK_TEXT_BOXES))
+
+    assert rc == 0
+    text = out_ass.read_bytes().decode("utf-8-sig")
+    bodies = re.findall(r"^Dialogue: .*,,\{[^}]*\}(.*)$", text, re.M)
+    assert set(bodies) == {"メール一覧", "次回ミーティング"}, (
+        "icon/clock misreads (<, 000, single glyph) must not become events")
+
+
+def test_junk_filter_disabled_via_config(tmp_path):
+    video_path, quad0 = build_case(tmp_path, n=8, scale_step=0.0)
+    quad_spec = " ".join(f"{x:.0f},{y:.0f}" for x, y in quad0)
+    out_ass = tmp_path / "nojunk.ass"
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"junk_line_filter": False}), encoding="utf-8")
+
+    rc = motion_cli.main(
+        ["--video", video_path, "--out", str(out_ass), "--quad", quad_spec,
+         "--config-json", str(cfg)],
+        ocr_fn=_fixed_ocr(_JUNK_TEXT_BOXES))
+
+    assert rc == 0
+    text = out_ass.read_bytes().decode("utf-8-sig")
+    bodies = set(re.findall(r"^Dialogue: .*,,\{[^}]*\}(.*)$", text, re.M))
+    assert bodies == {"メール一覧", "次回ミーティング", "<", "000", "血"}
