@@ -44,6 +44,14 @@ def _fake_worker(payload):  # pragma: no cover - runs in child
         q.put({"type": "error", "window": w, "attempt": attempt,
                "error": "FakeError: boom"})
         return
+    if mode == "die_silent":
+        # 首次尝试报错触发重试;第二次尝试直接死掉且不留任何消息,
+        # 迫使协调器走 _check_liveness 检出失败(而非 error 消息路径)。
+        if attempt == 0:
+            q.put({"type": "error", "window": w, "attempt": attempt,
+                   "error": "FakeError: die on next attempt"})
+            return
+        os._exit(1)
     if mode == "slow":
         q.put({"type": "progress", "window": w, "attempt": attempt, "pct": 10})
         time.sleep(30)
@@ -135,6 +143,32 @@ def test_error_retried_then_sequential_fallback(monkeypatch):
     assert seq_calls == [1]     # then the bounded sequential fallback
     texts = [r[0]["t"][0] for r in result]
     assert "seq" in texts
+
+
+def test_liveness_detected_second_failure_completes(monkeypatch):
+    """Regression: 第二次失败由 _check_liveness(worker 静默死亡、队列无
+    error 消息)检出时,顺序兜底只置 done 不发消息——修复前该窗口的 index
+    永远留在 pending 里,主循环空转死循环、run_chunk_parallel 永不返回。"""
+    MODES[1] = "die_silent"
+
+    def fake_seq(ctx, window, *, progress_cb, cancel_check):
+        return [({"t": ["seq"]}, 500, "roi_0", 50.0)]
+
+    monkeypatch.setattr(runner, "run_window_stages", fake_seq)
+    plan = _plan()
+
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(
+            runner.run_chunk_parallel,
+            _ctx(), plan,
+            progress_cb=lambda p, m: None, cancel_check=lambda: False,
+            mp_context=FORK, worker_target=_fake_worker,
+            poll_timeout_s=0.05)
+        result = fut.result(timeout=20)  # 修复回退时会卡死并在此超时
+
+    texts = [r[0]["t"][0] for r in result]
+    assert "seq" in texts  # 顺序兜底产物并入最终结果
 
 
 def test_cancel_propagates_and_kills_children():

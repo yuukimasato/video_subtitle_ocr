@@ -94,10 +94,9 @@ class _RoiFiltersMixin:
             # ROI 主导是底部/顶部字幕时，优先排除“场景”杂项
             if dom_loc in ("BOTTOM", "TOP") and loc == "SCENE":
                 continue
-            # 主导是场景字时，不去过滤 BOTTOM/TOP（避免误杀真正场景字偶尔靠近边缘）
-            if dom_loc == "SCENE" and loc in ("BOTTOM", "TOP"):
-                continue
-
+            # 主导是场景字时，不按位置带排除 BOTTOM/TOP：场景字（招牌、
+            # 手机屏等）经常落在画面边缘带，位置分类对场景字不可靠，
+            # 丢弃会静默丢字幕；场景杂项仅靠下方高度比过滤兜底。
             h = self._group_text_height(g)
             if h <= 0:
                 continue

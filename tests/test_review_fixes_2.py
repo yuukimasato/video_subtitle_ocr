@@ -15,7 +15,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import core.aligner as aligner_mod
 import core.color_presence_gate as gate
 import core.ocr_optimizer as oo
 import core.scene_plane_tracker as spt

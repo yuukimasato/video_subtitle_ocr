@@ -38,7 +38,9 @@ class RapidOCREngine(BaseOCREngine):
     # in ocr_engine_paddle.py. The process-level singleton lives in
     # ocr_engine_manager._engine_instance; standalone engine instances must be
     # genuinely independent so their cleanup() cannot unload the shared engine.
-    _predict_lock = threading.Lock()
+    # _predict_lock is per-INSTANCE (created in __init__), matching that rule:
+    # a class-level lock would serialize every standalone instance on one
+    # shared lock and defeat the parallel refine executor.
 
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
@@ -65,6 +67,9 @@ class RapidOCREngine(BaseOCREngine):
         self._ocr: Any = None
         self._initialized: bool = False
         self.text_score: float = 0.5
+        # Instance-level lock: guards THIS engine only — see the class-level
+        # NOTE above.
+        self._predict_lock = threading.Lock()
 
     def initialize(self, **kwargs) -> None:
         """Initialize RapidOCR engine."""

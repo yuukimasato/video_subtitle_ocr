@@ -88,7 +88,9 @@ class PaddleOCREngine(BaseOCREngine):
     # must be able to create genuinely independent instances (per refine thread),
     # which a __new__ singleton silently defeats — cleanup() on the "standalone"
     # instance would then unload the shared engine out from under the manager.
-    _predict_lock = threading.Lock()
+    # _predict_lock is likewise per-INSTANCE (created in __init__): a class-level
+    # lock would re-serialize the per-thread standalone engines on one shared
+    # lock, defeating the parallel refine executor (see refine_executor docs).
 
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
@@ -118,6 +120,11 @@ class PaddleOCREngine(BaseOCREngine):
         # Heavy lifting happens in initialize(); a fresh instance starts unloaded.
         self._ocr: Any = None
         self._initialized: bool = False
+        # Instance-level lock: guards THIS predictor only (Paddle inference
+        # recommends one predictor per thread; sharing one predictor across
+        # threads is the unsafe pattern). One predictor per refine thread —
+        # see the class-level NOTE above.
+        self._predict_lock = threading.Lock()
 
     def _get_device_mode(self) -> str:
         """Detect GPU/CPU mode with multiple fallback strategies.

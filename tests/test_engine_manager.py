@@ -297,3 +297,18 @@ def test_singleton_engine_survives_standalone_cleanup(monkeypatch):
     healed = mgr.get_engine()
     assert healed.is_initialized()
     healed.predict(object())  # must not raise
+
+
+def test_predict_lock_is_per_instance():
+    """Regression: 两个引擎的 _predict_lock 曾是类属性——所有实例(含
+    build_standalone_engine 为每个精修线程构建的独立引擎)共用一把锁,
+    并行边界精修的 OCR 推理被完全串行化,与 refine_executor 的设计意图
+    (per-thread engine 不在共享锁上串行)相反。锁必须随实例走。"""
+    from core.ocr_engine_paddle import PaddleOCREngine
+    from core.ocr_engine_rapid import RapidOCREngine
+
+    for cls in (PaddleOCREngine, RapidOCREngine):
+        a, b = cls(), cls()
+        assert a._predict_lock is not b._predict_lock, cls.__name__
+        # 类体不得再定义共享锁(否则新实例仍会解析到类属性)
+        assert "_predict_lock" not in cls.__dict__, cls.__name__

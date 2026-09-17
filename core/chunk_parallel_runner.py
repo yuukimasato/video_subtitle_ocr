@@ -260,6 +260,9 @@ def run_chunk_parallel(
         for idx in list(pending):
             st = states[idx]
             if st.done:
+                # Liveness 触发的兜底路径(_run_sequential)只置 done 不发消息,
+                # 必须在这里出队,否则窗口永远留在 pending 里空转死循环。
+                pending.discard(idx)
                 continue
             alive = st.proc is not None and st.proc.is_alive()
             if not alive:
