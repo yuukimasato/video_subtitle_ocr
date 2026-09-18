@@ -665,7 +665,8 @@ def wrap_cjk(text: str, max_chars: int) -> List[str]:
             elif tok in _KINSOKU_START and line:
                 # 行首禁则:连同上一字符下挪
                 carry = line[-1]
-                lines.append(line[:-1].rstrip())
+                if len(line) > 1:
+                    lines.append(line[:-1].rstrip())
                 line = carry + tok
             else:
                 if line:
@@ -778,11 +779,12 @@ def _mask_events_for_block(
             f0 = chain[ai]
             # 非末段 end_frame = 下一段 start_frame(共享边界帧)
             f1 = chain[segs[si + 1][0]] if (multi and si < last) else chain[bi]
-            if f1 <= f0:
-                continue
             t0 = tmap[f0].time_sec
             t1 = tmap[f1].time_sec
             if si == last:
+                # 链尾先延伸再判零长:单帧链 f1 == f0(帧号相等不算零长),
+                # 直接判会把整条链丢成无事件;延伸后仍无正时长才丢弃
+                # (与 motion_ass 同款修复)。
                 t1 = _next_frame_time(tmap, f1, t1, chain_dt)
             if t1 <= t0:
                 continue

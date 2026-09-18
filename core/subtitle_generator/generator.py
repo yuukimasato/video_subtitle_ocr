@@ -712,7 +712,13 @@ class OCRToASSOptimizer(
                 and self.subtitle_polisher is not None
                 and getattr(self.subtitle_polisher, "text_polish_enabled", True)
             ):
-                bodies = [ev["body"] for ev in subtitle_events]
+                # 只润色普通字幕文本;策略事件(空 body 的遮罩、mask_only
+                # 排版参考行)保持原样送写,不给模型"补全"空行的机会。
+                polish_idx = [
+                    k for k, ev in enumerate(subtitle_events)
+                    if not ev.get("policy") and str(ev.get("body", ""))
+                ]
+                bodies = [subtitle_events[k]["body"] for k in polish_idx]
 
                 def _on_batch(idx: int, total: int) -> None:
                     if polish_progress_callback:
@@ -731,13 +737,13 @@ class OCRToASSOptimizer(
                     cancel_check=polish_cancel_check if polish_cancel_check else lambda: False,
                     on_batch_done=_on_batch,
                 )
-                if len(polished) != len(subtitle_events):
+                if len(polished) != len(polish_idx):
                     logger.warning(
                         _tr("OCRToASSOptimizer", "Polish output length mismatch, using original subtitles.")
                     )
                 else:
-                    for ev, nt in zip(subtitle_events, polished):
-                        ev["body"] = nt
+                    for k, nt in zip(polish_idx, polished):
+                        subtitle_events[k]["body"] = nt
                     logger.info(_tr("OCRToASSOptimizer", "DeepSeek subtitle polishing applied."))
 
             self._write_final_file(subtitle_events)

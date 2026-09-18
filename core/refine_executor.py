@@ -367,9 +367,15 @@ class _ThreadResources:
         self.min_score = min_score
         self.cancel_check = cancel_check
         self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            raise RuntimeError("could not open video for refinement")
-        self.ocr = StandaloneOCR(engine_id, engine_options)
+        try:
+            if not self.cap.isOpened():
+                raise RuntimeError("could not open video for refinement")
+            # 引擎构造失败时也释放已打开的 VideoCapture,否则每次失败的
+            # 线程初始化都泄漏一个句柄。
+            self.ocr = StandaloneOCR(engine_id, engine_options)
+        except Exception:
+            self.cap.release()
+            raise
 
     def _ocr_at(self, roi_entry: Dict, roi_id: str, frame_num: int, upscale: bool) -> Optional[tuple]:
         if self.cancel_check():

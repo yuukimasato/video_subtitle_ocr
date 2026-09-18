@@ -279,7 +279,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     from PySide6.QtCore import QCoreApplication
 
     if QCoreApplication.instance() is None:
-        QCoreApplication(sys.argv)
+        # 保留引用:临时对象会被引用计数立即销毁,instance() 复回 None。
+        _qt_app = QCoreApplication(sys.argv)
 
     from core import coordinate_restorer, roi_extractor, subtitle_generator
     from core.ocr_optimizer import OcrOptimizer
@@ -524,15 +525,17 @@ def run_pipeline(args: argparse.Namespace) -> int:
             engine_id = None if args.engine == "auto" else args.engine
 
             def _run_motion_quad(quad, start_sec, end_sec, label,
-                                 auto_brightness, occlusion_clip=None):
+                                 auto_brightness, occlusion_clip=None,
+                                 start_frame=None, end_frame=None,
+                                 scene_text_policy=None):
                 nonlocal motion_events_all
                 quad = validate_quad(normalize_quad_winding(quad))
-                start_frame = (
-                    int(round(start_sec * info["fps"]))
-                    if start_sec is not None else 0)
-                end_frame = (
-                    int(round(end_sec * info["fps"]))
-                    if end_sec is not None else None)
+                if start_frame is None:
+                    start_frame = (
+                        int(round(start_sec * info["fps"]))
+                        if start_sec is not None else 0)
+                if end_frame is None and end_sec is not None:
+                    end_frame = int(round(end_sec * info["fps"]))
                 _info(
                     f"[3.5/4] Motion trajectory for quad {label} "
                     f"(frames [{start_frame}, "
@@ -542,6 +545,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 events, summary = build_motion_events(
                     video_path, quad,
                     start_frame=start_frame, end_frame=end_frame,
+                    scene_text_policy=scene_text_policy,
                     auto_brightness=auto_brightness,
                     brightness_per_line=(
                         args.brightness_per_line if auto_brightness else None),
@@ -581,6 +585,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         bool(spec["auto_brightness"]) or args.auto_brightness,
                         occlusion_clip=bool(spec.get("occlusion_clip", False))
                         or args.occlusion_clip,
+                        start_frame=spec["start_frame"],
+                        end_frame=spec["end_frame"],
+                        scene_text_policy=spec.get("scene_text_policy"),
                     )
                     motion_roi_ids.add(str(spec["roi_id"]))
                 except Exception as exc:

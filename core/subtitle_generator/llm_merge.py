@@ -55,7 +55,10 @@ class _LlmMergeMixin:
         while i < len(events_sorted):
             cur = events_sorted[i]
             # Only attempt for Scene by default (most jittery fragments).
-            if str(cur.get("style", "")) != "Scene":
+            if str(cur.get("style", "")) != "Scene" or cur.get("policy"):
+                # 策略事件不参与合并:阶段 3 重建 dict 会丢掉 policy/layer/
+                # comment 标记(遮罩与文本的图层关系随之丢失),与
+                # _merge_temporal_near_duplicate_events 的守卫一致。
                 groups.append([cur])
                 i += 1
                 continue
@@ -64,7 +67,8 @@ class _LlmMergeMixin:
             i += 1
             while i < len(events_sorted):
                 nxt = events_sorted[i]
-                if nxt.get("roi") != cur.get("roi") or nxt.get("style") != cur.get("style"):
+                if (nxt.get("roi") != cur.get("roi") or nxt.get("style") != cur.get("style")
+                        or nxt.get("policy")):
                     break
                 if not self._scene_tags_close(str(cur.get("tags", "")), str(nxt.get("tags", ""))):
                     break

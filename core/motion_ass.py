@@ -643,14 +643,15 @@ def _chain_events(
         f0 = chain[ai]
         # 非末段的 end_frame = 下一段的 start_frame(共享边界帧)
         f1 = chain[segs[si + 1][0]] if (multi and si < last) else chain[bi]
-        if f1 <= f0:
-            continue  # 零长段丢弃
         t0 = tmap[f0].time_sec
         t1 = tmap[f1].time_sec
         if si == last:
+            # 链尾先延伸再判零长:单帧链 f1 == f0(帧号相等不算零长),
+            # 直接判会把整条链丢成无事件;延伸后仍无正时长(时间戳重复)
+            # 才丢弃。f1 < f0 不可能出现(分段下标严格递增)。
             t1 = _next_frame_time(tmap, f1, t1, chain_dt)
         if t1 <= t0:
-            continue
+            continue  # 零长段丢弃
         if multi:
             move = (f"\\move({_fmt1(centers[ai][0] + x_off)},{_fmt1(centers[ai][1])},"
                     f"{_fmt1(centers[bi][0] + x_off)},{_fmt1(centers[bi][1])})")

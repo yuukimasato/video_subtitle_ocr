@@ -160,7 +160,9 @@ def detect_moving_text(
 
         x0 = y0 = 0
         if region is not None:
-            x0, y0 = int(region[0]), int(region[1])
+            # 裁剪起点钳在画面内(max(0, x1));偏移量必须用同一个钳后值,
+            # 否则 region 越过画面左/上边缘时所有 OCR 框会被整体平移。
+            x0, y0 = max(0, int(region[0])), max(0, int(region[1]))
 
         # 1) 采样 OCR:frame → [(text, box, center, height)](画面坐标)
         samples: List[Tuple[int, float, list]] = []
