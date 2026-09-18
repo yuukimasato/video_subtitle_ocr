@@ -22,6 +22,16 @@ class LogViewerWidget(QGroupBox):
     def append_log(self, message: str):
         # QTextEdit.append treats input that "looks like" rich text as HTML;
         # OCR text and paths containing <...> would be swallowed or mangled.
-        self.log_display.append(html.escape(str(message)))
+        # Escape AND force rich-text interpretation with an explicit wrapper:
+        # a bare escaped string without angle brackets is inserted as plain
+        # text by Qt's mightBeRichText heuristic, which would display the
+        # entities literally (log lines with dict reprs showed &#x27; for
+        # every apostrophe). white-space: pre-wrap keeps multi-line messages
+        # (tracebacks) and indentation under HTML parsing.
+        self.log_display.append(
+            '<div style="white-space: pre-wrap">'
+            + html.escape(str(message))
+            + "</div>"
+        )
         self.log_display.moveCursor(QTextCursor.End)
 

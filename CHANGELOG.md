@@ -143,6 +143,17 @@
 
 ### 修复
 
+- **日志面板不再显示 HTML 实体乱码（`&#x27;`）**：日志查看器对每条消息
+  `html.escape` 后直接 `QTextEdit.append`——不含尖括号的消息会被 Qt 的
+  `mightBeRichText` 判为纯文本插入，转义实体原样露出：含 dict repr 的
+  日志行（「OCR engine switched to: paddle (options={&#x27;lang&#x27;…})」、
+  「智能跳帧: 抓取区域(ROI) &#x27;roi_0&#x27;…」）每个引号都显示成
+  `&#x27;`，含 `<` 的消息同样会露出 `&lt;`。现以
+  `<div style="white-space: pre-wrap">` 强制按富文本插入：转义实体正确
+  渲染回原字符，HTML 注入防护不变，多行消息（traceback）与行首缩进在
+  HTML 解析下原样保留，原文中的字面 `&amp;` 不会被二次反转。
+  新增 `tests/test_log_viewer.py` 4 项（引号逐字、尖括号/& 逐字、多行
+  缩进保留、多条不串行）；单元测试 799 → **803 passed, 1 skipped**。
 - **无选中行时逐 ROI 开关勾选静默丢失（亮度自适应不生效的真正根因）**：
   「亮度自适应/遮挡蒙版/位置标签/场景策略」的即时写回都以「ROI 列表
   当前有选中行」为前提，无选中时静默 `return`；而加载视频 → 自动加载
