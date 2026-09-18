@@ -3,7 +3,10 @@
 轻量级 LLM 客户端，支持任意 OpenAI 兼容 API。
 """
 
+import logging
 import os
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, List, Optional
 
 import openai
@@ -17,9 +20,14 @@ from tenacity import (
     wait_random_exponential,
 )
 
-# Bounded backoff: max 10 attempts AND max 5 minutes total wait; after that the
-# caller degrades gracefully (e.g. keeps unpolished subtitles) instead of hanging.
+logger = logging.getLogger(__name__)
+
+# Bounded backoff: max 10 attempts, each individual wait <= 60s, and total wait
+# <= 5 minutes; after that the caller degrades gracefully (e.g. keeps
+# unpolished subtitles) instead of hanging. 429 responses may carry
+# Retry-After; it is honored but clamped to the same per-wait/total bounds.
 _LLM_RETRY_MAX_ATTEMPTS = 10
+_LLM_RETRY_MAX_WAIT_SECONDS = 60
 _LLM_RETRY_TOTAL_DELAY_SECONDS = 300
 
 
@@ -46,6 +54,98 @@ def _llm_api_failure_types() -> tuple:
                 seen.add(exc)
                 types.append(exc)
     return tuple(types)
+
+
+def parse_retry_after_value(raw: Any) -> Optional[float]:
+    """解析 Retry-After 头为等待秒数（支持 delay-seconds 与 HTTP-date）。
+
+    负值钳为 0；无法解析返回 None，由调用方的有界退避兜底。
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return max(0.0, float(text))
+    except ValueError:
+        pass
+    try:
+        dt = parsedate_to_datetime(text)
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (dt - datetime.now(timezone.utc)).total_seconds())
+    except Exception:
+        return None
+
+
+def retry_after_seconds_from_exception(exc: Optional[BaseException]) -> Optional[float]:
+    """从异常携带的 HTTP 响应头读取 Retry-After 秒数（取不到返回 None）。
+
+    openai SDK 的 APIError 把响应放在 ``.response.headers``（httpx，大小写
+    不敏感），urllib 的 HTTPError 直接放在 ``.headers``；两种形态都兼容。
+    """
+    if exc is None:
+        return None
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers is None:
+        headers = getattr(exc, "headers", None)
+    if headers is None:
+        return None
+    raw = None
+    for name in ("Retry-After", "retry-after"):
+        try:
+            raw = headers.get(name)
+        except Exception:
+            return None
+        if raw is not None:
+            break
+    return parse_retry_after_value(raw)
+
+
+# full-jitter 指数退避作为等待基线（实例无状态，可在多次调用间复用）。
+_jitter_wait = wait_random_exponential(
+    multiplier=1, min=5, max=_LLM_RETRY_MAX_WAIT_SECONDS
+)
+
+
+def _llm_rate_limit_wait(retry_state: "tenacity.RetryCallState") -> float:
+    """计算 429 退避的单次等待时长。
+
+    以 full-jitter 指数退避为基线；若 429 响应携带 Retry-After 则尊重其指引
+    （仍受单次等待上限约束）。所有等待同时受两级预算约束：单次不超过
+    ``_LLM_RETRY_MAX_WAIT_SECONDS``，累计不超过 ``_LLM_RETRY_TOTAL_DELAY_SECONDS``
+    ——tenacity 的 stop_after_delay 允许最后一次 sleep 超出总预算，这里按剩余
+    预算截断每次等待，保证总等待时间精确有界。
+    """
+    wait = float(_jitter_wait(retry_state))
+    outcome = retry_state.outcome
+    retry_after = retry_after_seconds_from_exception(
+        outcome.exception() if outcome is not None else None
+    )
+    if retry_after is not None:
+        wait = max(wait, min(retry_after, float(_LLM_RETRY_MAX_WAIT_SECONDS)))
+    remaining = _LLM_RETRY_TOTAL_DELAY_SECONDS - (retry_state.seconds_since_start or 0.0)
+    return max(0.0, min(wait, remaining))
+
+
+def _log_rate_limit_retry(retry_state: "tenacity.RetryCallState") -> None:
+    """429 每次退避等待前打点，让日志能解释管线里的长时间停顿。"""
+    action = retry_state.next_action
+    outcome = retry_state.outcome
+    exc = outcome.exception() if outcome is not None else None
+    detail = f"{type(exc).__name__}: {exc}"[:200] if exc is not None else ""
+    logger.warning(
+        "LLM API 429: retry %d/%d in %.1fs (elapsed %.1fs of %ds wait budget) %s",
+        retry_state.attempt_number,
+        _LLM_RETRY_MAX_ATTEMPTS,
+        action.sleep if action is not None else 0.0,
+        retry_state.seconds_since_start or 0.0,
+        _LLM_RETRY_TOTAL_DELAY_SECONDS,
+        detail,
+    )
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -112,8 +212,9 @@ def get_llm_client(
 
 @retry(
     stop=(stop_after_attempt(_LLM_RETRY_MAX_ATTEMPTS) | stop_after_delay(_LLM_RETRY_TOTAL_DELAY_SECONDS)),
-    wait=wait_random_exponential(multiplier=1, min=5, max=60),
+    wait=_llm_rate_limit_wait,
     retry=retry_if_exception_type(openai.RateLimitError),
+    before_sleep=_log_rate_limit_retry,
     reraise=True,
 )
 def _call_llm_api(
@@ -162,6 +263,7 @@ def call_llm(
         API 响应对象
 
     Raises:
+        LlmApiError: SDK 级失败（连接失败/超时/429 有界退避耗尽）
         ValueError: API 返回空响应
     """
     if client is None:

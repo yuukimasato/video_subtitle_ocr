@@ -37,7 +37,8 @@ python -m pytest tests/ -v
 
 - `test_ocr_optimizer.py`：跳帧/投票/批处理回退/缓存淘汰/取消语义；
 - `test_llm_client_backoff.py`：LLM 调用的**有界退避**（最大次数、单次与
-  总等待上限、仅对 429/限流类错误重试，耗尽后返回可恢复错误）；
+  总等待上限、仅对 429/限流类错误重试，耗尽后返回可恢复错误；等待策略
+  按剩余预算截断总等待、并尊重 429 响应的 Retry-After 指引，同样受限）；
 - `test_vlm_refine.py`：VLM 复核的触发条件、JSON 修复与异常隔离；
 - `test_boundary_refine.py` / `test_pipeline_refine_integration.py`：
   字幕边界精修（含真实视频集成用例）；

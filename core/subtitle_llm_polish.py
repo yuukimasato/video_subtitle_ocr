@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from core.llm_client import call_llm
+from core.llm_client import call_llm, retry_after_seconds_from_exception
 from core.llm_prompts import get_prompt
 from core.text_utils import count_words
 
@@ -35,6 +35,7 @@ _MAX_CONCURRENT_REQUESTS_CAP = 8
 # GET /v1/models 的 429 有界退避：最多 3 次重试、单次等待 ≤5s、总等待 ≤30s。
 _MODELS_RETRY_MAX_ATTEMPTS = 3
 _MODELS_RETRY_WAIT_BASE_SECONDS = 2.0
+_MODELS_RETRY_MAX_WAIT_SECONDS = 5.0
 _MODELS_RETRY_TOTAL_WAIT_SECONDS = 30.0
 
 
@@ -166,6 +167,23 @@ def deepseek_merge_fragment_text(
         return None
 
 
+def _models_retry_wait_seconds(attempt: int, error_429: Exception, remaining: float) -> float:
+    """单次 429 退避等待时长：2^n 指数退避为基线，服务器 Retry-After 指引优先。
+
+    上限同时生效：单次等待 ≤ ``_MODELS_RETRY_MAX_WAIT_SECONDS``、总等待 ≤
+    ``_MODELS_RETRY_TOTAL_WAIT_SECONDS``（由 remaining 截断）；重试次数上限
+    由调用方循环控制。
+    """
+    wait = min(
+        _MODELS_RETRY_MAX_WAIT_SECONDS,
+        _MODELS_RETRY_WAIT_BASE_SECONDS * (2**attempt),
+    )
+    retry_after = retry_after_seconds_from_exception(error_429)
+    if retry_after is not None:
+        wait = max(wait, min(retry_after, _MODELS_RETRY_MAX_WAIT_SECONDS))
+    return max(0.0, min(wait, remaining))
+
+
 def fetch_openai_compatible_model_ids(
     api_key: str,
     api_base_url: str,
@@ -175,8 +193,9 @@ def fetch_openai_compatible_model_ids(
     """GET /v1/models（OpenAI 兼容），返回模型 id 列表。
 
     对 429 Too Many Requests 采用有界退避：最多重试
-    ``_MODELS_RETRY_MAX_ATTEMPTS`` 次、单次等待不超过 5s、总等待不超过
-    30s；耗尽后抛出 RuntimeError（可恢复错误，由调用方提示用户）。
+    ``_MODELS_RETRY_MAX_ATTEMPTS`` 次、单次等待不超过 5s、总等待不超过 30s，
+    并尊重 429 响应的 Retry-After 指引（同样受单次/总等待上限约束）；
+    耗尽后抛出 RuntimeError（可恢复错误，由调用方提示用户）。
     """
     base = (api_base_url or "").strip().rstrip("/")
     if not base:
@@ -209,10 +228,21 @@ def fetch_openai_compatible_model_ids(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(5.0, _MODELS_RETRY_WAIT_BASE_SECONDS * (2**attempt), remaining))
+            wait = _models_retry_wait_seconds(attempt, e, remaining)
+            logger.warning(
+                "[subtitle_llm_polish] GET %s -> 429; retrying in %.1fs (attempt %d/%d).",
+                url,
+                wait,
+                attempt + 1,
+                _MODELS_RETRY_MAX_ATTEMPTS,
+            )
+            time.sleep(wait)
         except urllib.error.URLError as e:
             reason = getattr(e, "reason", e)
             raise RuntimeError(str(reason)) from e
+        except TimeoutError as e:
+            # 读响应体超时（socket.timeout）不会包成 URLError；归一化为可恢复错误。
+            raise RuntimeError(f"request timed out ({timeout_sec}s per attempt)") from e
     if resp_bytes is None:
         raise RuntimeError(
             f"HTTP 429: rate limited, retries exhausted ({_MODELS_RETRY_MAX_ATTEMPTS} attempts)"

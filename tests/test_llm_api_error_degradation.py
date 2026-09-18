@@ -199,3 +199,78 @@ def test_fetch_models_retry_bounds_documented():
     """有界退避常量必须存在且受限（工作区规则）。"""
     assert sp._MODELS_RETRY_MAX_ATTEMPTS <= 5
     assert sp._MODELS_RETRY_TOTAL_WAIT_SECONDS <= 60
+    assert sp._MODELS_RETRY_MAX_WAIT_SECONDS <= 5.0
+
+
+# ── models 探测的 Retry-After 与超时归一化 ────────────────────
+
+
+def test_fetch_models_honors_bounded_retry_after(monkeypatch):
+    """Retry-After ≤ 单次上限(5s)时被尊重；超出时钳到上限。"""
+    import io
+
+    for raw, expected in (("3", 3.0), ("120", 5.0)):
+        headers = {"Retry-After": raw}
+        attempts = {"n": 0}
+
+        def fake_urlopen(req, timeout, context, headers=headers):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise urllib.error.HTTPError("u", 429, "Too Many Requests", headers, _Fake429Response())
+            return io.BytesIO(b'{"data": [{"id": "m1"}]}')
+
+        monkeypatch.setattr(sp.urllib.request, "urlopen", fake_urlopen)
+        sleeps: list = []
+        monkeypatch.setattr(sp.time, "sleep", lambda s: sleeps.append(s))
+
+        sp.fetch_openai_compatible_model_ids("sk-test", "https://api.example.com")
+        assert attempts["n"] == 2
+        assert sleeps == [expected]
+
+
+def test_fetch_models_retry_after_never_exceeds_total_budget(monkeypatch):
+    """总等待预算收紧时，Retry-After 也必须被截断在预算内。"""
+    import io
+
+    monkeypatch.setattr(sp, "_MODELS_RETRY_TOTAL_WAIT_SECONDS", 3.0)
+    headers = {"Retry-After": "100"}
+    attempts = {"n": 0}
+
+    def fake_urlopen(req, timeout, context):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise urllib.error.HTTPError("u", 429, "Too Many Requests", headers, _Fake429Response())
+        return io.BytesIO(b'{"data": [{"id": "m1"}]}')
+
+    monkeypatch.setattr(sp.urllib.request, "urlopen", fake_urlopen)
+    sleeps: list = []
+    monkeypatch.setattr(sp.time, "sleep", lambda s: sleeps.append(s))
+
+    sp.fetch_openai_compatible_model_ids("sk-test", "https://api.example.com")
+    assert attempts["n"] == 2
+    assert 0 < sleeps[0] <= 3.0
+
+
+def test_fetch_models_read_timeout_is_recoverable(monkeypatch):
+    """读响应体超时（TimeoutError）必须归一化为可恢复的 RuntimeError。"""
+
+    class _TimeoutBody:
+        def read(self):
+            raise TimeoutError("The read operation timed out")
+
+        def close(self):
+            pass
+
+    class _TimeoutResponse:
+        def __enter__(self):
+            return _TimeoutBody()
+
+        def __exit__(self, *exc_info):
+            return False
+
+    def fake_urlopen(req, timeout, context):
+        return _TimeoutResponse()
+
+    monkeypatch.setattr(sp.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(RuntimeError, match="timed out"):
+        sp.fetch_openai_compatible_model_ids("sk-test", "https://api.example.com")
