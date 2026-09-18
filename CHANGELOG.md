@@ -152,6 +152,20 @@
 
 ### 修复
 
+- **意大利语/西班牙语/葡萄牙语识别语言自始不可用（未知语言名）**：下拉框
+  三个语言值用的旧式名 `italian`/`spanish`/`portuguese` 不在 paddleocr 3.7
+  的任何语言族里（拉丁语族只认 ISO 代码 `it`/`es`/`pt`，仅 `french`/
+  `german` 保留别名），选择后引擎初始化必报
+  「No models are available for lang=…」。现下拉框值规范为 `it`/`es`/`pt`
+  （旧值本就 100% 失败、无可用配置依赖），并依据 paddleocr 的
+  `_PPOCRV6_LANGS`（{ch, chinese_cht, en, japan} ∪ 拉丁语族）把全部拉丁
+  语系语言（french/german/it/es/pt）加入 `V6_LANGS` v6 快车道——复用已
+  缓存的 PP-OCRv6 模型（免下载 PP-OCRv5_server_det + latin rec，初始化
+  秒级），模型档位 tiny/small/medium 亦随之可用；korean/russian/arabic
+  无 v6 模型，维持 PP-OCRv5 多语言回落。新增选路回归（拉丁语系 → v6、
+  旧式名不得回流）与下拉框语言值断言；12 种语言合成字幕图全量实测
+  **12/12 通过、相似度全部 1.00**（含新修复的意/西/葡与繁体）。单元测试
+  805 → **806 passed, 1 skipped**。
 - **日志面板不再显示 HTML 实体乱码（`&#x27;`）**：日志查看器对每条消息
   `html.escape` 后直接 `QTextEdit.append`——不含尖括号的消息会被 Qt 的
   `mightBeRichText` 判为纯文本插入，转义实体原样露出：含 dict repr 的

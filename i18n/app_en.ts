@@ -91,9 +91,13 @@
         <translation type="vanished">Subtitle language. Chinese/English/Japanese use PP-OCRv6 models; other languages automatically fall back to the multilingual PP-OCRv5 models.</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation>Subtitle language. Simplified/Traditional Chinese, English and Japanese use PP-OCRv6 models; other languages automatically fall back to the multilingual PP-OCRv5 models.</translation>
+        <translation type="vanished">Subtitle language. Simplified/Traditional Chinese, English and Japanese use PP-OCRv6 models; other languages automatically fall back to the multilingual PP-OCRv5 models.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
+        <translation>Subtitle language. Simplified/Traditional Chinese, English, Japanese and Latin-script languages use PP-OCRv6 models; Korean/Russian/Arabic etc. automatically fall back to the multilingual PP-OCRv5 models.</translation>
     </message>
     <message>
         <location line="+29"/>
@@ -1494,7 +1498,7 @@
     <message>
         <location line="+40"/>
         <source>当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</source>
-        <translation>No ROI is currently selected: this switch will only apply to entries added later via "Add ROI". To apply it to an existing ROI, select that ROI in the list first, then toggle.</translation>
+        <translation>No ROI is currently selected: this switch will only apply to entries added later via &quot;Add ROI&quot;. To apply it to an existing ROI, select that ROI in the list first, then toggle.</translation>
     </message>
     <message>
         <location line="+29"/>

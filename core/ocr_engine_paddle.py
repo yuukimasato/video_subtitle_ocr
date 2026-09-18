@@ -7,10 +7,10 @@ This adapter extracts and consolidates PaddleOCR-specific logic that was
 previously scattered in ocr_processor.py.
 
 Model selection (PP-OCRv6 first):
-  - ch / chinese_cht / en / japan → PP-OCRv6 unified models (tier:
-    tiny/small/medium or auto).
-  - Other languages  → conservative fallback to PP-OCRv5 (multilingual rec
-    model via V5_FALLBACK_REC when known).
+  - ch / chinese_cht / en / japan / latin languages (french, german, it,
+    es, pt) → PP-OCRv6 unified models (tier: tiny/small/medium or auto).
+  - Other languages (korean/russian/arabic, ...) → conservative fallback to
+    PP-OCRv5 (multilingual rec model via V5_FALLBACK_REC when known).
 """
 
 from __future__ import annotations
@@ -28,8 +28,16 @@ logger = logging.getLogger(__name__)
 
 # Languages covered by the PP-OCRv6 unified models. chinese_cht (繁體中文)
 # is a first-class PP-OCRv6 language in paddleocr 3.7 (_PPOCRV6_LANGS), so
-# it rides the same v6 fast path as ch — no extra model download.
-V6_LANGS = frozenset({"ch", "chinese_cht", "en", "japan"})
+# it rides the same v6 fast path as ch — no extra model download. The latin
+# script languages are v6-capable too (_PPOCRV6_LANGS = {ch, chinese_cht,
+# en, japan} | LATIN_LANGS), so they reuse the cached v6 models instead of
+# pulling PP-OCRv5 server det + latin rec. NOTE: paddleocr only knows the
+# ISO codes it/es/pt for Italian/Spanish/Portuguese — the legacy names
+# italian/spanish/portuguese are unknown langs and fail initialization.
+V6_LANGS = frozenset({
+    "ch", "chinese_cht", "en", "japan",
+    "french", "german", "it", "es", "pt",
+})
 
 # Recognized model tiers (PP-OCRv6_{tier}_det / PP-OCRv6_{tier}_rec).
 VALID_MODEL_TIERS = ("tiny", "small", "medium")

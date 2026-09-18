@@ -82,10 +82,25 @@ def test_route_arabic_falls_back_to_arabic_rec():
     }
 
 
-def test_route_french_falls_back_to_v5_only():
-    # Latin languages not in the fallback table rely on paddleocr's own mapping.
-    assert resolve_model_selection("french", None) == {"ocr_version": "PP-OCRv5"}
-    assert resolve_model_selection("french", "medium") == {"ocr_version": "PP-OCRv5"}
+def test_route_latin_langs_rides_v6_fast_path():
+    """拉丁语系是 paddleocr 3.7 _PPOCRV6_LANGS 的成员——与 ch/en/japan
+    同一套 v6 模型（已缓存），不必回落 v5（否则要额外下载
+    PP-OCRv5_server_det + latin_PP-OCRv5_mobile_rec）。"""
+    for lang in ("french", "german", "it", "es", "pt"):
+        assert resolve_model_selection(lang, None) == {"ocr_version": "PP-OCRv6"}
+        assert resolve_model_selection(lang, "small") == {
+            "text_detection_model_name": "PP-OCRv6_small_det",
+            "text_recognition_model_name": "PP-OCRv6_small_rec",
+        }
+
+
+def test_route_unknown_legacy_lang_names_not_used():
+    """paddleocr 3.7 只认 it/es/pt——旧式名 italian/spanish/portuguese
+    不在任何语言族里，初始化直接报「No models are available」
+    （回归：下拉框曾用旧式名导致这三个语言必然失败）。"""
+    for legacy in ("italian", "spanish", "portuguese"):
+        # 未进 v6 快车道：回落 v5 后由 paddleocr 报未知语言，而非静默错模型
+        assert resolve_model_selection(legacy, None) == {"ocr_version": "PP-OCRv5"}
 
 
 def test_route_none_lang_defaults_to_ch():

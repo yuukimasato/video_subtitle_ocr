@@ -396,3 +396,9 @@ def test_ocr_lang_combo_offers_traditional_chinese(panel):
     assert panel.get_selected_lang() == "chinese_cht"
     panel.set_selected_lang("ch")
     assert panel.get_selected_lang() == "ch"
+
+    # 意/西/葡必须是 paddleocr 3.7 认识的 ISO 代码 it/es/pt——旧式名
+    # italian/spanish/portuguese 不在任何语言族里，引擎初始化必然失败。
+    assert "italian" not in datas and "spanish" not in datas and "portuguese" not in datas
+    for code in ("it", "es", "pt"):
+        assert code in datas

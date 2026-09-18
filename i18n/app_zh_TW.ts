@@ -91,9 +91,13 @@
         <translation type="vanished">選擇字幕語言。中文／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation>選擇字幕語言。中文簡體／繁體／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
+        <translation type="vanished">選擇字幕語言。中文簡體／繁體／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
+        <translation>選擇字幕語言。中文簡體／繁體／英文／日文及拉丁語系使用 PP-OCRv6 模型，韓／俄／阿拉伯語等自動回落 PP-OCRv5 多語言模型。</translation>
     </message>
     <message>
         <location line="+29"/>

@@ -27,8 +27,8 @@ DICT = {
     # ── ControlPanelWidget ──
     "识别语言：": "Recognition language:",
     "模型档位：": "Model tier:",
-    "选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。":
-        "Subtitle language. Simplified/Traditional Chinese, English and Japanese use PP-OCRv6 models; other languages automatically fall back to the multilingual PP-OCRv5 models.",
+    "选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。":
+        "Subtitle language. Simplified/Traditional Chinese, English, Japanese and Latin-script languages use PP-OCRv6 models; Korean/Russian/Arabic etc. automatically fall back to the multilingual PP-OCRv5 models.",
     "样式模板（可选）": "Style template (optional)",
     "点击“浏览”选择 .ass 模板文件": "Click \"Browse\" to pick an .ass template file",
     "浏览…": "Browse…",

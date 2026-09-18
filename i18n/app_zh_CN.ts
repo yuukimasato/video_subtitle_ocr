@@ -135,7 +135,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+75"/>
+        <location line="+16"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
+        <translation type="unfinished">选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</translation>
+    </message>
+    <message>
+        <location line="+59"/>
         <source>引擎选择：</source>
         <translation type="unfinished"></translation>
     </message>
@@ -253,12 +258,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+9"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation type="unfinished">选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</translation>
+        <translation type="obsolete">选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+38"/>
         <source>文字保留：</source>
         <translation type="unfinished"></translation>
     </message>

@@ -135,7 +135,12 @@
         <translation>参照…</translation>
     </message>
     <message>
-        <location line="+75"/>
+        <location line="+16"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
+        <translation type="unfinished">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語およびラテン系言語は PP-OCRv6 モデルを使用し、韓国語/ロシア語/アラビア語などは自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
+    </message>
+    <message>
+        <location line="+59"/>
         <source>引擎选择：</source>
         <translation>エンジン選択：</translation>
     </message>
@@ -256,12 +261,11 @@
         <translation>認識設定</translation>
     </message>
     <message>
-        <location line="+9"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation type="unfinished">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語は PP-OCRv6 モデルを使用し、その他の言語は自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
+        <translation type="obsolete">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語は PP-OCRv6 モデルを使用し、その他の言語は自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+38"/>
         <source>文字保留：</source>
         <translation>文字の保持：</translation>
     </message>
