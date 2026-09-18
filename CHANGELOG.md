@@ -128,8 +128,53 @@
   `timeout 90s` 上限。实测：探测本机选出 TUNA（512KB 0.61s vs PyPI
   1.74s）。
 
+### 优化
+
+- **分块并行解码起点优化（晚窗口不再从头解码）**：分块并行此前每个
+  worker 都从第 0 帧顺序解码到自己的窗口；现 `_seek_decode_start` 把顺序
+  抽取器 seek 到计划书的 `grab_start_frame`（前置预卷吸收
+  `CAP_PROP_POS_FRAMES` 定位误差），seek 点之前触发的区间事件预应用，
+  后端不支持 seek 时回退整段顺序解码；`PipelineContext.decode_start_frame`
+  打通抽取阶段。配套两项：窗口裁剪后幸存 ROI 携带 `_global_roi_index`
+  全局编号，阶段 4 的 per-ROI 元数据（pose 标签/过滤/场景文字策略）不再
+  因前部 ROI 被裁掉而错位；流式模式下抽取完成不再把进度回发到 10%。
+  新增 `tests/test_roi_extractor_seek.py`（seek 与全解码等价性、区间预
+  应用、目标钳制、阶段接线）与 `test_chunk_worker` 全局编号用例。
+
 ### 修复
 
+- **LLM 429 有界退避尊重 Retry-After，总等待精确有界**：`_call_llm_api`
+  的退避等待现按剩余总预算截断（tenacity 的 `stop_after_delay` 允许最后
+  一次 sleep 超出总预算，现单次 ≤60s、总等待精确 ≤300s）；429 响应携带
+  Retry-After（delay-seconds 或 HTTP-date；openai SDK/httpx 与 urllib
+  HTTPError 两种头形态）时尊重其指引（同样受单次/总上限钳制），每次退避
+  等待前打 warning 日志解释管线长停顿。`/v1/models` 探测同样处理，响应体
+  读取超时（裸 `TimeoutError`）归一化为可恢复 `RuntimeError`。
+- **第三轮代码审查修复（单帧链/策略事件/模板样式/区域偏移/句柄泄漏）**：
+  1. **单帧轨迹链不再整条丢弃**：`motion_ass._chain_events` 此前在链尾
+     +1 帧延伸之前判零长，单帧链（只在一帧跟踪成功——闪烁跟踪/遮挡恢复
+     的典型形态）被 `f1 <= f0` 守卫整条丢弃，该帧字幕完全消失；现先延伸
+     再判零长（`f1 < f0` 在严格递增分段下不可能出现）。遮罩事件
+     （`scene_text_policy._mask_events_for_block`）同款修复。
+  2. **wrap_cjk 行首禁则不产空行**：极窄带宽（max_chars=1）时禁则字符
+     下挪把空串写进行表；修复后宁超限不空行。
+  3. **策略事件不进 LLM 碎片合并/润色**：LLM 碎片合并重建 dict 会丢掉
+     policy/layer 标记（遮罩与文本的图层关系随之丢失）；润色阶段只送
+     普通字幕文本，遮罩/mask_only 排版参考行（空 body）不再交给模型
+     「补全」。
+  4. **模板路径补齐 NoteBox 样式**：自定义模板的场景文字策略回退链或
+     轨迹事件产出 NoteBox 事件而模板头缺该样式时，libass 回退 Default
+     丢失不透明底框；现按需在样式段补齐（模板已含 NoteBox 不重复）。
+  5. **motion_detector region 越缘偏移**：region 越过画面左/上边缘时，
+     裁剪起点钳到 0 而 OCR 框偏移量用未钳值，检出区域整体平移；现偏移
+     与裁剪用同一钳后值。
+  6. **精修线程句柄泄漏**：OCR 引擎构造失败时释放已打开的 VideoCapture。
+  7. **CLI 两处**：临时 `QCoreApplication` 被引用计数立即回收
+     （`instance()` 复回 None）改为保留引用；`--roi-file` 的轨迹规格透传
+     start_frame/end_frame/scene_text_policy，与 GUI 主流水线路径等价。
+  新增 `tests/test_review_fixes_3.py` 覆盖上述 1–4、5（负 region 位移
+  不变性）与 3（不可达端口保证合并若发生必失败）；单测
+  766 → **795 passed, 1 skipped**。
 - **矩形遮罩链尾 +1 帧延伸（mask/mask_only 遮罩与文本时间对齐）**：
   `core/scene_text_policy.py` 的 `_mask_events_for_block` 此前链尾结束时间
   取尾帧自身 `time_sec`，而文本事件已经过 motion_ass 的「链尾 +1 帧距」
