@@ -185,19 +185,72 @@ class _StubLogger:
     def info(self, message):
         self.messages.append(str(message))
 
+    def warning(self, message):
+        self.messages.append(str(message))
 
-def _make_mixin_host(rois, current_index):
+
+class _StubCheckable:
+    def __init__(self, checked=False):
+        self._checked = bool(checked)
+
+    def isChecked(self):
+        return self._checked
+
+
+class _StubCombo:
+    def __init__(self, data="overlap"):
+        self._data = data
+
+    def currentData(self):
+        return self._data
+
+
+class _StubRoiDefPanel:
+    """详情面板最小桩:_sync_selected_roi_panel_flags 只读这四个控件。"""
+
+    def __init__(self, pose=False, brightness=False, occlusion=False,
+                 policy="overlap"):
+        self.pose_tags_checkbox = _StubCheckable(pose)
+        self.motion_brightness_checkbox = _StubCheckable(brightness)
+        self.motion_occlusion_checkbox = _StubCheckable(occlusion)
+        self.scene_text_policy_combo = _StubCombo(policy)
+
+
+class _StubSelectableView:
+    """带选中态的列表桩:_select_first_roi_without_seek 用。"""
+
+    def __init__(self, count: int, current_index: int):
+        self._count = count
+        self.current_index = current_index
+        self.set_rows = []
+
+    def currentItem(self):
+        if 0 <= self.current_index < self._count:
+            return _StubListItem()
+        return None
+
+    def count(self):
+        return self._count
+
+    def setCurrentRow(self, row):
+        self.set_rows.append(row)
+        self.current_index = row
+
+
+def _make_mixin_host(rois, current_index, roi_def=None, list_view=None):
     """Bare RoiEditingMixin instance with just the attributes the toggle
     handler touches (no QWidget instantiation — headless safe)."""
     from main_window.roi_editing import RoiEditingMixin
 
     class _StubListPanel:
-        roi_list_widget = _StubListView(len(rois), current_index)
+        roi_list_widget = list_view or _StubListView(len(rois), current_index)
 
     host = RoiEditingMixin.__new__(RoiEditingMixin)
     host.roi_data = rois
     host.roi_list_widget = _StubListPanel()
     host.logger = _StubLogger()
+    if roi_def is not None:
+        host.roi_def_widget = roi_def
     return host
 
 
@@ -262,6 +315,86 @@ def test_motion_flag_toggles_without_selection_are_noop():
     assert "motion_auto_brightness" not in roi
     assert "motion_occlusion_clip" not in roi
     assert "scene_text_policy" not in roi
+
+
+# ── 无选中行时的可见告警与启动前兜底同步（GUI 勾选丢失回归）────────
+
+def test_toggle_without_selection_warns_only_when_rois_exist():
+    """无选中行 + 已有 ROI 条目：写回丢弃必须留下可见告警（GUI 亮度自适应
+    勾选丢失的根因就是这种状态下静默 return）；roi_data 为空的「先配置待
+    新建 ROI」正常流程不打扰。"""
+    roi = {"type": "rect", "points": [100, 200, 400, 80]}
+    host = _make_mixin_host([roi], -1)
+
+    host.on_motion_brightness_toggled(True)
+    assert "motion_auto_brightness" not in roi
+    assert any("未选中任何 ROI" in m for m in host.logger.messages)
+
+    host_empty = _make_mixin_host([], -1)
+    host_empty.on_motion_brightness_toggled(True)
+    assert host_empty.logger.messages == []
+
+
+def test_select_first_roi_without_seek_backfills_panel_state():
+    """载入 ROI 后列表无选中 → 选中第一行并按住跳帧；已有选中或空列表
+    时不动。"""
+    view = _StubSelectableView(1, -1)
+    host = _make_mixin_host(
+        [{"type": "rect", "points": [0, 0, 10, 10], "start_frame": 30}], -1,
+        list_view=view)
+
+    host._select_first_roi_without_seek()
+    assert view.set_rows == [0]
+    assert view.current_index == 0
+    assert host._suppress_selection_seek is False  # 用后复位
+
+    # 已有选中：不再改选
+    view2 = _StubSelectableView(2, 1)
+    host2 = _make_mixin_host([], 1, list_view=view2)
+    host2._select_first_roi_without_seek()
+    assert view2.set_rows == []
+
+    # 空列表：无行可选
+    view3 = _StubSelectableView(0, -1)
+    host3 = _make_mixin_host([], -1, list_view=view3)
+    host3._select_first_roi_without_seek()
+    assert view3.set_rows == []
+
+
+def test_sync_selected_roi_panel_flags_writes_selection():
+    """启动识别前以面板为准写回选中条目的四个逐 ROI 开关（含 pose 重算），
+    无选中时不动任何条目——「面板显示已勾选、识别按旧值跑」的最终兜底。"""
+    roi = {"type": "rect", "points": [100, 200, 400, 80],
+           "motion_auto_brightness": False}
+    panel = _StubRoiDefPanel(pose=True, brightness=True, occlusion=False,
+                             policy="mask")
+    host = _make_mixin_host([roi], 0, roi_def=panel)
+
+    host._sync_selected_roi_panel_flags()
+    assert roi["write_pose_tags"] is True
+    assert roi["pose"]["pos"] == [300.0, 240.0]
+    assert roi["motion_auto_brightness"] is True
+    assert roi["motion_occlusion_clip"] is False
+    assert roi["scene_text_policy"] == "mask"
+
+    # pose 关闭时与 on_pose_tags_toggled(False) 同契约：仅置 False，
+    # 旧 pose 键保留（管线以 write_pose_tags 为准，不会输出位置标签）
+    panel2 = _StubRoiDefPanel(pose=False, policy="overlap")
+    roi2 = {"type": "rect", "points": [100, 200, 400, 80],
+            "write_pose_tags": True, "pose": {"pos": [1.0, 2.0]}}
+    host2 = _make_mixin_host([roi2], 0, roi_def=panel2)
+    host2._sync_selected_roi_panel_flags()
+    assert roi2["write_pose_tags"] is False
+    assert roi2["pose"] == {"pos": [1.0, 2.0]}  # 原值未动
+    assert roi2["scene_text_policy"] == "overlap"
+
+
+def test_sync_selected_roi_panel_flags_without_selection_is_noop():
+    roi = {"type": "rect", "points": [100, 200, 400, 80]}
+    host = _make_mixin_host([roi], -1, roi_def=_StubRoiDefPanel(pose=True))
+
+    host._sync_selected_roi_panel_flags()
+    assert "write_pose_tags" not in roi
 
 
 # ── Merge keeps rotation tags ───────────────────────────────────

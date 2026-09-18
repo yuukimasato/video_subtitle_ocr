@@ -143,6 +143,26 @@
 
 ### 修复
 
+- **无选中行时逐 ROI 开关勾选静默丢失（亮度自适应不生效的真正根因）**：
+  「亮度自适应/遮挡蒙版/位置标签/场景策略」的即时写回都以「ROI 列表
+  当前有选中行」为前提，无选中时静默 `return`；而加载视频 → 自动加载
+  ROI autosave 后列表恰恰没有选中行，面板停在空白复位态——用户勾选
+  pose + 亮度自适应后直接识别，写回全部丢弃，面板显示已勾选而内存
+  `roi_data` 仍是旧值，GUI 轨迹字幕不带变暗跟随标签（autosave json 里
+  `motion_auto_brightness: false` 即内存真相，勾选从未落进内存；json
+  本身只在「开始识别」时从内存单向导出，不存在旧文件覆盖）。三层修复：
+  1. **载入后自动选中并回填**：视频加载/手动加载 ROI 配置后列表无选中
+     时选中第一行（按住跳帧），详情面板如实回填已保存值——勾选必然有
+     落点（`_select_first_roi_without_seek`）。
+  2. **丢弃留痕**：无选中且已有 ROI 条目时勾选，日志给出可见告警
+     （`roi_data` 为空的「先配置待新建 ROI」正常流程不打扰）。
+  3. **启动前兜底同步**：`run_ocr_pipeline` 在自动备份前以面板为准写回
+     选中条目的四个逐 ROI 开关（`_sync_selected_roi_panel_flags`，
+     pose 随几何重算），保证面板显示、autosave json、识别管线三者一致。
+  新增 `tests/test_roi_pose_tags.py` 回归 4 项（无选中告警、自动选中、
+  启动前同步、同步不动时间几何）；用用户真实 autosave（5 点闭合多边形、
+  `motion_auto_brightness: false`）headless 复现原流程验证修复。单元测试
+  795 → **799 passed, 1 skipped**。
 - **LLM 429 有界退避尊重 Retry-After，总等待精确有界**：`_call_llm_api`
   的退避等待现按剩余总预算截断（tenacity 的 `stop_after_delay` 允许最后
   一次 sleep 超出总预算，现单次 ≤60s、总等待精确 ≤300s）；429 响应携带

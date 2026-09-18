@@ -776,7 +776,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="+201"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+185"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -901,7 +901,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+28"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -941,7 +941,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+116"/>
         <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -966,12 +966,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+144"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+160"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+7"/>
         <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1670,7 +1670,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+25"/>
         <source>已自动加载 ROI 配置：{}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1715,41 +1715,46 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+40"/>
+        <source>当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</source>
+        <translation type="unfinished">当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</translation>
+    </message>
+    <message>
+        <location line="+29"/>
         <source>ROI {} 画面位置标签已{}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>开启</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-32"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="-34"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>关闭</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-17"/>
+        <location line="-18"/>
         <source>ROI {} 亮度自适应已{}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 遮挡蒙版已{}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 场景文字显示已设为 {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+216"/>
+        <location line="+244"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1818,7 +1823,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+27"/>
         <source>ROI 配置已从 {} 加载</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1910,7 +1915,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+13"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2047,11 +2052,11 @@
     </message>
     <message>
         <location filename="../main_window/pipeline_control.py" line="-1"/>
-        <location filename="../main_window/roi_config_io.py" line="-93"/>
-        <location line="+85"/>
+        <location filename="../main_window/roi_config_io.py" line="-96"/>
+        <location line="+88"/>
         <location filename="../main_window/roi_editing.py" line="-125"/>
         <location filename="../main_window/scan_control.py" line="+195"/>
-        <location filename="../main_window/video_playback.py" line="-148"/>
+        <location filename="../main_window/video_playback.py" line="-151"/>
         <source>错误</source>
         <translation>错误</translation>
     </message>
@@ -2370,7 +2375,7 @@
         <translation>OCR流水线将以 {} 模式运行。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="+95"/>
+        <location filename="../core/pipeline_stages.py" line="+99"/>
         <source>Step 1/4: Calculating number of ROI frames to process...</source>
         <translation>步骤1/4：正在计算要处理的抓取区域(ROI)帧数...</translation>
     </message>
@@ -2385,7 +2390,7 @@
         <translation>步骤1/4：计算完成，共 {} 帧。正在开始提取...</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+46"/>
         <source>Streaming mode enabled (time_slice={}s). OCR will run during extraction to reduce peak memory.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2395,7 +2400,7 @@
         <translation>步骤1/4：正在提取抓取区域(ROI)帧... ({}/{})</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+32"/>
         <source>Step 1/4: ROI frame extraction complete. Total {} ROI frames.</source>
         <translation>步骤1/4：抓取区域(ROI)帧提取完成。共 {} 个抓取区域(ROI)帧。</translation>
     </message>
@@ -2404,7 +2409,7 @@
         <translation type="vanished">抓取区域(ROI)提取过程中出错：{}</translation>
     </message>
     <message>
-        <location line="-184"/>
+        <location line="-186"/>
         <source>Step 2/4: Starting intelligent OCR recognition... (0/{})</source>
         <translation>步骤2/4：正在开始智能OCR识别... (0/{})</translation>
     </message>
@@ -2415,18 +2420,18 @@
     <message>
         <location line="+77"/>
         <location line="+58"/>
-        <location line="+111"/>
+        <location line="+113"/>
         <location line="+95"/>
         <source>Step 2/4: OCR recognition in progress... ({}/{})</source>
         <translation>步骤2/4：OCR识别进行中... ({}/{})</translation>
     </message>
     <message>
-        <location line="-255"/>
+        <location line="-257"/>
         <source>Streaming OCR will flush in parallel (cpu_workers={}, max_stream_workers={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+106"/>
+        <location line="+108"/>
         <source>ROI extraction done: {} ROI-frames in {:.2f}s ({:.1f} roi-frames/s).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2634,26 +2639,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+89"/>
-        <location line="+117"/>
+        <location line="+132"/>
+        <location line="+121"/>
         <source>Extraction cannot start: video path or ROI data not provided.</source>
         <translation>无法开始提取：未提供视频路径或抓取区域(ROI)数据。</translation>
     </message>
     <message>
-        <location line="-114"/>
-        <location line="+118"/>
+        <location line="-118"/>
+        <location line="+122"/>
         <source>In save_to_disk mode, a valid working directory `work_dir` must be provided.</source>
         <translation>在 `save_to_disk` 模式下，必须提供有效的 `work_dir` 工作目录。</translation>
     </message>
     <message>
-        <location line="-115"/>
-        <location line="+122"/>
+        <location line="-119"/>
+        <location line="+128"/>
         <source>Extraction aborted: invalid total_frames.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-95"/>
-        <location line="+118"/>
+        <location line="-100"/>
+        <location line="+123"/>
         <source>Could not open video file for extraction: {}</source>
         <translation>无法打开视频文件进行提取：{}</translation>
     </message>
@@ -2682,7 +2687,7 @@
         <translation>无法将帧{}上传至GPU，本帧将回退至CPU处理。错误：{}</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+23"/>
         <source>ROI {} has no &apos;points&apos; field; skipped.</source>
         <translation type="unfinished"></translation>
     </message>

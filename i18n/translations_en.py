@@ -379,6 +379,8 @@ DICT = {
         'No need to tick "Write plane-position tags" manually: at recognition start, each ROI is sample-OCR\'ed, and any text line whose centre moves beyond the movement threshold (24 px) is handed to the motion-trajectory pipeline, suppressing its static fragment events. Detection cost scales with sampling density (0.5 s/frame); keep the ROI tight around the moving text.',
 
     'ROI {} 亮度自适应已{}': 'ROI {}: brightness adaptation {}',
+    '当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。':
+        'No ROI is currently selected: this switch will only apply to entries added later via "Add ROI". To apply it to an existing ROI, select that ROI in the list first, then toggle.',
     'ROI {} 遮挡蒙版已{}': 'ROI {}: occlusion mask {}',
     'ROI {} 场景文字显示已设为 {}': 'ROI {}: scene-text display set to {}',
 

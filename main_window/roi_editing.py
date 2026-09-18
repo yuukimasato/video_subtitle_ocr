@@ -105,6 +105,39 @@ class RoiEditingMixin:
             return None
         return index
 
+    def _select_first_roi_without_seek(self) -> None:
+        """ROI 载入后列表尚无选中时选中第一行（不跳帧），回填详情面板。
+
+        视频加载/ROI 配置加载后列表没有任何选中行，详情面板停在空白复位态；
+        此时用户勾选「亮度自适应」等逐 ROI 选项，写回处理器会因无选中行
+        丢弃写入——面板显示已勾选，识别仍按 roi_data 里的旧值跑（轨迹字幕
+        丢亮度跟随标签）。载入后主动选中第一行，让面板如实回填已保存的值。
+        """
+        list_widget = self.roi_list_widget.roi_list_widget
+        if list_widget.currentItem() is not None or list_widget.count() == 0:
+            return
+        self._suppress_selection_seek = True
+        try:
+            list_widget.setCurrentRow(0)
+        finally:
+            self._suppress_selection_seek = False
+
+    def _warn_panel_flag_without_selection(self) -> None:
+        """无选中行时勾选逐 ROI 选项的可见告警（写回无处落地，只能丢弃）。
+
+        roi_data 为空属正常的"先配置待新建 ROI"流程，不打扰；仅当已有
+        ROI 条目却没选中任何行时提示——这种状态下面板勾选不会作用到
+        任何已有条目，识别将沿用条目旧值。
+        """
+        if getattr(self, "roi_data", None):
+            self.logger.warning(
+                QCoreApplication.translate(
+                    "SubtitleOCRGUI",
+                    "当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；"
+                    "如需应用到已有 ROI，请先在列表中选中它再勾选。",
+                )
+            )
+
     @Slot(bool)
     def on_pose_tags_toggled(self, checked: bool):
         """「写入画面位置标签」勾选变化：立即写回当前选中的 ROI。
@@ -116,6 +149,7 @@ class RoiEditingMixin:
         """
         index = self._selected_roi_index()
         if index is None:
+            self._warn_panel_flag_without_selection()
             return
         roi = self.roi_data[index]
         roi["write_pose_tags"] = bool(checked)
@@ -142,6 +176,7 @@ class RoiEditingMixin:
         """
         index = self._selected_roi_index()
         if index is None:
+            self._warn_panel_flag_without_selection()
             return
         self.roi_data[index]["motion_auto_brightness"] = bool(checked)
         self.logger.info(
@@ -156,6 +191,7 @@ class RoiEditingMixin:
         """「遮挡蒙版」勾选变化：立即写回当前选中的 ROI（与 pose 同契约）。"""
         index = self._selected_roi_index()
         if index is None:
+            self._warn_panel_flag_without_selection()
             return
         self.roi_data[index]["motion_occlusion_clip"] = bool(checked)
         self.logger.info(
@@ -170,6 +206,7 @@ class RoiEditingMixin:
         """「场景文字显示」下拉变化：立即写回当前选中的 ROI（与 pose 同契约）。"""
         index = self._selected_roi_index()
         if index is None:
+            self._warn_panel_flag_without_selection()
             return
         self.roi_data[index]["scene_text_policy"] = str(policy or "overlap")
         self.logger.info(
@@ -177,6 +214,34 @@ class RoiEditingMixin:
                 "SubtitleOCRGUI", "ROI {} 场景文字显示已设为 {}"
             ).format(index, str(policy or "overlap"))
         )
+
+    def _sync_selected_roi_panel_flags(self) -> None:
+        """启动识别前把详情面板的逐 ROI 开关同步进当前选中的 ROI 条目。
+
+        与 on_pose_tags_toggled 等即时写回同契约的兜底：任何信号缝隙导致
+        的面板与 roi_data 不一致，都会让"面板显示已勾选、识别却按旧值跑"
+        （GUI 轨迹字幕丢亮度跟随标签的根因）。识别是面板状态的最终消费者，
+        在此以面板为准写回；只写四个逐 ROI 开关（pose 及其派生字段、亮度
+        自适应、遮挡蒙版、场景文字策略），不动时间与几何。
+        """
+        index = self._selected_roi_index()
+        if index is None:
+            return
+        panel = self.roi_def_widget
+        roi = self.roi_data[index]
+        roi["write_pose_tags"] = bool(panel.pose_tags_checkbox.isChecked())
+        if roi["write_pose_tags"]:
+            pose = self._compute_roi_pose(roi.get("type", "rect"), roi.get("points"))
+            if pose:
+                roi["pose"] = pose
+            else:
+                roi.pop("pose", None)
+        roi["motion_auto_brightness"] = bool(
+            panel.motion_brightness_checkbox.isChecked())
+        roi["motion_occlusion_clip"] = bool(
+            panel.motion_occlusion_checkbox.isChecked())
+        roi["scene_text_policy"] = (
+            panel.scene_text_policy_combo.currentData() or "overlap")
 
     @staticmethod
     def _compute_roi_pose(roi_type: str, points) -> Optional[Dict]:

@@ -779,7 +779,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="+201"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+185"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -904,7 +904,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+28"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -944,7 +944,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+116"/>
         <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -969,12 +969,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+144"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+160"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+7"/>
         <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1677,7 +1677,7 @@
         <translation>解像度：{}x{}、FPS：{:.2f}、総フレーム数：{}</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+25"/>
         <source>已自动加载 ROI 配置：{}</source>
         <translation>ROI 設定を自動読み込みしました：{}</translation>
     </message>
@@ -1722,41 +1722,46 @@
         <translation>すべて保持（フィルタなし）</translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+40"/>
+        <source>当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</source>
+        <translation type="unfinished">ROI が選択されていません:このスイッチは今後「新規 ROI 追加」で作成する項目にのみ反映されます。既存の ROI に適用するには、先にリストで対象を選択してから切り替えてください。</translation>
+    </message>
+    <message>
+        <location line="+29"/>
         <source>ROI {} 画面位置标签已{}</source>
         <translation>ROI {} の画面位置タグを{}</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>开启</source>
         <translation>有効にしました</translation>
     </message>
     <message>
-        <location line="-32"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="-34"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>关闭</source>
         <translation>無効にしました</translation>
     </message>
     <message>
-        <location line="-17"/>
+        <location line="-18"/>
         <source>ROI {} 亮度自适应已{}</source>
         <translation>ROI {}: 輝度自動適応を{}</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 遮挡蒙版已{}</source>
         <translation>ROI {}: 遮蔽マスクを{}</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 场景文字显示已设为 {}</source>
         <translation>ROI {}: シーンテキスト表示を {} に設定</translation>
     </message>
     <message>
-        <location line="+216"/>
+        <location line="+244"/>
         <source>已在画面上调整 ROI {} 的区域</source>
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
@@ -1825,7 +1830,7 @@
         <translation>ROI 設定を読み込む</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+27"/>
         <source>ROI 配置已从 {} 加载</source>
         <translation>ROI 設定を {} から読み込みました</translation>
     </message>
@@ -1917,7 +1922,7 @@
         <translation>保存がキャンセルされたため、OCR タスクを中止しました。</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+13"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
         <translation>[LLM] DeepSeek が有効になりました——ステップ 4 の LLM 進行状況は以下に表示されます。</translation>
     </message>
@@ -2055,11 +2060,11 @@
     </message>
     <message>
         <location filename="../main_window/pipeline_control.py" line="-1"/>
-        <location filename="../main_window/roi_config_io.py" line="-93"/>
-        <location line="+85"/>
+        <location filename="../main_window/roi_config_io.py" line="-96"/>
+        <location line="+88"/>
         <location filename="../main_window/roi_editing.py" line="-125"/>
         <location filename="../main_window/scan_control.py" line="+195"/>
-        <location filename="../main_window/video_playback.py" line="-148"/>
+        <location filename="../main_window/video_playback.py" line="-151"/>
         <source>错误</source>
         <translation>エラー</translation>
     </message>
@@ -2382,7 +2387,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>OCRパイプラインは{}モードで実行されます。</translation>
     </message>
     <message>
-        <location filename="../core/pipeline_stages.py" line="+95"/>
+        <location filename="../core/pipeline_stages.py" line="+99"/>
         <source>Step 1/4: Calculating number of ROI frames to process...</source>
         <translation>ステップ1/4: 処理する対象領域(ROI)フレーム数を計算中...</translation>
     </message>
@@ -2397,7 +2402,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>ステップ1/4: 計算完了、合計{}フレーム。抽出を開始します...</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+46"/>
         <source>Streaming mode enabled (time_slice={}s). OCR will run during extraction to reduce peak memory.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2407,7 +2412,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>ステップ1/4: 対象領域(ROI)フレームを抽出中... ({}/{})</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+32"/>
         <source>Step 1/4: ROI frame extraction complete. Total {} ROI frames.</source>
         <translation>ステップ1/4: 対象領域(ROI)フレーム抽出完了。合計{}対象領域(ROI)フレーム。</translation>
     </message>
@@ -2416,7 +2421,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="vanished">対象領域(ROI)抽出中にエラーが発生しました: {}</translation>
     </message>
     <message>
-        <location line="-184"/>
+        <location line="-186"/>
         <source>Step 2/4: Starting intelligent OCR recognition... (0/{})</source>
         <translation>ステップ2/4: インテリジェントOCR認識を開始中... (0/{})</translation>
     </message>
@@ -2427,18 +2432,18 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
     <message>
         <location line="+77"/>
         <location line="+58"/>
-        <location line="+111"/>
+        <location line="+113"/>
         <location line="+95"/>
         <source>Step 2/4: OCR recognition in progress... ({}/{})</source>
         <translation>ステップ2/4: OCR認識進行中... ({}/{})</translation>
     </message>
     <message>
-        <location line="-255"/>
+        <location line="-257"/>
         <source>Streaming OCR will flush in parallel (cpu_workers={}, max_stream_workers={}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+106"/>
+        <location line="+108"/>
         <source>ROI extraction done: {} ROI-frames in {:.2f}s ({:.1f} roi-frames/s).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2646,26 +2651,26 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+89"/>
-        <location line="+117"/>
+        <location line="+132"/>
+        <location line="+121"/>
         <source>Extraction cannot start: video path or ROI data not provided.</source>
         <translation>抽出を開始できません: ビデオパスまたは対象領域(ROI)データが提供されていません。</translation>
     </message>
     <message>
-        <location line="-114"/>
-        <location line="+118"/>
+        <location line="-118"/>
+        <location line="+122"/>
         <source>In save_to_disk mode, a valid working directory `work_dir` must be provided.</source>
         <translation>save_to_diskモードでは、有効な作業ディレクトリ`work_dir`を指定する必要があります。</translation>
     </message>
     <message>
-        <location line="-115"/>
-        <location line="+122"/>
+        <location line="-119"/>
+        <location line="+128"/>
         <source>Extraction aborted: invalid total_frames.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-95"/>
-        <location line="+118"/>
+        <location line="-100"/>
+        <location line="+123"/>
         <source>Could not open video file for extraction: {}</source>
         <translation>抽出用のビデオファイルを開けませんでした: {}</translation>
     </message>
@@ -2694,7 +2699,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>フレーム{}のGPUへのアップロードに失敗しました。本フレームはCPUで処理します。エラー: {}</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+23"/>
         <source>ROI {} has no &apos;points&apos; field; skipped.</source>
         <translation type="unfinished"></translation>
     </message>

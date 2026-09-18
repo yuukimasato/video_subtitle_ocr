@@ -96,6 +96,9 @@ class PipelineControlMixin:
             self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "用户取消保存，OCR 任务已中止。"))
             return
 
+        # 逐 ROI 开关以面板所见为准写回选中 ROI（兜底任何信号缝隙），随后
+        # 落盘自动备份——保证"备份文件、识别管线、面板显示"三者一致。
+        self._sync_selected_roi_panel_flags()
         self._autosave_roi_config_before_pipeline()
 
         self._pipeline_llm_active = subtitle_polisher is not None

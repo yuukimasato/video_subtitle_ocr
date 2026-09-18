@@ -111,6 +111,9 @@ class RoiConfigIoMixin:
                 self.update_roi_list()
                 self.update_all_rois_visibility()
                 self.control_panel_widget.invalidate_color_gate_confirmation()
+                # 载入后无选中行时选中第一行并回填详情面板：否则用户勾选
+                # 「亮度自适应」等逐 ROI 选项会被写回处理器静默丢弃。
+                self._select_first_roi_without_seek()
                 self.logger.info(QCoreApplication.translate("SubtitleOCRGUI", "ROI 配置已从 {} 加载").format(file_path))
             except Exception as e:
                 QMessageBox.critical(self, 
