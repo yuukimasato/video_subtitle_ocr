@@ -17,7 +17,7 @@ if PROJECT_ROOT not in sys.path:
 
 from core import chunk_worker
 from core.chunk_planner import ChunkWindow
-from core.chunk_worker import chunk_worker_main, clip_roi_data_to_window
+from core.chunk_worker import chunk_worker_main, clip_roi_data_to_window, run_window_stages
 from core.pipeline_stages import PipelineCancelled, PipelineContext
 
 
@@ -39,14 +39,16 @@ def test_roi_fully_inside_window_kept_unchanged():
     w = _window(100, 500)
     rois = [{"start_frame": 200, "end_frame": 300, "label": "a"}]
     out = clip_roi_data_to_window(rois, w, fps=30)
-    assert out == [{"start_frame": 200, "end_frame": 300, "label": "a"}]
+    assert out == [{"start_frame": 200, "end_frame": 300, "label": "a",
+                    "_global_roi_index": 0}]
 
 
 def test_roi_spanning_window_clipped_to_work_range():
     w = _window(100, 500)
     rois = [{"start_frame": 0, "end_frame": 900}]
     out = clip_roi_data_to_window(rois, w, fps=30)
-    assert out == [{"start_frame": 100, "end_frame": 499}]
+    assert out == [{"start_frame": 100, "end_frame": 499,
+                    "_global_roi_index": 0}]
 
 
 def test_roi_outside_window_dropped():
@@ -59,19 +61,20 @@ def test_roi_touching_window_edges_kept():
     w = _window(100, 500)
     # end_frame is inclusive in the extractor: frame 499 is the last kept.
     out = clip_roi_data_to_window([{"start_frame": 50, "end_frame": 120}], w, 30)
-    assert out == [{"start_frame": 100, "end_frame": 120}]
+    assert out == [{"start_frame": 100, "end_frame": 120, "_global_roi_index": 0}]
     out = clip_roi_data_to_window([{"start_frame": 480, "end_frame": 499}], w, 30)
-    assert out == [{"start_frame": 480, "end_frame": 499}]
+    assert out == [{"start_frame": 480, "end_frame": 499, "_global_roi_index": 0}]
     # One frame past the window end (499+1=500) is dropped.
     out = clip_roi_data_to_window([{"start_frame": 480, "end_frame": 500}], w, 30)
-    assert out == [{"start_frame": 480, "end_frame": 499}]
+    assert out == [{"start_frame": 480, "end_frame": 499, "_global_roi_index": 0}]
 
 
 def test_time_based_roi_clipped_via_frame_keys():
     w = _window(300, 600)
     rois = [{"start_time": 0.0, "end_time": 30.0}]  # frames 0..900 @30fps
     out = clip_roi_data_to_window(rois, w, fps=30)
-    assert out == [{"start_time": 0.0, "end_time": 30.0, "start_frame": 300, "end_frame": 599}]
+    assert out == [{"start_time": 0.0, "end_time": 30.0, "start_frame": 300,
+                    "end_frame": 599, "_global_roi_index": 0}]
 
 
 def test_string_time_roi_clipped():
@@ -85,7 +88,9 @@ def test_string_time_roi_clipped():
 def test_non_dict_entries_skipped():
     w = _window(100, 500)
     out = clip_roi_data_to_window(["junk", {"start_frame": 100, "end_frame": 200}], w, 30)
-    assert out == [{"start_frame": 100, "end_frame": 200}]
+    # _global_roi_index skips the non-dict entry: identifiers must match the
+    # coordinator's numbering over the full roi_data list.
+    assert out == [{"start_frame": 100, "end_frame": 200, "_global_roi_index": 1}]
 
 
 # ── payload picklability (spawn requirement) ──────────────────────────
@@ -230,3 +235,56 @@ def test_worker_progress_relayed(monkeypatch):
     msgs = _drain(q)
     progress = [m for m in msgs if m["type"] == "progress"]
     assert any(m["pct"] == 42 and m["msg"] == "step" for m in progress)
+
+
+def test_dropped_earlier_roi_keeps_global_numbering():
+    # Window starts late enough that roi_0 (frames 0-99) is dropped: the
+    # surviving ROI must keep its global index so stage-4 per-ROI metadata
+    # (pose tags / filter / scene-text policies) still matches roi_1.
+    w = _window(300, 600)
+    rois = [
+        {"start_frame": 0, "end_frame": 99},
+        {"start_frame": 0, "end_frame": 900},
+    ]
+    out = clip_roi_data_to_window(rois, w, fps=30)
+    assert out == [{"start_frame": 300, "end_frame": 599, "_global_roi_index": 1}]
+
+
+# ── decode_start_frame wiring (plan preroll consumed) ─────────────────
+
+
+def test_run_window_stages_decodes_from_grab_start_frame(monkeypatch):
+    """The plan's grab_start_frame must reach the extraction stage as the
+    decode start, so a late window stops re-decoding from frame 0."""
+    captured = {}
+
+    def fake_extract(ctx, *, progress_cb, cancel_check):
+        captured["ctx"] = ctx
+        return [("ocr", 0, "roi_1", 0.0)], {"total_roi_frames": 1, "total_ocr_calls": 1}
+
+    def fake_refine(ctx, ocr_results, *, ocr_stats, progress_cb, cancel_check):
+        return ocr_results
+
+    def fake_restore(ctx, ocr_results, *, progress_cb, cancel_check):
+        return [({"t": ["x"]}, 300, "roi_1", 10.0)]
+
+    monkeypatch.setattr(chunk_worker, "extract_and_ocr_stage", fake_extract)
+    monkeypatch.setattr(chunk_worker, "refine_stage", fake_refine)
+    monkeypatch.setattr(chunk_worker, "restore_stage", fake_restore)
+
+    ctx = PipelineContext(
+        video_path="/tmp/v.mp4", roi_data=[{"start_frame": 300, "end_frame": 900}],
+        total_frames=1000, fps=30.0, work_dir="/tmp/w", debug_mode=False,
+        enable_boundary_refine=False,
+    )
+    window = ChunkWindow(
+        index=1, core_start_frame=330, core_end_frame=630,
+        grab_start_frame=270, work_start_frame=300, work_end_frame=660,
+    )
+    run_window_stages(ctx, window, progress_cb=lambda p, m: None,
+                      cancel_check=lambda: False)
+
+    assert captured["ctx"].decode_start_frame == 270
+    # ROI clipping to the work window still applies on top of the seek.
+    assert captured["ctx"].roi_data == [
+        {"start_frame": 300, "end_frame": 659, "_global_roi_index": 0}]

@@ -51,10 +51,17 @@ def clip_roi_data_to_window(roi_data: List[Dict], window: ChunkWindow, fps: floa
     outside the window are dropped; entries spanning it are trimmed. The
     frame-based keys (``start_frame``/``end_frame``) are written back and
     take precedence over ``start_time``/``end_time`` in the extractor.
+
+    Each surviving entry carries ``_global_roi_index`` (its index in the
+    full ``roi_data`` list): the extractor derives ``roi_N`` identifiers
+    positionally, and stage 4 looks up per-ROI metadata (pose tags, filter
+    and scene-text policies) by the coordinator's global numbering —
+    without this, dropping earlier ROIs shifts the identifiers and the
+    wrong policies get applied.
     """
     work_start, work_end = window.work_start_frame, window.work_end_frame
     clipped: List[Dict] = []
-    for roi in roi_data or []:
+    for idx, roi in enumerate(roi_data or []):
         if not isinstance(roi, dict):
             continue
         r = dict(roi)
@@ -65,6 +72,7 @@ def clip_roi_data_to_window(roi_data: List[Dict], window: ChunkWindow, fps: floa
         new_end = min(end_f, work_end - 1)
         if new_end < new_start:
             continue
+        r["_global_roi_index"] = idx
         r["start_frame"] = new_start
         r["end_frame"] = new_end
         clipped.append(r)
@@ -85,7 +93,11 @@ def run_window_stages(ctx: PipelineContext, window: ChunkWindow, *, progress_cb,
     # Cross-window parallelism already saturates the machine: keep boundary
     # refinement serial inside each chunk worker (per-thread engines would
     # multiply engine memory by workers × refine threads).
-    wctx = dc_replace(ctx, roi_data=clipped_rois, refine_workers=1)
+    # decode_start_frame consumes the plan's seek preroll: decoding starts at
+    # grab_start_frame instead of frame 0, so a late window no longer pays
+    # for the whole leading part of the video.
+    wctx = dc_replace(ctx, roi_data=clipped_rois, refine_workers=1,
+                      decode_start_frame=window.grab_start_frame)
     ocr_results, stats = extract_and_ocr_stage(
         wctx, progress_cb=progress_cb, cancel_check=cancel_check)
     if ctx.enable_boundary_refine:

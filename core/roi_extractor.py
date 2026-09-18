@@ -368,6 +368,45 @@ def _composite_rois_on_full_frame(
     return canvas
 
 
+def _seek_decode_start(
+    cap: cv2.VideoCapture,
+    start_frame: int,
+    total_frames: int,
+    start_events: DefaultDict[int, List[int]],
+    end_events: DefaultDict[int, List[int]],
+) -> Tuple[int, Set[int]]:
+    """Seek a sequential extractor to ``start_frame``; return the frame number
+    decoding actually starts at and the ROI set active at that point.
+
+    Chunk-parallel workers pass their window's ``grab_start_frame`` so a late
+    window no longer re-decodes everything before it; the planner's preroll
+    before the work window absorbs CAP_PROP_POS_FRAMES seek imprecision.
+    Interval events that fired before the seek point are pre-applied so
+    ``active_rois`` reflects mid-video state. A backend that cannot seek
+    falls back to full sequential decode from frame 0.
+    """
+    target = max(0, min(int(start_frame), total_frames - 1))
+    if target <= 0:
+        return 0, set()
+    try:
+        ok = cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+    except Exception:
+        ok = False
+    if not ok:
+        logger.warning(
+            "Video seek to frame %d failed; falling back to sequential decode from frame 0.",
+            target,
+        )
+        return 0, set()
+    active: Set[int] = set()
+    for f in sorted(f for f in set(start_events) | set(end_events) if f < target):
+        if f in start_events:
+            active.update(start_events[f])
+        if f in end_events:
+            active.difference_update(end_events[f])
+    return target, active
+
+
 def extract_merged_roi_frames(
     video_path: str,
     roi_data: List[Dict],
@@ -377,10 +416,14 @@ def extract_merged_roi_frames(
     save_to_disk: bool = True,
     background_bgr: Tuple[int, int, int] = (255, 255, 255),
     color_presence_gate: Optional[Dict] = None,
+    start_frame: int = 0,
 ) -> Generator[Tuple[Dict, Union[str, np.ndarray], int, str, float], None, None]:
     """
     Decode sequentially, and for frames where any ROI is active, output ONE
     full-size composite image that keeps only ROI pixels.
+
+    ``start_frame`` seeks to a mid-video position first (chunk-parallel
+    workers pass ``grab_start_frame``); 0 decodes the whole video.
     """
     if not video_path or not roi_data:
         logger.warning(QCoreApplication.translate("roi_extractor", "Extraction cannot start: video path or ROI data not provided."))
@@ -394,19 +437,20 @@ def extract_merged_roi_frames(
 
     video_name = os.path.splitext(os.path.basename(video_path))[0]
 
-    # Interval events.
+    # Interval events. Loop locals are ev_start/ev_end: the function's
+    # start_frame parameter must stay unshadowed for the seek below.
     start_events: DefaultDict[int, List[int]] = defaultdict(list)
     end_events: DefaultDict[int, List[int]] = defaultdict(list)
     for idx, roi_entry in enumerate(roi_data):
-        start_frame = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
-        end_frame = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
-        start_frame = max(0, min(int(start_frame), total_frames - 1))
-        end_frame = max(0, min(int(end_frame), total_frames - 1))
-        if end_frame < start_frame:
-            start_frame, end_frame = end_frame, start_frame
-        start_events[start_frame].append(idx)
-        if end_frame + 1 <= total_frames - 1:
-            end_events[end_frame + 1].append(idx)
+        ev_start = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
+        ev_end = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
+        ev_start = max(0, min(int(ev_start), total_frames - 1))
+        ev_end = max(0, min(int(ev_end), total_frames - 1))
+        if ev_end < ev_start:
+            ev_start, ev_end = ev_end, ev_start
+        start_events[ev_start].append(idx)
+        if ev_end + 1 <= total_frames - 1:
+            end_events[ev_end + 1].append(idx)
 
     output_dir = None
     if save_to_disk:
@@ -439,8 +483,8 @@ def extract_merged_roi_frames(
         merged_gate_min_ratio = float(color_presence_gate.get("min_ratio", 0.01))
 
     try:
-        active_rois: Set[int] = set()
-        current_frame_num = 0
+        current_frame_num, active_rois = _seek_decode_start(
+            cap, start_frame, total_frames, start_events, end_events)
         roi_identifier = "roi_merged"
         roi_entry_merged = {"type": "full", "points": [0, 0, 0, 0], "full_frame": True}
 
@@ -498,7 +542,10 @@ def extract_roi_frames(
     work_dir: str,
     save_to_disk: bool = True,
     color_presence_gate: Optional[Dict] = None,
+    start_frame: int = 0,
 ) -> Generator[Tuple[Dict, Union[str, np.ndarray], int, str, float], None, None]:
+    """Sequentially decode ROI crops; ``start_frame`` seeks to a mid-video
+    position first (chunk-parallel workers pass ``grab_start_frame``)."""
     if not video_path or not roi_data:
         logger.warning(QCoreApplication.translate("roi_extractor", "Extraction cannot start: video path or ROI data not provided."))
         return
@@ -510,6 +557,8 @@ def extract_roi_frames(
     video_name = os.path.splitext(os.path.basename(video_path))[0]
 
     # Build interval events: at start_frame add ROI, at (end_frame + 1) remove ROI.
+    # Loop locals are ev_start/ev_end: the function's start_frame parameter
+    # must stay unshadowed for the seek below.
     if total_frames <= 0:
         logger.warning(QCoreApplication.translate("roi_extractor", "Extraction aborted: invalid total_frames."))
         return
@@ -517,16 +566,16 @@ def extract_roi_frames(
     start_events: DefaultDict[int, List[int]] = defaultdict(list)
     end_events: DefaultDict[int, List[int]] = defaultdict(list)
     for idx, roi_entry in enumerate(roi_data):
-        start_frame = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
-        end_frame = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
-        start_frame = max(0, min(int(start_frame), total_frames - 1))
-        end_frame = max(0, min(int(end_frame), total_frames - 1))
-        if end_frame < start_frame:
-            start_frame, end_frame = end_frame, start_frame
-        start_events[start_frame].append(idx)
+        ev_start = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
+        ev_end = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
+        ev_start = max(0, min(int(ev_start), total_frames - 1))
+        ev_end = max(0, min(int(ev_end), total_frames - 1))
+        if ev_end < ev_start:
+            ev_start, ev_end = ev_end, ev_start
+        start_events[ev_start].append(idx)
         # Removal at end+1 (if within bounds).
-        if end_frame + 1 <= total_frames - 1:
-            end_events[end_frame + 1].append(idx)
+        if ev_end + 1 <= total_frames - 1:
+            end_events[ev_end + 1].append(idx)
         else:
             # End at last frame: no explicit removal needed inside loop.
             pass
@@ -577,8 +626,8 @@ def extract_roi_frames(
 
     try:
         # Sequential decode is significantly faster than frequent random seeks.
-        active_rois: Set[int] = set()
-        current_frame_num = 0
+        current_frame_num, active_rois = _seek_decode_start(
+            cap, start_frame, total_frames, start_events, end_events)
         while True:
             if current_frame_num > total_frames - 1:
                 break
@@ -635,7 +684,10 @@ def extract_roi_frames(
 
             for roi_idx in sorted(active_rois):
                 roi_entry = roi_data[roi_idx]
-                roi_identifier = f"roi_{roi_idx}"
+                # Chunk-parallel windows pass clipped ROI lists tagged with
+                # their index in the coordinator's full list; identifiers
+                # must stay global so stage 4 per-ROI metadata matches.
+                roi_identifier = f"roi_{roi_entry.get('_global_roi_index', roi_idx)}"
                 roi_type = roi_entry.get('type', 'rect')
                 points = roi_entry.get('points')
                 if points is None:

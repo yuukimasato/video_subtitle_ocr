@@ -77,6 +77,10 @@ class PipelineContext:
     # Chunk workers pin this to 1: cross-window parallelism already
     # saturates the machine and per-thread engines would multiply memory.
     refine_workers: int = 0
+    # Frame the sequential extractors start decoding at. Chunk workers set
+    # this to their window's grab_start_frame (the plan's seek preroll) so a
+    # late window stops re-decoding the video from frame 0; 0 = whole video.
+    decode_start_frame: int = 0
 
 
 def extract_and_ocr_stage(
@@ -135,12 +139,14 @@ def extract_and_ocr_stage(
                 ctx.video_path, ctx.roi_data, ctx.total_frames, ctx.fps, ctx.work_dir,
                 save_to_disk=not ctx.in_memory_ocr,
                 color_presence_gate=gate_spec,
+                start_frame=ctx.decode_start_frame,
             )
         else:
             frame_generator = roi_extractor.extract_roi_frames(
                 ctx.video_path, ctx.roi_data, ctx.total_frames, ctx.fps, ctx.work_dir,
                 save_to_disk=not ctx.in_memory_ocr,
                 color_presence_gate=gate_spec,
+                start_frame=ctx.decode_start_frame,
             )
 
         extracted_count = 0
@@ -331,14 +337,16 @@ def extract_and_ocr_stage(
                 else:
                     buffer_by_roi[roi_id].append(frame_data)
 
-        # End of extraction
-        progress_cb(
-            10,
-            QCoreApplication.translate(
-                "pipeline_worker",
-                "Step 1/4: ROI frame extraction complete. Total {} ROI frames."
-            ).format(extracted_count)
-        )
+        # End of extraction.流式模式下 OCR 进度(10-65)已在抽取期间推进,
+        # 回发 10 会让进度条倒退;仅在 OCR 尚未推进过时补齐。
+        if processed_count == 0:
+            progress_cb(
+                10,
+                QCoreApplication.translate(
+                    "pipeline_worker",
+                    "Step 1/4: ROI frame extraction complete. Total {} ROI frames."
+                ).format(extracted_count)
+            )
         t1_roi = time.perf_counter()
         if extracted_count > 0:
             logger.info(
