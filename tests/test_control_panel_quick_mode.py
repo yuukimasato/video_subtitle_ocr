@@ -380,3 +380,19 @@ def test_default_options(panel):
     assert opts["source_filter_config"]["enabled"] is False
     # 加载视频后自动检测 ROI 默认开启。
     assert panel.auto_roi_on_load_checkbox.isChecked() is True
+
+
+def test_ocr_lang_combo_offers_traditional_chinese(panel):
+    """识别语言下拉框提供繁体中文（chinese_cht），紧跟简体之后；
+    set/get_selected_lang 按 data 往返。"""
+    combo = panel.ocr_lang_combo
+    datas = [combo.itemData(i) for i in range(combo.count())]
+    texts = [combo.itemText(i) for i in range(combo.count())]
+    assert "chinese_cht" in datas
+    assert datas.index("chinese_cht") == datas.index("ch") + 1
+    assert texts[datas.index("chinese_cht")] == "中文繁體"
+
+    panel.set_selected_lang("chinese_cht")
+    assert panel.get_selected_lang() == "chinese_cht"
+    panel.set_selected_lang("ch")
+    assert panel.get_selected_lang() == "ch"

@@ -50,6 +50,17 @@ def test_route_ch_small_uses_v6_small_models():
     }
 
 
+def test_route_chinese_cht_rides_v6_fast_path():
+    """繁体中文是 paddleocr 3.7 _PPOCRV6_LANGS 的一等语言——与 ch/en/japan
+    同一套 v6 模型，无需回落 v5、无需额外下载模型。"""
+    assert resolve_model_selection("chinese_cht", None) == {"ocr_version": "PP-OCRv6"}
+    assert resolve_model_selection("chinese_cht", "auto") == {"ocr_version": "PP-OCRv6"}
+    assert resolve_model_selection("chinese_cht", "tiny") == {
+        "text_detection_model_name": "PP-OCRv6_tiny_det",
+        "text_recognition_model_name": "PP-OCRv6_tiny_rec",
+    }
+
+
 def test_route_korean_falls_back_to_v5_korean_rec():
     assert resolve_model_selection("korean", None) == {
         "ocr_version": "PP-OCRv5",
@@ -101,6 +112,7 @@ def test_get_engine_info_fields():
     assert info.supports_gpu is True
     assert list(info.supported_model_tiers) == ["tiny", "small", "medium"]
     assert "ch" in info.supports_languages
+    assert "chinese_cht" in info.supports_languages
     assert "japan" in info.supports_languages
 
 

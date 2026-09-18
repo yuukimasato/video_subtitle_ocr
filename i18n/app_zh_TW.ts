@@ -87,12 +87,16 @@
         <translation>辨識語言：</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation>選擇字幕語言。中文／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
+        <translation type="vanished">選擇字幕語言。中文／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+3"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
+        <translation>選擇字幕語言。中文簡體／繁體／英文／日文使用 PP-OCRv6 模型，其他語言自動回落 PP-OCRv5 多語言模型。</translation>
+    </message>
+    <message>
+        <location line="+29"/>
         <source>文字保留：</source>
         <translation>文字保留：</translation>
     </message>
@@ -659,7 +663,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/event_merge.py" line="+201"/>
+        <location filename="../core/subtitle_generator/event_merge.py" line="+185"/>
         <source>Merged {} fragmented ASS lines into {} dialogue events.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -784,7 +788,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+28"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -824,7 +828,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/llm_merge.py" line="+112"/>
+        <location filename="../core/subtitle_generator/llm_merge.py" line="+116"/>
         <source>Step 4/4: DeepSeek merging fragmented Scene subtitles (call {})...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -849,12 +853,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+144"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+160"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+7"/>
         <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1267,7 +1271,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
-        <location filename="../main_window/roi_editing.py" line="+233"/>
+        <location filename="../main_window/roi_editing.py" line="+298"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1310,7 +1314,7 @@
         <translation>使用者取消儲存，OCR 工作已中止。</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+13"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
         <translation>[LLM] 已啟用 DeepSeek —— 第 4 步的大型模型進度會顯示在下方。</translation>
     </message>
@@ -1377,7 +1381,7 @@
     <message>
         <location line="+4"/>
         <location filename="../main_window/roi_config_io.py" line="-52"/>
-        <location line="+85"/>
+        <location line="+88"/>
         <location filename="../main_window/roi_editing.py" line="+62"/>
         <location filename="../main_window/scan_control.py" line="+338"/>
         <location filename="../main_window/video_playback.py" line="+28"/>
@@ -1392,7 +1396,7 @@
 {}</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_config_io.py" line="-99"/>
+        <location filename="../main_window/roi_config_io.py" line="-102"/>
         <source>保存 ROI 配置</source>
         <translation>儲存 ROI 設定</translation>
     </message>
@@ -1437,7 +1441,7 @@
         <translation>載入 ROI 設定</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+27"/>
         <source>ROI 配置已从 {} 加载</source>
         <translation>ROI 設定已從 {} 載入</translation>
     </message>
@@ -1458,7 +1462,7 @@
         <translation>ASS 字幕檔案 (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_editing.py" line="-255"/>
+        <location filename="../main_window/roi_editing.py" line="-320"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
         <translation>已新增 ROI，影格範圍：{}-{}</translation>
     </message>
@@ -1488,41 +1492,46 @@
         <translation>全部保留（不過濾）</translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+40"/>
+        <source>当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</source>
+        <translation>當前未選取任何 ROI：該開關只會寫入之後「新增 ROI」的條目；如需套用到已有 ROI，請先在清單中選取它再勾選。</translation>
+    </message>
+    <message>
+        <location line="+29"/>
         <source>ROI {} 画面位置标签已{}</source>
         <translation>ROI {} 畫面位置標籤已{}</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>开启</source>
         <translation>已開啟</translation>
     </message>
     <message>
-        <location line="-32"/>
-        <location line="+19"/>
-        <location line="+14"/>
+        <location line="-34"/>
+        <location line="+20"/>
+        <location line="+15"/>
         <source>关闭</source>
         <translation>已關閉</translation>
     </message>
     <message>
-        <location line="-17"/>
+        <location line="-18"/>
         <source>ROI {} 亮度自适应已{}</source>
         <translation>ROI {}: 亮度自適應已{}</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 遮挡蒙版已{}</source>
         <translation>ROI {}: 遮罩蒙版已{}</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>ROI {} 场景文字显示已设为 {}</source>
         <translation>ROI {}: 場景文字顯示已設為 {}</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+86"/>
         <source>开始时间不能晚于结束时间。</source>
         <translation>開始時間不能晚於結束時間。</translation>
     </message>
@@ -1725,7 +1734,7 @@
         <translation>解析度：{}x{}，影格率：{:.2f}，總影格數：{}</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+25"/>
         <source>已自动加载 ROI 配置：{}</source>
         <translation>已自動載入 ROI 設定：{}</translation>
     </message>
@@ -1918,7 +1927,7 @@
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_stages.py" line="+95"/>
+        <location filename="../core/pipeline_stages.py" line="+99"/>
         <source>Step 1/4: Calculating number of ROI frames to process...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1933,7 +1942,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+37"/>
         <source>Step 2/4: Starting intelligent OCR recognition... (0/{})</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1945,13 +1954,13 @@
     <message>
         <location line="+68"/>
         <location line="+58"/>
-        <location line="+111"/>
+        <location line="+113"/>
         <location line="+95"/>
         <source>Step 2/4: OCR recognition in progress... ({}/{})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-255"/>
+        <location line="-257"/>
         <source>Streaming OCR will flush in parallel (cpu_workers={}, max_stream_workers={}).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1961,7 +1970,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+32"/>
         <source>Step 1/4: ROI frame extraction complete. Total {} ROI frames.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2194,26 +2203,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+89"/>
-        <location line="+117"/>
+        <location line="+132"/>
+        <location line="+121"/>
         <source>Extraction cannot start: video path or ROI data not provided.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-114"/>
-        <location line="+118"/>
+        <location line="-118"/>
+        <location line="+122"/>
         <source>In save_to_disk mode, a valid working directory `work_dir` must be provided.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-115"/>
-        <location line="+122"/>
+        <location line="-119"/>
+        <location line="+128"/>
         <source>Extraction aborted: invalid total_frames.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-95"/>
-        <location line="+118"/>
+        <location line="-100"/>
+        <location line="+123"/>
         <source>Could not open video file for extraction: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2238,7 +2247,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+23"/>
         <source>ROI {} has no &apos;points&apos; field; skipped.</source>
         <translation type="unfinished"></translation>
     </message>

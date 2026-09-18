@@ -111,17 +111,16 @@
         <translation>识别语言：</translation>
     </message>
     <message>
-        <location line="+69"/>
+        <location line="+70"/>
         <source>模型档位：</source>
         <translation>模型档位：</translation>
     </message>
     <message>
-        <location line="-66"/>
         <source>选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
-        <translation>选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</translation>
+        <translation type="vanished">选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</translation>
     </message>
     <message>
-        <location line="-22"/>
+        <location line="-89"/>
         <source>样式模板（可选）</source>
         <translation type="unfinished"></translation>
     </message>
@@ -136,7 +135,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+74"/>
+        <location line="+75"/>
         <source>引擎选择：</source>
         <translation type="unfinished"></translation>
     </message>
@@ -249,12 +248,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-215"/>
+        <location line="-216"/>
         <source>识别设置</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+37"/>
+        <location line="+9"/>
+        <source>选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</source>
+        <translation type="unfinished">选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，其他语言自动回落 PP-OCRv5 多语言模型。</translation>
+    </message>
+    <message>
+        <location line="+29"/>
         <source>文字保留：</source>
         <translation type="unfinished"></translation>
     </message>

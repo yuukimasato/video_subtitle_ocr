@@ -8,6 +8,15 @@
 
 ### 新增
 
+- **识别语言新增「中文繁體」（`chinese_cht`）**：识别语言下拉框在简体之后
+  新增繁体中文。paddleocr 3.7 的 `_PPOCRV6_LANGS` 本就包含 `chinese_cht`
+  ——与简体/英/日同一套 PP-OCRv6 模型，**无需额外下载模型**，选路加入
+  `V6_LANGS` 快车道（`resolve_model_selection("chinese_cht")` →
+  `{"ocr_version": "PP-OCRv6"}`，档位 tiny/small/medium 同样可用）；
+  引擎元数据 `supports_languages` 同步补齐；提示语四语（en/ja/zh_CN/
+  zh_TW）更新。合成繁体字幕图实测：`今天天氣真不錯，我們去看電影` 识别
+  得分 0.995（复用已缓存 v6 模型，零下载）。RapidOCR 引擎不区分语言
+  （内置 PP-OCRv6 ONNX 模型），行为不变。
 - **「仅遮罩」场景文字策略（`mask_only`，typesetting 遮罩蒙版）**：面向
   字幕组排版工作流——片源画面带烧录文字（场记板/招牌/手机屏幕等）时，
   工具生成 `\p1` 纯色遮罩盖住原文字，**layer 1 留空**供在遮罩上自行

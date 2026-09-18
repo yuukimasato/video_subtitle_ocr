@@ -124,12 +124,13 @@ class ControlPanelWidget(QWidget):
         self.ocr_lang_combo.setToolTip(
             QCoreApplication.translate(
                 "ControlPanelWidget",
-                "选择字幕语言。中文/英语/日语使用 PP-OCRv6 模型，"
+                "选择字幕语言。中文简体/繁体/英语/日语使用 PP-OCRv6 模型，"
                 "其他语言自动回落 PP-OCRv5 多语言模型。",
             )
         )
         for _lang_label, _lang_value in (
             ("中文简体", "ch"),
+            ("中文繁體", "chinese_cht"),
             ("English", "en"),
             ("日本語", "japan"),
             ("한국어", "korean"),

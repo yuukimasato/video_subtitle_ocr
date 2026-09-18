@@ -7,7 +7,8 @@ This adapter extracts and consolidates PaddleOCR-specific logic that was
 previously scattered in ocr_processor.py.
 
 Model selection (PP-OCRv6 first):
-  - ch / en / japan  → PP-OCRv6 unified models (tier: tiny/small/medium or auto).
+  - ch / chinese_cht / en / japan → PP-OCRv6 unified models (tier:
+    tiny/small/medium or auto).
   - Other languages  → conservative fallback to PP-OCRv5 (multilingual rec
     model via V5_FALLBACK_REC when known).
 """
@@ -25,9 +26,10 @@ from core.ocr_engine_base import BaseOCREngine, OCREngineInfo
 
 logger = logging.getLogger(__name__)
 
-# Languages covered by the PP-OCRv6 unified models (ch/en/japan + latin scripts;
-# conservatively only ch/en/japan take the v6 fast path here).
-V6_LANGS = frozenset({"ch", "en", "japan"})
+# Languages covered by the PP-OCRv6 unified models. chinese_cht (繁體中文)
+# is a first-class PP-OCRv6 language in paddleocr 3.7 (_PPOCRV6_LANGS), so
+# it rides the same v6 fast path as ch — no extra model download.
+V6_LANGS = frozenset({"ch", "chinese_cht", "en", "japan"})
 
 # Recognized model tiers (PP-OCRv6_{tier}_det / PP-OCRv6_{tier}_rec).
 VALID_MODEL_TIERS = ("tiny", "small", "medium")
@@ -101,8 +103,9 @@ class PaddleOCREngine(BaseOCREngine):
             description="PaddleOCR — 百度 PaddleOCR（PP-OCRv6，支持模型档位 tiny/small/medium），支持中/日/韩/英等多语言，准确率高，最稳定",
             supports_gpu=True,
             supports_languages=[
-                "ch", "en", "japan", "korean", "french", "german",
-                "italian", "spanish", "portuguese", "russian", "arabic",
+                "ch", "chinese_cht", "en", "japan", "korean", "french",
+                "german", "italian", "spanish", "portuguese", "russian",
+                "arabic",
             ],
             estimated_speed_rank=3,
             supported_model_tiers=["tiny", "small", "medium"],
