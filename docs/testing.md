@@ -364,3 +364,29 @@ diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
 复测口径:主流水线 `cli.py <video> --roi-file <test/*_roi.json> -o <out>.ass`;
 轨迹管线 `scripts/motion_ass.py --video <video> --quad-file test/motion-quad.json
 --scene-text-policy mask`;烧帧 `test/burn_frames.sh`(含本次 -copyts 修复)。
+
+### 2.7.0（2026-09-19）：轨迹屏幕空间实测校正 + 静止段塌缩 + 逐行还原标签
+
+> 轨迹管线新增 `core/pose_verify.py`(模板匹配实测校正:背景横移污染跟踪的
+> 场景把行轨迹锚回实测屏幕位置;全程可见且收敛的行吸附常量位姿;部分可见
+> 行删除失配跨度,不再渲染幽灵文字;自适应补丁 + 零纹理守卫防伪匹配)。
+> 合成器新增静止段塌缩(链内总位移 ≤12px 且角度/缩放速率低于感知阈值
+> 3°/s、0.10/s 的连续段合并为单条 `\pos`,文字不动不再输出 `\move`/`\t`)。
+> 融合行同文本近重复去重(IoU≥0.5),消除同一行双轨迹的 `\an4`/`\an6`
+> 锚点交错跳变。静态路径新增 `core/line_restoration.py`(勾选「写入画面
+> 位置标签」时逐行取识别多边形方向角为 `\frz`,并从帧像素采样 `\1c`/
+> `\3c`/`\bord`;`\frx`/`\fry` 因平台 libass 伪 3D 无法可靠反演,不自动
+> 生成)。测试 856 → 874 passed, 1 skipped。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **874 passed, 1 skipped**(< 60 s;新增 `test_pose_verify` 4 项:漂移单应吸附常量/恒等单应校正跟随/文字消失删尾位姿/零纹理跳过;`test_line_restoration` 13 项:frz 方向约定与竖排退化/取色与守卫/BGR 标签串/行去重) |
+| 11.mp4 混排聊天(motion,overlap,27 s) | 582 条碎片事件 → **102 条**(16 条静止 `\pos` + 86 条真实运动 `\move`);标题行 = 入场动画 `\move` 数条 + 单条 `\pos` 贯穿 0:00:00.95–0:00:26.10;t=3/10/17 烧帧目检字幕精确贴合气泡、无漂移/放大、无幽灵文字(消息滚出后事件随之截止) |
+| 12.mp4 倾斜面板(静态路径,write_pose_tags) | 逐行还原实测:t=14 帧真实引擎 OCR,`私も言いすぎたよ` → `\frz-2.2`(墨迹实测 −1.2~−2.1,ROI 级旧值 8.0)+ `\1c&H75A6B4&\3c&H75A6B4&\bord0.3`(手调参考 `&H69A2B3&`/`0.2`);逐行颜色正确区分气泡文字(蓝灰)与时间戳(浅灰) |
+| libass 3D 校准 | 单字形 + 整行渲染实测:本平台 `\frx`/`\fry` 为逐字形仿射错切(整行扇形),与平面透视投影不可映射 → 不自动生成,留 mask_only 手工排版 |
+| deb 构建 | `video-subtitle-ocr_2.7.0_all.deb` 构建成功,`dpkg-deb -I/-c` 抽查通过 |
+
+复测口径:轨迹管线 `scripts/motion_ass.py --video 11.mp4 --quad-file
+/tmp/11_quad.json --scene-text-policy overlap`(quad 取 11_roi_overlap.json
+的 minAreaRect);静态路径逐行还原为 12.mp4 真实帧 + rapid 引擎驱动验证
+(convert_from_memory + roi_pose_tags + 真实 video_path 走 FrameReader 取色)。
