@@ -125,15 +125,45 @@ def test_scene_lines_keep_own_pos_and_gain_rotation(tmp_path):
     conv.convert_from_memory(iter(items))
 
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
-    # rotation goes INSIDE the override block (outside `}` it would render
-    # as literal on-screen text); numeric tags carry no parentheses
-    # (\frz(8.0) is invalid ASS and silently ignored by libass).
-    assert "{\\an5\\pos(300,325)\\frz8.0\\frx0.0\\fry0.0}" in text
+    # Scene 行的 \frz 取该行多边形自身的方向角(轴对齐框 → 0.0),不再继承
+    # ROI 级 8.0;旋转写在 override 块内部(在外面会被当字面文本渲染),
+    # 数值标签不带圆括号(\frz(8.0) 是非法 ASS,libass 静默忽略)。
+    assert "{\\an5\\pos(300,325)\\frz0.0\\frx0.0\\fry0.0}" in text
+
+
+def test_scene_lines_keep_tilted_polygon_angle(tmp_path):
+    """倾斜面板上的行:逐行 \frz 来自识别多边形的长边方向,而非 ROI 姿态。
+
+    12.mp4 实测:ROI 整体 frz 8.0,某行真值 1.9°——按 ROI 会差 6 度。"""
+    conv = _build_converter(
+        tmp_path,
+        {"roi_0": {"pos": [640.0, 360.0], "frz": 8.0, "frx": 0.0, "fry": 0.0}},
+    )
+    tilt = math.radians(2.0)
+    # dy=7:整型截断后 (400,300)-(200,307) 的方向角 ≈ 2.0°
+    poly = [[200, 307], [400, 300], [400, 350], [200, 357]]
+    items = []
+    for f in range(10, 21):
+        box = (200, 300, 400, 350)
+        data = {
+            "dt_polys": [poly],
+            "rec_polys": [poly],
+            "rec_texts": ["私も言いすぎたよ"],
+            "rec_scores": [0.95],
+            "rec_boxes": [list(box)],
+        }
+        items.append((data, f, "roi_0", f / 25.0))
+    conv.convert_from_memory(iter(items))
+
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+    # 基线向右上升(y 随 x 减小)→ 视觉逆时针 → frz 为正 ≈ 2.0
+    assert "\\frz2.0\\frx0.0\\fry0.0}" in text
+    assert "\\frz8.0" not in text
 
 
 def test_zero_tilt_rect_pose_still_writes_rotation_tags(tmp_path):
     """Pose enabled on an upright rect ROI: scene lines keep their detected
-    \\pos but the full rotation block (zeros included) must be written, so
+    \\pos and the full rotation block (zeros included) must be written, so
     the checkbox has a visible effect in the output (regression: a zero
     tilt used to append an empty string and the output was unchanged)."""
     conv = _build_converter(

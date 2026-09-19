@@ -11,9 +11,11 @@
 4. ``ocr_optimizer.fuse_samples_by_position``:锚定帧 = 最清晰关键帧,按行框
    位置对齐投票(阶段一不接 VLM,``--vlm-min-confidence`` 缺省 0.0 使难行
    列表尽量少);
-5. ``motion_ass.build_line_tracks`` → ``smooth_line_track``(显式调用,合成器
-   内部不平滑)→ ``synthesize_events``:标签阶梯(单段 \\move / 分段 \\move /
-   \\t 旋转缩放 / 帧级 \\pos 兜底,lost 切段);
+5. ``motion_ass.build_line_tracks`` → ``pose_verify.verify_line_tracks``
+   (模板匹配实测行在画面中的真实位置,锚回单应轨迹;静止行吸附常量
+   位姿,不可见跨度删位姿)→ ``smooth_line_track``(显式调用,合成器
+   内部不平滑)→ ``synthesize_events``:标签阶梯(静止段单条 ``\\pos`` /
+   单段 \\move / 分段 \\move / \\t 旋转缩放 / 帧级 \\pos 兜底,lost 切段);
 6. ``scene_text_policy.apply_policy``(--scene-text-policy,默认 overlap 不改
    变任何输出):mask 生成 \\p1 纯色遮罩盖原文字、识别文本升 layer 1;
    mask_only 只出遮罩——识别文本写成 Comment 行(不渲染),layer 1 留给
@@ -300,6 +302,47 @@ def _fused_line_rows(best_ocr_data: Dict[str, Any]) -> List[Tuple[str, Tuple[flo
             continue
         rows.append((str(text), box))
     return rows
+
+
+def dedupe_rows(
+    rows: List[Tuple[str, Tuple[float, float, float, float]]],
+    iou_thresh: float = 0.5,
+) -> Tuple[List[Tuple[str, Tuple[float, float, float, float]]], int]:
+    """同文本且行框重叠(IoU ≥ 阈值)的融合行去重,保留先出现的行。
+
+    不同关键帧对同一视觉行的近重复读法若未被位置对齐合并,会生成两条
+    几乎同位的行轨迹——各自独立判定对齐后一个锚左缘、一个锚右缘,输出
+    事件在时间轴上交错跳变。按文本归一 + IoU 合并即可消除。
+    返回 (去重后的行, 删除的行数)。
+    """
+    kept: List[Tuple[str, Tuple[float, float, float, float]]] = []
+
+    def _norm(text: str) -> str:
+        return "".join(str(text).split())
+
+    def _iou(a: Tuple[float, float, float, float],
+             b: Tuple[float, float, float, float]) -> float:
+        ix = min(a[2], b[2]) - max(a[0], b[0])
+        iy = min(a[3], b[3]) - max(a[1], b[1])
+        if ix <= 0 or iy <= 0:
+            return 0.0
+        inter = ix * iy
+        area_a = (a[2] - a[0]) * (a[3] - a[1])
+        area_b = (b[2] - b[0]) * (b[3] - b[1])
+        return inter / max(1e-9, area_a + area_b - inter)
+
+    removed = 0
+    for text, box in rows:
+        dup = False
+        for kt, kb in kept:
+            if _norm(kt) == _norm(text) and _iou(kb, box) >= iou_thresh:
+                dup = True
+                break
+        if dup:
+            removed += 1
+            continue
+        kept.append((text, box))
+    return kept, removed
 
 
 def _default_ocr_fn(engine_id: Optional[str]) -> Tuple[OcrFn, Any]:
@@ -618,6 +661,9 @@ def build_motion_events(
         if dropped:
             log(f"      junk filter: dropped {len(dropped)} noise line(s): {dropped}")
         rows = kept_rows
+    rows, n_dup = dedupe_rows(rows)
+    if n_dup:
+        log(f"      dedupe: merged {n_dup} near-duplicate line(s)")
     if not rows:
         raise RuntimeError("no text lines recognized on any keyframe")
     # 窗口像素坐标 + 外接矩形偏移 = 初始帧平面坐标(常量平移,见模块 docstring)
@@ -628,9 +674,31 @@ def build_motion_events(
     texts = [text for text, _box in rows]
     log(f"[3/5] fused OCR lines: {texts}")
 
-    # 5. 行轨迹 → 平滑(显式调用)→ 合成事件 → 写 .ass
+    # 5. 行轨迹 → 屏幕空间实测校正(默认开;模板匹配把轨迹锚回真实屏幕
+    #    位置,静止行吸附为常量位姿)→ 平滑(显式调用)→ 合成事件 → 写 .ass
     line_tracks = build_line_tracks(
         line_boxes, texts, tracks, ref_frame=int(start_frame))
+    if cfg.verify_screen_pose:
+        from core.pose_verify import VerifyConfig, verify_line_tracks
+
+        vcfg = VerifyConfig(
+            sample_max=cfg.verify_sample_max,
+            search_radius_px=cfg.verify_search_radius_px,
+            min_score=cfg.verify_min_score,
+            drop_score=cfg.verify_drop_score,
+            static_tol_px=cfg.verify_static_tol_px,
+        )
+        try:
+            line_tracks, reports = verify_line_tracks(
+                video_path, tracks, line_tracks, vcfg, log=log)
+            n_static = sum(1 for r in reports.values() if r.static)
+            n_corrected = sum(1 for r in reports.values()
+                              if r.corrected and not r.static)
+            log(f"      pose-verify: {n_static} static, {n_corrected} "
+                f"corrected, {len(reports)} line(s) checked")
+        except RuntimeError as exc:
+            log(f"warning: pose verification failed ({exc}); "
+                "keeping homography-derived tracks")
     for line_track in line_tracks:
         smooth_line_track(line_track, window=cfg.smooth_window)
     width, height = _video_size(video_path)

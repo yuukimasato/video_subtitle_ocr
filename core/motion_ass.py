@@ -10,7 +10,8 @@
   跨越长 lost 遮挡段),只去高频抖动、不改缓慢运动趋势。
 - :func:`simplify_and_segment` —— 中心序列 Douglas-Peucker 简化得分段点,
   并入角度/缩放显著变化帧,强制最小段长,输出连续无缝的帧号区间。
-- :func:`synthesize_events` —— 标签阶梯:单段直线 → 一条 ``\\move`` 事件;
+- :func:`synthesize_events` —— 标签阶梯:连续静止段 → 一条 ``\\pos`` 事件
+  (无 ``\\move``/``\\t``);单段直线 → 一条 ``\\move`` 事件;
   多段 → 每段一条 ``\\move`` 事件(边界共享同一格式化时间字符串,
   段内角度/缩放超阈值叠加 ``\\t``);段数爆炸 → 帧级 ``\\pos`` 兜底;
   lost 间隔切段(可选 ``lost_hold_sec`` 保持)。行锚点按
@@ -86,6 +87,25 @@ class MotionAssConfig:
     # —— 融合行噪声过滤(手机状态栏/导航栏图标误读:<、>、000、单字象形)——
     # 判据与静态路径共用(core.text_utils.is_noise_text),行融合后、建轨迹前剔除。
     junk_line_filter: bool = True
+
+    # —— 屏幕空间实测校正(core.pose_verify;默认开)——
+    # 跟踪平面被背景运动污染(文字实际固定在屏幕坐标)时,模板匹配实测
+    # 把行轨迹锚回真实屏幕位置;完全静止的行吸附为常量位姿,合成器输出
+    # 单条 \pos 事件(无 \move/\t)。
+    verify_screen_pose: bool = True
+    verify_sample_max: int = 16          # 每行最多采样帧数(含首末)
+    verify_search_radius_px: float = 40.0  # 匹配搜索半径(预测中心 ± 半径)
+    verify_min_score: float = 0.45       # 参与校正的最小匹配置信度
+    verify_drop_score: float = 0.30      # 判定文字不可见的置信度
+    verify_static_tol_px: float = 2.5    # 屏幕静止判定容差(px)
+
+    # —— 静止链塌缩:链内锚点/角度/缩放全程低于阈值时输出单条 \pos 事件 ——
+    collapse_static_chains: bool = True
+    collapse_settle_tol_px: float = 12.0  # 段内总位移低于此值视为静止(感知阈值)
+    # 位移低于感知阈值的段还须角度/缩放变化足够慢才塌缩(区分「单应污染
+    # 的慢漂移」与「绕行中心的真实缩放/旋转动画」);单位:°/s 与 1/s。
+    collapse_max_rot_rate: float = 3.0
+    collapse_max_scale_rate: float = 0.10
 
     # —— 屏幕亮度自适应(增量特性;--auto-brightness 开启,--config-json 可覆盖)——
     brightness_tol: float = 8.0                   # 亮度曲线 DP 简化容差(0-255 亮度级)
@@ -689,6 +709,8 @@ def _chain_events(
                              align=align, box_w=box_w, angles=angles,
                              scales=scales)
 
+    # 阶梯 0(段级):连续静止段合并为单条 \pos 事件(见下方 groups 循环)。
+
     events: List[Dict] = []
     multi = len(segs) > 1
     last = len(segs) - 1
@@ -701,38 +723,99 @@ def _chain_events(
         chain_dt = chain_dts[len(chain_dts) // 2]
     else:
         chain_dt = 0.0
+
+    def _seg_static(ai: int, bi: int) -> bool:
+        """段内整体位移低于感知阈值、且角度/缩放变化足够慢 → 静止段。
+
+        判据用段首末锚点距离:DP 已保证段内锚点偏离弦 ≤ move_tol,首末
+        距离即段内总位移。实测校正只回贴中心,单应的角度/缩放污染仍会
+        让长时间静止的行留有数像素的慢漂移与假 \t 变化——变化速率低于
+        感知阈值的按静止处理(塌缩后这些假 \t 一并消失);绕行中心的
+        真实缩放/旋转动画(位移≈0 但角/秒、缩放/秒高)不受影响。
+        """
+        ax, ay = anchors[ai]
+        bx, by = anchors[bi]
+        settle = max(float(cfg.collapse_settle_tol_px), float(cfg.move_tol_px))
+        if math.hypot(bx - ax, by - ay) > settle:
+            return False
+        dur = tmap[chain[bi]].time_sec - tmap[chain[ai]].time_sec
+        if dur <= 1e-6:
+            return True
+        ang_range = max(_ang_diff(a, angles[ai]) for a in angles[ai:bi + 1])
+        if ang_range / dur > cfg.collapse_max_rot_rate:
+            return False
+        scale_range = max(scales[ai:bi + 1]) - min(scales[ai:bi + 1])
+        return scale_range / dur <= cfg.collapse_max_scale_rate
+
+    # 相邻段按「静止/运动」分组:连续静止段合并成一条 \pos 事件(文字
+    # 不移动就不需要 \move/\t);运动段逐段输出 \move(± \t)。
+    groups: List[List[object]] = []
     for si, (ai, bi) in enumerate(segs):
-        f0 = chain[ai]
-        # 非末段的 end_frame = 下一段的 start_frame(共享边界帧)
-        f1 = chain[segs[si + 1][0]] if (multi and si < last) else chain[bi]
-        t0 = tmap[f0].time_sec
-        t1 = tmap[f1].time_sec
-        if si == last:
-            # 链尾先延伸再判零长:单帧链 f1 == f0(帧号相等不算零长),
-            # 直接判会把整条链丢成无事件;延伸后仍无正时长(时间戳重复)
-            # 才丢弃。f1 < f0 不可能出现(分段下标严格递增)。
-            t1 = _next_frame_time(tmap, f1, t1, chain_dt)
-        if t1 <= t0:
-            continue  # 零长段丢弃
-        if multi:
-            move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
-                    f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])})")
+        static_seg = bool(cfg.collapse_static_chains and _seg_static(ai, bi))
+        if groups and groups[-1][0] == static_seg:
+            groups[-1][1].append(si)  # type: ignore[union-attr]
         else:
-            move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
-                    f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])},"
-                    f"0,{_seg_ms(t0, t1)})")
-        tags = f"{{\\an{an}\\fs{fs_h}{move}"
-        tags += _overlay_tags(angles[ai], angles[bi], scales[ai], scales[bi],
-                              t0, t1, cfg)
-        tags += "}"
-        events.append({
-            "start_time": format_ass_time(t0),
-            "end_time": format_ass_time(t1),
-            "style": style,
-            "name": "motion",
-            "tags": tags,
-            "body": lt.text,
-        })
+            groups.append([static_seg, [si]])
+
+    for gi, (static_group, sis) in enumerate(groups):
+        sis = list(sis)  # type: ignore[arg-type]
+        is_last_group = gi == len(groups) - 1
+        first_ai = segs[sis[0]][0]
+        last_bi = segs[sis[-1]][1]
+        # 组边界 = 段边界:非链尾组的结束帧与下一组首段共享(排他边界);
+        # 链尾组延伸一帧,末帧不落空。
+        start_f = chain[first_ai]
+        end_f = chain[last_bi] if is_last_group else chain[segs[sis[-1] + 1][0]]
+
+        if static_group:
+            t0 = tmap[start_f].time_sec
+            t1 = tmap[end_f].time_sec
+            if is_last_group:
+                t1 = _next_frame_time(tmap, end_f, t1, chain_dt)
+            if t1 <= t0:
+                continue
+            ax, ay = anchors[first_ai]
+            events.append({
+                "start_time": format_ass_time(t0),
+                "end_time": format_ass_time(t1),
+                "style": style,
+                "name": "motion",
+                "tags": f"{{\\an{an}\\fs{fs_h}\\pos({_fmt1(ax)},{_fmt1(ay)})}}",
+                "body": lt.text,
+            })
+            continue
+
+        for si in sis:
+            ai, bi = segs[si]
+            f0 = chain[ai]
+            # 组内非末段与下一段共享边界帧;组末段结束于组边界。
+            f1 = (chain[segs[si + 1][0]]
+                  if si < sis[-1] else end_f)
+            t0 = tmap[f0].time_sec
+            t1 = tmap[f1].time_sec
+            if is_last_group and si == last:
+                t1 = _next_frame_time(tmap, f1, t1, chain_dt)
+            if t1 <= t0:
+                continue  # 零长段丢弃
+            if multi or len(sis) > 1:
+                move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
+                        f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])})")
+            else:
+                move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
+                        f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])},"
+                        f"0,{_seg_ms(t0, t1)})")
+            tags = f"{{\\an{an}\\fs{fs_h}{move}"
+            tags += _overlay_tags(angles[ai], angles[bi], scales[ai], scales[bi],
+                                  t0, t1, cfg)
+            tags += "}"
+            events.append({
+                "start_time": format_ass_time(t0),
+                "end_time": format_ass_time(t1),
+                "style": style,
+                "name": "motion",
+                "tags": tags,
+                "body": lt.text,
+            })
     return events
 
 

@@ -580,7 +580,13 @@ class OCRToASSOptimizer(
                         styled_lines = other_lines
                     pose = self.roi_pose_tags.get(str(roi_id))
                     if pose:
-                        styled_lines = self._apply_roi_pose_tags(styled_lines, pose)
+                        # 取组内中间帧供逐行取色(打不开/失败时自动跳过取色);
+                        # FrameReader 按帧号缓存,多组共享同一句柄。
+                        mid_frame = None
+                        if group_frames:
+                            mid_frame = group_frames[len(group_frames) // 2].frame_num
+                        styled_lines = self._apply_roi_pose_tags(
+                            styled_lines, pose, frame_num=mid_frame)
                     for line_info in styled_lines:
                         subtitle_events.append(
                             {

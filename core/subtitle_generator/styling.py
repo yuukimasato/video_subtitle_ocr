@@ -2,7 +2,7 @@
 import logging
 import re
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from PySide6.QtCore import QCoreApplication
 
@@ -53,38 +53,81 @@ class _StylingMixin:
         # 静默忽略(与 core/motion_ass.py 的 \frz 写法保持一致)。
         return f"{{\\an5\\pos({px:.1f},{py:.1f})\\frz{frz:.1f}\\frx{frx:.1f}\\fry{fry:.1f}}}"
 
-    def _apply_roi_pose_tags(self, styled_lines: List[Dict], pose: Dict) -> List[Dict]:
+    def _apply_roi_pose_tags(
+        self,
+        styled_lines: List[Dict],
+        pose: Dict,
+        frame_num: Optional[int] = None,
+    ) -> List[Dict]:
         """Apply the ROI's pose tags to a group's styled lines.
 
         - Scene lines already carry their own per-line anchor tag ({\\an5\\pos}
           for centered blocks, {\\an4\\pos}/{\\an6\\pos} at the box edge for
           left/right-aligned blocks, from the restored OCR box): keep that
-          position and only append the rotation tags, so each line stays
-          where it was detected.
+          position and append a per-line rotation block — the \\frz is each
+          line's own polygon angle (screen coordinates), not the ROI-level
+          tilt; a hand-drawn quad's overall tilt differs from individual
+          line angles on tilted panels. \\frx/\\fry stay at the ROI pose
+          values (auto perspective estimation is not renderer-faithful).
+        - Scene lines additionally gain sampled color/outline tags
+          (\\1c/\\3c/\\bord) from the frame at ``frame_num`` when that frame
+          can be decoded and the sampling is trustworthy.
         - Bottom/Top lines are re-pinned to the ROI pose center ({\\an5\\pos})
           with rotation, replacing their margin-based placement.
         """
-        frz = float(pose.get("frz", 0.0) or 0.0)
+        frz_roi = float(pose.get("frz", 0.0) or 0.0)
         frx = float(pose.get("frx", 0.0) or 0.0)
         fry = float(pose.get("fry", 0.0) or 0.0)
         # pose 启用即整体写入旋转块(含 0 值):与选项提示「附带 \pos \frz
         # \frx \fry」一致;零倾角(正放矩形 ROI)此前不追加任何标签,勾选
         # 前后输出完全相同,用户无法确认选项已生效。
         # 数值标签不带圆括号(见 _format_pose_tag 同步说明)。
-        rotation = "\\frz{:.1f}\\frx{:.1f}\\fry{:.1f}".format(frz, frx, fry)
+        rotation_roi = "\\frz{:.1f}\\frx{:.1f}\\fry{:.1f}".format(frz_roi, frx, fry)
+
+        frame_img = None
+        if frame_num is not None:
+            try:
+                frame_img = self._get_analysis_reader().read(int(frame_num))
+            except Exception:  # 取帧失败只跳过取色,不影响几何标签
+                frame_img = None
 
         out = []
         for line in styled_lines:
             tags = line.get("tags") or ""
-            if "\\pos(" in tags:
-                # Keep the line's own detected position, add rotation only.
-                # 旋转必须并入既有 override 块内部:ASS 的 \frz 等标签写在
-                # `}` 之外会被当作字幕字面文本渲染出来(此前 tags + rotation
-                # 直接拼接,倾斜多边形的输出会显示 "\frz8.0" 字样)。
+            poly = line.get("poly")
+            if "\\pos(" in tags and poly:
+                # Scene 行:逐行 frz(行多边形方向角)+ 可信时的取色标签。
+                from core.line_restoration import (
+                    format_style_tags,
+                    line_frz_deg,
+                    sample_line_style,
+                )
+
+                frz_line = line_frz_deg(poly)
+                rotation = "\\frz{:.1f}\\frx{:.1f}\\fry{:.1f}".format(
+                    frz_line, frx, fry)
+                style_tags = ""
+                if frame_img is not None:
+                    try:
+                        sampled = sample_line_style(
+                            frame_img, poly, float(line.get("height") or 0.0))
+                        if sampled:
+                            style_tags = format_style_tags(sampled)
+                    except Exception:  # 采样异常不阻塞事件输出
+                        style_tags = ""
+                # 旋转/颜色必须并入既有 override 块内部:ASS 的 \frz 等标签
+                # 写在 `}` 之外会被当作字幕字面文本渲染出来(此前 tags +
+                # rotation 直接拼接,倾斜多边形的输出会显示 "\frz8.0" 字样)。
                 if tags.endswith("}"):
-                    line["tags"] = tags[:-1] + rotation + "}"
+                    line["tags"] = tags[:-1] + rotation + style_tags + "}"
                 else:  # 防御:无块可并入时包成独立 override 块
-                    line["tags"] = tags + "{" + rotation + "}"
+                    line["tags"] = tags + "{" + rotation + style_tags + "}"
+            elif "\\pos(" in tags:
+                # Scene 行但无多边形(理论不出现):保持 ROI 级旋转块。
+                if tags.endswith("}"):
+                    line["tags"] = tags[:-1] + rotation_roi + "}"
+                else:
+                    line["tags"] = tags + "{" + rotation_roi + "}"
             else:
                 # Re-pin to the ROI pose (pos + rotation).
                 line["tags"] = self._format_pose_tag(pose)
@@ -147,7 +190,13 @@ class _StylingMixin:
                 else:
                     x = int(line.center[0]); an = 5
                 tags = f"{{\\an{an}\\pos({x},{y})}}"
-                dialogue_lines.append({'style': 'Scene', 'text': line.text, 'tags': tags})
+                dialogue_lines.append({
+                    'style': 'Scene', 'text': line.text, 'tags': tags,
+                    # 逐行还原(_apply_roi_pose_tags)用:屏幕坐标多边形与
+                    # 行高(描边估计的字号参照)。
+                    'poly': [tuple(p) for p in line.polygon],
+                    'height': line.bounding_height,
+                })
         return dialogue_lines
 
     def _note_box_style_line(self) -> str:
