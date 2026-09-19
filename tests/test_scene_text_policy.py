@@ -608,8 +608,15 @@ class TestWhitespaceTrackReuse:
             lt = next(t for t in ref_tracks if t.text == ev["body"])
             x1, y1, x2, y2 = move_points(ev["tags"])
             f0, f1 = min(lt.poses), max(lt.poses)
-            assert (x1, y1) == pytest.approx(lt.poses[f0].center, abs=0.05), ev
-            assert (x2, y2) == pytest.approx(lt.poses[f1].center, abs=0.05), ev
+            # 合成行框全部左对齐于带左缘(宽度随行长变化)→ 检测为 left 块,
+            # 事件锚 \an4 于行框左缘中点 = 中心 − 半框宽(平移轨迹 scale=1)
+            w0 = lt.ref_box[2] - lt.ref_box[0]
+            assert (x1, y1) == pytest.approx(
+                (lt.poses[f0].center[0] - w0 / 2.0, lt.poses[f0].center[1]),
+                abs=0.05), ev
+            assert (x2, y2) == pytest.approx(
+                (lt.poses[f1].center[0] - w0 / 2.0, lt.poses[f1].center[1]),
+                abs=0.05), ev
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +704,28 @@ class TestApplyPolicyStatic:
         assert spec["tags"].startswith("{\\an2\\pos(150.0,360.0)\\fs")
         assert spec["body"] == "标题\\N正文一\\N正文二"
 
+    def test_external_dedups_repeated_row_texts(self):
+        # 静态路径 rows 跨整个 ROI:常驻文字(状态栏)随每个 OCR 组重复进入,
+        # NoteBox 按整行文本去重(保持首次出现顺序),否则同一行重复几十次。
+        rows = ([("べにっぽ", (20.0, 8.0, 120.0, 20.0))]
+                + [(t, box) for t, box in ROWS] * 3)
+        specs, _applied, _notes = apply_policy_static(
+            rows, make_white_plane(), policy_cfg("external"), PLANE_W, PLANE_H)
+        assert len(specs) == 1
+        body = specs[0]["body"]
+        assert body.split("\\N") == ["べにっぽ", "标题", "正文一", "正文二"]
+
+    def test_whitespace_dedups_repeated_row_texts(self):
+        rows = ([("べにっぽ", (20.0, 8.0, 120.0, 20.0))]
+                + [(t, box) for t, box in ROWS] * 3)
+        specs, applied, _notes = apply_policy_static(
+            rows, make_white_plane(), policy_cfg("whitespace"),
+            PLANE_W, PLANE_H)
+        assert applied == "whitespace"
+        assert specs[0]["body"].split("\\N") == [
+            "べにっぽ", "标题", "正文一", "正文二"]
+        assert specs[0]["kind"] == "scene_ws" and specs[0]["style"] == "Scene"
+
     def test_external_single_note_spec(self):
         specs, applied, notes = apply_policy_static(
             ROWS, make_white_plane(), policy_cfg("external"), PLANE_W, PLANE_H)
@@ -714,11 +743,13 @@ class TestApplyPolicyStatic:
         assert len(specs) == 1
         spec = specs[0]
         assert spec["kind"] == "scene_ws" and spec["style"] == "Scene"
+        # 左对齐于带左缘(\an4):与 motion 版合成行框同一布局约定
+        assert spec["tags"].startswith("{\\an4\\pos(")
         m = re.search(r"\\pos\(([-\d.]+),([-\d.]+)\)", spec["tags"])
         assert m
         x, y = float(m.group(1)), float(m.group(2))
-        assert 0.0 < x < float(PLANE_W)
-        assert y > 100.0  # 原文字最低 y=96,中心落在下方空白带
+        assert 0.0 <= x < float(PLANE_W)
+        assert y > 100.0  # 原文字最低 y=96,锚点落在下方空白带
         assert "\\fs" in spec["tags"]
         assert spec["body"] == "标题\\N正文一\\N正文二"
 

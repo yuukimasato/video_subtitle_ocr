@@ -356,6 +356,35 @@ def test_motion_sentinel_reuses_last_text_on_tiny_noise(tmp_path, install_fake_e
     assert all(res[1]["rec_texts"] == ["字幕X"] for res in results)
 
 
+def test_motion_sentinel_anchor_accumulates_gradual_text(tmp_path, install_fake_engine):
+    # Typewriter-style gradual appearance: each frame adds one small text
+    # block (200/25600 ≈ 0.78% changed pixels < 1% threshold), so comparing
+    # against the PREVIOUS frame never crosses the threshold and an empty
+    # first-frame result used to be reused until the end of the video.
+    # Comparing against the anchor frame (last real OCR) accumulates the
+    # change: the 2nd block crosses 1.56% ≥ 1% and forces a real OCR that
+    # finally picks up the text.
+    engine = install_fake_engine(FakeEngine(single_texts=[""], default_text="字幕B"))
+    opt = make_optimizer(tmp_path)
+    frames = []
+    for k in range(6):
+        img = np.full((80, 320, 3), 200, dtype=np.uint8)
+        for b in range(k):  # each block is 10x20 px of pure black
+            y, x = divmod(b, 8)
+            img[y * 10:(y + 1) * 10, x * 20:(x + 1) * 20] = 0
+        frames.append((ROI_ENTRY, img, k, "roi_0", k / 30.0))
+
+    results = opt.process_roi_group(frames, is_cancelled_func=not_cancelled)
+
+    # Frame 0 is a real (empty) OCR; frame 1 stays skipped (0.78% < 1%);
+    # frame 2 crosses the threshold vs the anchor and must be OCRed for real.
+    assert opt.ocr_calls >= 2
+    assert results[0][1]["rec_texts"] == []
+    assert results[1][1]["rec_texts"] == []
+    assert all(res[1]["rec_texts"] == ["字幕B"] for res in results[2:])
+    assert opt.frames_filled >= 4
+
+
 # ---------------------------------------------------------------------------
 # h) Cancellation short-circuits to []
 # ---------------------------------------------------------------------------
@@ -386,7 +415,7 @@ def test_cleanup_clears_caches(tmp_path):
     opt.cleanup()
     assert not opt._feature_cache
     assert not opt._image_cache
-    assert not opt._last_gray_by_roi
+    assert not opt._anchor_gray_by_roi
     assert not opt._last_ocr_by_roi
 
 # ---------------------------------------------------------------------------
@@ -463,3 +492,101 @@ def test_batch_ocr_on_samples_single_chunk_when_under_size(tmp_path, install_fak
     out = opt._run_batch_ocr_on_samples(frames)
     assert engine.batch_calls == 1 and engine.batch_sizes == [3]
     assert [r[2] for r in out] == [f[2] for f in frames]
+
+
+# ---------------------------------------------------------------------------
+# j) Motion sentinel anchor vs the final reused result
+# ---------------------------------------------------------------------------
+
+def test_motion_sentinel_anchor_refreshes_with_final_result_frame(tmp_path, install_fake_engine):
+    # The sequence scan runs real OCR on later sample frames; after the best
+    # (fused) result is picked, the anchor must be refreshed to the frame
+    # carrying that reused result (the base first frame of the sequence) —
+    # not left on the empty pre-sequence anchor, and not moved to a later
+    # sampled frame.
+    install_fake_engine(FakeEngine(single_texts=[""], default_text="字幕C"))
+    opt = make_optimizer(tmp_path)
+    frames = []
+    for k in range(4):
+        img = np.full((80, 320, 3), 200, dtype=np.uint8)
+        for b in range(k):  # progressive 10x20 black blocks (cf. gradual test)
+            y, x = divmod(b, 8)
+            img[y * 10:(y + 1) * 10, x * 20:(x + 1) * 20] = 0
+        frames.append((ROI_ENTRY, img, k, "roi_0", k / 30.0))
+
+    results = opt.process_roi_group(frames, is_cancelled_func=not_cancelled)
+
+    # f0 real (empty) OCR; f1 skipped vs that anchor; f2 crosses the
+    # threshold, gets OCRed and anchors a sequence reaching f3.
+    assert opt.ocr_calls >= 2
+    assert results[0][1]["rec_texts"] == []
+    assert all(res[1]["rec_texts"] == ["字幕C"] for res in results[2:])
+
+    anchor = opt._anchor_gray_by_roi["roi_0"]
+    assert anchor is not None
+    assert np.array_equal(anchor, opt._get_grayscale_image(frames[2]))
+    assert not np.array_equal(anchor, opt._get_grayscale_image(frames[0]))
+    assert not np.array_equal(anchor, opt._get_grayscale_image(frames[3]))
+
+    # The refreshed anchor is usable: a new frame with the same content as
+    # the base frame is recognised as unchanged and reuses the fused result.
+    before = opt.ocr_calls
+    same_as_base = (ROI_ENTRY, frames[2][1].copy(), 100, "roi_0", 100 / 30.0)
+    filled = opt.process_roi_group([same_as_base], is_cancelled_func=not_cancelled)
+    assert opt.ocr_calls == before
+    assert filled[0][1]["rec_texts"] == ["字幕C"]
+
+
+def test_motion_sentinel_sets_anchor_on_empty_real_ocr(tmp_path, install_fake_engine):
+    # An empty recognition is still a real OCR: the anchor must be pinned to
+    # that frame so gradually appearing content accumulates against it.
+    install_fake_engine(FakeEngine(default_text=""))
+    opt = make_optimizer(tmp_path)
+    frames = make_frames(3)
+
+    results = opt.process_roi_group(frames, is_cancelled_func=not_cancelled)
+
+    assert opt.ocr_calls == 1  # f0 real empty OCR; f1/f2 unchanged vs anchor
+    assert opt.frames_filled == 2
+    assert np.array_equal(
+        opt._anchor_gray_by_roi["roi_0"], opt._get_grayscale_image(frames[0]))
+    assert all(res[1]["rec_texts"] == [] for res in results)
+
+
+def test_motion_sentinel_anchor_isolated_per_roi(tmp_path, install_fake_engine):
+    # Anchors are keyed per ROI: one ROI's real OCR must not let another ROI
+    # skip (or force) OCR.
+    install_fake_engine(FakeEngine(default_text="字幕D"))
+    opt = make_optimizer(tmp_path)
+    bright = make_frames(1, base=200, roi_id="roi_0")
+    dark = make_frames(1, base=60, roi_id="roi_1", start_frame=100)
+
+    opt.process_roi_group(bright, is_cancelled_func=not_cancelled)
+    opt.process_roi_group(dark, is_cancelled_func=not_cancelled)
+
+    anchor0 = opt._anchor_gray_by_roi["roi_0"]
+    anchor1 = opt._anchor_gray_by_roi["roi_1"]
+    assert np.array_equal(anchor0, opt._get_grayscale_image(bright[0]))
+    assert np.array_equal(anchor1, opt._get_grayscale_image(dark[0]))
+    assert not np.array_equal(anchor0, anchor1)
+
+    # Content matching each ROI's own anchor is skipped for both ROIs.
+    before = opt.ocr_calls
+    opt.process_roi_group(
+        make_frames(1, base=200, roi_id="roi_0", start_frame=300),
+        is_cancelled_func=not_cancelled)
+    opt.process_roi_group(
+        make_frames(1, base=60, roi_id="roi_1", start_frame=400),
+        is_cancelled_func=not_cancelled)
+    assert opt.ocr_calls == before
+
+    # roi_0 receives roi_1's dark content: hugely different from roi_0's OWN
+    # anchor, so a real OCR must run even though roi_1 just OCR'd identical
+    # content.
+    opt.process_roi_group(
+        make_frames(1, base=60, roi_id="roi_0", start_frame=200),
+        is_cancelled_func=not_cancelled)
+    assert opt.ocr_calls == before + 1
+    # roi_1's anchor is untouched by roi_0's refresh.
+    assert np.array_equal(
+        opt._anchor_gray_by_roi["roi_1"], opt._get_grayscale_image(dark[0]))

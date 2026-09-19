@@ -28,7 +28,8 @@
   版:额外给出稳健离散(MAD/IQR 的 σ 等价)、采样像素数与置信度,并以
   ``background_mode="robust"`` 启用双向墨剔除 + MAD/IQR 判定(默认
   ``"std"`` 与旧阈值规则完全一致,置信度只作诊断不参与判定);
-- :func:`merge_line_blocks` —— 段落块合并(整段一次盖住,行距缝隙不露字);
+- :func:`merge_line_blocks` —— 段落块合并(整段一次盖住,行距缝隙不露字;
+  实现迁至 :mod:`core.text_alignment`,此处 re-export 保持 API);
 - :func:`find_whitespace_band` —— 墨迹二值化 + 行占用剖面找空白带;
   :func:`find_whitespace_band_scored` 额外返回候选带的 confidence 评分
   (面积/宽高/背景均匀性/可排版长度)与逐项分量,并支持 ``threshold_mode``
@@ -74,6 +75,12 @@ from core.motion_ass import (
     punct_comp_offset_px,
     smooth_line_track,
     synthesize_events,
+)
+from core.text_alignment import (
+    ALIGN_LEFT,
+    ALIGN_RIGHT,
+    detect_line_alignments,
+    merge_line_blocks,
 )
 
 __all__ = [
@@ -250,10 +257,12 @@ def _validate_rows(
 
 def _merge_bg_diag(diag: Dict[str, object],
                    diag_extra: Dict[str, object]) -> Dict[str, object]:
-    """把背景/空白带/透视误差诊断(逐块统计、候选带、误差度量)并入 diag。"""
+    """把背景/空白带/透视误差/逐行对齐诊断(逐块统计、候选带、误差度量、
+    逐行判定结果)并入 diag。"""
     diag["background_blocks"] = list(diag_extra.get("background_blocks", []))
     diag["whitespace_band"] = diag_extra.get("whitespace_band")
     diag["mask_perspective"] = list(diag_extra.get("mask_perspective", []))
+    diag["line_alignments"] = diag_extra.get("line_alignments")
     return diag
 
 
@@ -423,40 +432,6 @@ def sample_background_color(
     stats = sample_background_stats(plane_img_bgr, box,
                                     ink_drop_delta=ink_drop_delta)
     return stats.color_bgr, stats.std_max_channel
-
-
-def merge_line_blocks(
-    boxes: Sequence[Sequence[float]],
-    *,
-    vgap_ratio: float = 0.35,
-) -> List[Tuple[int, int]]:
-    """段落块合并:返回块的 (起, 止) 行索引列表(闭区间,指向按 y 升序后的序列)。
-
-    行按 y 升序内部排序后,相邻两行「垂直间距 < ``vgap_ratio`` × 两行平均
-    行高 且 水平范围重叠」则并入同块(邮件正文 10 行 → 一个块)。
-    """
-    order = sorted(range(len(boxes)),
-                   key=lambda i: (float(boxes[i][1]), float(boxes[i][0])))
-    blocks: List[Tuple[int, int]] = []
-    cur: List[int] = []
-    for idx in order:
-        if not cur:
-            cur = [idx]
-            continue
-        prev = boxes[cur[-1]]
-        box = boxes[idx]
-        gap = float(box[1]) - float(prev[3])
-        avg_h = ((float(prev[3]) - float(prev[1]))
-                 + (float(box[3]) - float(box[1]))) / 2.0
-        h_overlap = min(float(prev[2]), float(box[2])) - max(float(prev[0]), float(box[0])) > 0
-        if gap < float(vgap_ratio) * avg_h and h_overlap:
-            cur.append(idx)
-        else:
-            blocks.append((cur[0], cur[-1]))
-            cur = [idx]
-    if cur:
-        blocks.append((cur[0], cur[-1]))
-    return blocks
 
 
 def _ink_mask(
@@ -1357,8 +1332,14 @@ def _apply_whitespace(
     for lt in new_tracks:
         smooth_line_track(lt, window=motion_cfg.smooth_window,
                           max_gap=motion_cfg.smooth_max_gap)
-    return (synthesize_events(new_tracks, tracks, motion_cfg, style=style),
-            "whitespace", notes)
+    # 逐行对齐判定结果并入 diagnostics(合成行框按约定左对齐于带左缘,
+    # 判定应全为 left;偏出即说明锚点选型与布局约定脱钩,留痕便于排查)。
+    align_diag: Dict[str, object] = {}
+    events = synthesize_events(new_tracks, tracks, motion_cfg, style=style,
+                               diagnostics=align_diag)
+    if diag_extra is not None and align_diag:
+        diag_extra["line_alignments"] = align_diag
+    return (events, "whitespace", notes)
 
 
 def apply_policy(
@@ -1518,6 +1499,27 @@ def _static_mask_spec(
     }
 
 
+def _wrap_rows_dedup(
+    rows: Sequence[Row],
+    max_chars: int,
+) -> List[str]:
+    """行文本折行,并按整行文本去重(保持首次出现顺序)。
+
+    静态路径的 rows 跨整个 ROI 时间段,常驻文字(状态栏/标题栏等)会随
+    每个 OCR 组重复进入;单条展示框/空白带放置按文本去重,否则同一行
+    重复几十次撑爆版面(11.mp4 聊天状态栏「べにっぽ」25 秒重复 55 次)。
+    同屏两处出现相同文字属罕见情形,去重对人工整理也无信息损失。
+    """
+    parts: List[str] = []
+    seen: set = set()
+    for text, _box in rows:  # 行序自上而下
+        if text in seen:
+            continue
+        seen.add(text)
+        parts.extend(wrap_cjk(text, max_chars))
+    return parts
+
+
 def _static_external_spec(
     rows: Sequence[Row],
     cfg: SceneTextPolicyConfig,
@@ -1533,9 +1535,7 @@ def _static_external_spec(
     band_w = max(1.0, float(video_w) - 2.0 * margin)
     band_h = max(1.0, float(video_h) - margin)
     max_chars = max(1, int(band_w) // max(1, int(base_fs)))
-    parts: List[str] = []
-    for text, _box in rows:  # 行序自上而下
-        parts.extend(wrap_cjk(text, max_chars))
+    parts = _wrap_rows_dedup(rows, max_chars)
     if not parts:
         return None
     longest = max(len(p) for p in parts)
@@ -1573,8 +1573,9 @@ def _apply_static_mask(
     由生成器写成 ``Comment:`` 行(不渲染,layer 1 留给用户自行排版)。
     取色/背景杂色检查/外扩框与 motion 版共用(按行外扩后求 union);默认
     ``background_mode="std"`` 任一块背景 std 超限 → 回退 external(旧规则
-    不变),robust 模式按 MAD/IQR + 样本数 + 置信度判定;逐块统计经
-    ``diag_extra`` 累加供入口并入 diagnostics。回退 notes 前缀与 applied
+    不变),robust 模式按 MAD/IQR + 样本数 + 置信度判定;逐块统计与逐行
+    对齐判定(``line_alignments``:行 idx → 对齐边 + 三边票数 + 剪切斜率)
+    经 ``diag_extra`` 累加供入口并入 diagnostics。回退 notes 前缀与 applied
     模式按实际模式(mask/mask_only)。
     """
     mode_label = "mask" if include_text else "mask_only"
@@ -1621,9 +1622,30 @@ def _apply_static_mask(
             return ([spec] if spec else []), "external", notes
         out.append(_static_mask_spec(mbox, stats.color_bgr,
                                      orig_indices[s:e + 1], style=style))
+    # 逐行投票检测原文对齐方式(左/中/右,同 core.text_alignment,整组
+    # ROI 投票,聊天混排/邮件松行距都能归类):识别行以行高为字号回贴,
+    # 渲染宽度与原框必有出入——居中锚点会让左/右对齐的行失去公共边距。
+    # 按行选锚:左→\an4 锚行框左缘,右→\an6 锚右缘,中→\an5 锚中心(旧行为);
+    # 对称外扩的遮罩框同时盖住左/右锚渲染的文本,无需改动。
+    # 去趋势与轨迹管线同一开关:行框虽是视频坐标的轴对齐裁剪(非 quad
+    # 展开),但斜放平面上的竖直 UI 列在视频坐标里本就随 y 线性倾斜;
+    # 正面版式估计斜率为 0,开关等价于无操作。逐行判定结果(行 idx →
+    # 对齐边 + 三边票数)并入 diagnostics["line_alignments"] 供真实视频排查。
+    align_diag: Dict[str, object] = {}
+    row_align = detect_line_alignments([b for _t, b in rows],
+                                       detrend_shear=True,
+                                       diagnostics=align_diag)
+    if diag_extra is not None:
+        diag_extra["line_alignments"] = align_diag
     for i, (text, box) in enumerate(rows):
         cx = int((float(box[0]) + float(box[2])) / 2.0)
         cy = int((float(box[1]) + float(box[3])) / 2.0)
+        if row_align[i] == ALIGN_LEFT:
+            anchor_x, an = int(float(box[0])), 4
+        elif row_align[i] == ALIGN_RIGHT:
+            anchor_x, an = int(float(box[2])), 6
+        else:
+            anchor_x, an = cx, 5
         line_h = max(1.0, float(box[3]) - float(box[1]))
         # 显式 \fs=行高:与遮罩/渲染宽度估算同一尺寸体系(Scene 样式字号
         # 是画面高度常数,与原文字大小无关,会让字幕远大于原字)。
@@ -1631,7 +1653,7 @@ def _apply_static_mask(
         spec = {
             "kind": "text",
             "style": str(style),
-            "tags": f"{{\\an5\\pos({cx},{cy})\\fs{round(line_h)}}}",
+            "tags": f"{{\\an{an}\\pos({anchor_x},{cy})\\fs{round(line_h)}}}",
             "body": text,
             "layer": 1,
             "row": int(orig_indices[i]),
@@ -1655,7 +1677,7 @@ def _apply_static_whitespace(
     style: str = "Scene",
     diag_extra: Optional[Dict[str, object]] = None,
 ) -> Optional[List[Dict]]:
-    """whitespace 静态路径:全部行文本合并放进空白带(单条 \\an5\\pos spec)。
+    """whitespace 静态路径:全部行文本合并放进空白带(单条 \\an4\\pos spec)。
 
     带检测与 motion 版共用 :func:`find_whitespace_band_scored`(含
     threshold_mode / 候选带 confidence 评分);无带或带 confidence 低于
@@ -1682,9 +1704,7 @@ def _apply_static_whitespace(
     band_w = float(band[2] - band[0])
     band_h = float(band[3] - band[1])
     max_chars = max(1, int(band_w) // max(1, int(base_fs)))
-    parts: List[str] = []
-    for text, _box in rows:  # 行序自上而下
-        parts.extend(wrap_cjk(text, max_chars))
+    parts = _wrap_rows_dedup(rows, max_chars)
     fs = fit_font_size(len(parts), band_h, max(len(p) for p in parts), band_w,
                        base=base_fs)
     # 可排版长度评分(motion 版同一公式)
@@ -1710,7 +1730,19 @@ def _apply_static_whitespace(
             f"{confidence:.2f} < ws_min_confidence "
             f"{float(cfg.ws_min_confidence):g}")
         return None
-    tags = (f"{{\\an5\\pos({_fmt1((float(band[0]) + float(band[2])) / 2.0)},"
+    # 源行框逐行对齐判定留痕(与 mask 路径同一投票,detrend_shear 开关
+    # 也一致):diag 是**源行**的判定结果;whitespace 的合成单块按约定
+    # 固定 \an4 左对齐于带左缘,放置锚点不受该判定影响——勿据 diag 误读
+    # 放置行为。
+    if diag_extra is not None:
+        align_diag: Dict[str, object] = {}
+        detect_line_alignments([b for _t, b in rows],
+                               detrend_shear=True, diagnostics=align_diag)
+        diag_extra["line_alignments"] = align_diag
+    # 左对齐放在带内(锚 \an4 于带左缘):与 motion 版 whitespace 的合成行框
+    # (带内垂直居中、左对齐)同一布局约定;多行 \N 文本整块左对齐不随行长
+    # 摇摆,居中锚点会让不同长度的行左缘参差。
+    tags = (f"{{\\an4\\pos({_fmt1(float(band[0]))},"
             f"{_fmt1((float(band[1]) + float(band[3])) / 2.0)})\\fs{fs}}}")
     return [{
         "kind": "scene_ws",
@@ -1742,12 +1774,13 @@ def apply_policy_static(
     - ``{"kind": "mask", "tags", "layer": 0, "rows": [行索引], ...}`` ——
       每块一条静态 ``\\an7\\pos\\p1`` 矩形(平面坐标);
     - ``{"kind": "text", "tags", "body", "layer": 1, "row": 行索引}`` ——
-      原识别行(平面坐标 ``\\an5\\pos`` 中心);mask_only 模式附
+      原识别行(平面坐标,锚点按整组逐行投票检测的对齐方式:\an4 左缘 /
+      \an5 中心 / \an6 右缘);mask_only 模式附
       ``"comment": True``(写成 Comment 行,不渲染);
     - ``{"kind": "note", "style": "NoteBox", "tags", "body"}`` —— external
       单条展示框(``tags`` 已是视频坐标);
     - ``{"kind": "scene_ws", "tags", "body"}`` —— whitespace 单条空白带放置
-      (平面坐标)。
+      (平面坐标,\an4 左对齐于带左缘)。
 
     ``style`` 为场景文字事件(mask 矩形 / 原行文本 / whitespace 放置)的
     样式名,缺省 ``Scene``;external 的展示框仍用 ``NoteBox`` 样式。
@@ -1757,8 +1790,9 @@ def apply_policy_static(
     返回空 spec 并留痕。返回 :class:`PolicyResult`(兼容
     ``(specs, applied, notes)`` 三元组解包),diagnostics 携带
     requested/applied mode、行框有效性统计(静态路径无轨迹,
-    ``ref_frame`` 为 None)、逐块背景统计(``background_blocks``)与候选
-    空白带(``whitespace_band``)。
+    ``ref_frame`` 为 None)、逐块背景统计(``background_blocks``)、候选
+    空白带(``whitespace_band``)与逐行对齐判定(``line_alignments``,
+    mask/mask_only 与 whitespace 路径)。
     """
     mode = cfg.mode
     plane_h, plane_w = plane_img_bgr.shape[:2]

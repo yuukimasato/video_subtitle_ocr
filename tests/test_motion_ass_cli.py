@@ -1002,3 +1002,111 @@ def test_junk_filter_disabled_via_config(tmp_path):
     text = out_ass.read_bytes().decode("utf-8-sig")
     bodies = set(re.findall(r"^Dialogue: .*,,\{[^}]*\}(.*)$", text, re.M))
     assert bodies == {"メール一覧", "次回ミーティング", "<", "000", "血"}
+
+
+# ---------------------------------------------------------------------------
+# 关键帧候选池分批 OCR(首批无文字换批 / 批级解码失败兜底 / 池耗尽)
+# ---------------------------------------------------------------------------
+
+_EMPTY_OCR = {"dt_polys": [], "rec_polys": [], "rec_texts": [],
+              "rec_scores": [], "rec_boxes": []}
+
+
+def test_keyframe_pool_first_batch_without_text_advances_to_next(tmp_path, monkeypatch):
+    """最清晰的首批识别不出文字(空白引导段)→ 留痕后换下一批;summary 的
+    keyframes 即选中批,锚定帧 = 选中批最清晰帧;候选池只顺序解码一次。"""
+    video_path, quad0 = build_case(tmp_path)
+    logs: list = []
+    mock_calls: list = []
+    state = {"n": 0}
+    mock = make_mock_ocr(mock_calls)
+
+    def ocr_fn(img):
+        state["n"] += 1
+        if state["n"] <= 2:  # 首批(keyframe_count=2)两帧都返回空
+            return dict(_EMPTY_OCR)
+        return mock(img)
+
+    real_read = motion_cli._read_keyframe_frames
+    reads: list = []
+
+    def spy_read(vp, frame_nums):
+        reads.append([int(f) for f in frame_nums])
+        return real_read(vp, frame_nums)
+
+    monkeypatch.setattr(motion_cli, "_read_keyframe_frames", spy_read)
+
+    events, summary = motion_cli.build_motion_events(
+        video_path, quad0, keyframe_count=2, min_gap_sec=0.0,
+        ocr_fn=ocr_fn, log=logs.append)
+
+    assert events
+    assert len(reads) == 1  # 池级一次性解码:分批与选定批后都不再重复解码
+    pool = reads[0]
+    batch2 = pool[2:4]
+    # 换批:选中批 = 候选池第二批;锚定帧 = 选中批最清晰帧(批首)
+    assert summary["keyframes"] == batch2
+    assert summary["keyframes"][0] == batch2[0]
+    assert any("sharpest keyframes had no text" in m for m in logs)
+    assert f"{batch2}" in "\n".join(logs)
+    assert state["n"] == 4        # 两批 × 每批 2 帧
+    assert len(mock_calls) == 2   # 只有第二批走真实黑条检测
+
+
+def test_keyframe_batch_decode_failure_tries_next_batch(tmp_path, monkeypatch):
+    """某批解码失败(容器帧数虚标/尾部帧坏)→ 留痕换下一批,整体仍成功,
+    不再让整条 build 失败。"""
+    video_path, quad0 = build_case(tmp_path, n=10, scale_step=0.0)
+    logs: list = []
+    real_read = motion_cli._read_keyframe_frames
+    pool_reads: list = []
+    batch_attempts = {"n": 0}
+
+    def flaky_read(vp, frame_nums):
+        frames = [int(f) for f in frame_nums]
+        if len(frames) > 2:  # 池级一次性解码调用:模拟整体解码失败
+            pool_reads.append(frames)
+            raise RuntimeError("simulated overstated frame count")
+        batch_attempts["n"] += 1
+        if batch_attempts["n"] == 1:  # 首个按批补解(=首批)失败
+            raise RuntimeError("simulated undecodable tail frame")
+        return real_read(vp, frame_nums)
+
+    monkeypatch.setattr(motion_cli, "_read_keyframe_frames", flaky_read)
+
+    events, summary = motion_cli.build_motion_events(
+        video_path, quad0, keyframe_count=2, min_gap_sec=0.0,
+        ocr_fn=make_mock_ocr([]), log=logs.append)
+
+    assert events
+    assert batch_attempts["n"] == 2  # 首批解码失败后换批成功
+    assert summary["keyframes"] == pool_reads[0][2:4]
+    joined = "\n".join(logs)
+    assert "keyframe pool decode failed" in joined
+    assert "decode failed" in joined and "trying next batch" in joined
+
+
+def test_keyframe_ocr_fn_contract_violation_propagates(tmp_path):
+    """ocr_fn 返回非 dict 是编程错误:不得被批级兜底吞掉,保持上抛。"""
+    video_path, quad0 = build_case(tmp_path, n=6, scale_step=0.0)
+
+    def bad_ocr(_img):
+        return ["not", "a", "dict"]
+
+    with pytest.raises(RuntimeError, match="unified OCR dict"):
+        motion_cli.build_motion_events(
+            video_path, quad0, keyframe_count=2, min_gap_sec=0.0,
+            ocr_fn=bad_ocr, log=lambda _m: None)
+
+
+def test_keyframe_pool_exhausted_without_text_raises(tmp_path):
+    """候选池耗尽且没有任何批取到文字 → 抛现有的 RuntimeError。"""
+    video_path, quad0 = build_case(tmp_path, n=6, scale_step=0.0)
+
+    def empty_ocr(_img):
+        return dict(_EMPTY_OCR)
+
+    with pytest.raises(RuntimeError, match="no text lines recognized"):
+        motion_cli.build_motion_events(
+            video_path, quad0, keyframe_count=2, min_gap_sec=0.0,
+            ocr_fn=empty_ocr, log=lambda _m: None)

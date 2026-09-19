@@ -305,7 +305,12 @@ class OcrOptimizer:
         # True/False force the behaviour regardless of configuration.
         self.vlm_refine_enabled = vlm_refine_enabled
         self.vlm_refine_min_confidence = float(vlm_refine_min_confidence)
-        self._last_gray_by_roi: Dict[str, np.ndarray] = {}
+        # 运动哨兵的对比锚帧:上次真正跑过 OCR 的帧灰度(而非上一帧)。
+        # 打字机式渐进变化(聊天气泡逐条浮现)在"对比上一帧"时每步差异都
+        # 微小、永不越过阈值,空白首帧的空结果会被一路复用到片尾;对比
+        # 锚帧则变化逐帧累积,超过阈值即触发真实 OCR。静止 ROI 与锚帧
+        # 零差异,跳过语义不变。
+        self._anchor_gray_by_roi: Dict[str, np.ndarray] = {}
         self._last_ocr_by_roi: Dict[str, Dict[str, Any]] = {}
         
         self._image_cache: "OrderedDict[Any, np.ndarray]" = OrderedDict()
@@ -392,23 +397,28 @@ class OcrOptimizer:
         """
         Returns (should_skip_ocr, gray_img_for_state).
         If skipping, caller should reuse last OCR result (or empty) for this ROI.
+
+        对比基准是锚帧(上次真正 OCR 的帧),不是上一帧:逐帧对比会让
+        渐进出现的变化(气泡逐条浮现)每步都低于阈值、永不触发 OCR,
+        锚帧对比则把变化累积起来;跳过帧不更新锚帧(由调用方在真实
+        OCR 后更新)。
         """
         if not self.motion_sentinel_enabled:
             return False, None
 
         roi_id = str(frame_data[3])
-        prev_gray = self._last_gray_by_roi.get(roi_id)
+        anchor_gray = self._anchor_gray_by_roi.get(roi_id)
         curr_gray = self._get_grayscale_image(frame_data)
         if curr_gray is None:
             return False, None
-        if prev_gray is None:
+        if anchor_gray is None:
             return False, curr_gray
-        if prev_gray.shape != curr_gray.shape:
+        if anchor_gray.shape != curr_gray.shape:
             # ROI size changed; treat as changed and reset background reference.
             return False, curr_gray
 
         try:
-            diff = cv2.absdiff(prev_gray, curr_gray)
+            diff = cv2.absdiff(anchor_gray, curr_gray)
             delta = int(max(1, self.motion_pixel_delta))
             changed = int(np.count_nonzero(diff > delta))
             ratio = float(changed) / float(diff.size) if diff.size else 1.0
@@ -860,11 +870,10 @@ class OcrOptimizer:
                 return []
             current_frame_data = roi_frames[i]
 
-            # Motion sentinel: if ROI hardly changes, skip OCR and reuse last result.
+            # Motion sentinel: if ROI hardly changes (vs the anchor frame of
+            # the last real OCR), skip OCR and reuse last result.
             roi_id = str(current_frame_data[3])
             should_skip, curr_gray = self._motion_sentinel_skip(current_frame_data)
-            if curr_gray is not None:
-                self._last_gray_by_roi[roi_id] = curr_gray
             if should_skip:
                 frame_time_sec = float(current_frame_data[4]) if len(current_frame_data) >= 5 and current_frame_data[4] is not None else 0.0
                 # Shallow copy: downstream per-frame annotations must not leak
@@ -894,6 +903,10 @@ class OcrOptimizer:
             if not current_text:
                 # A real OCR call that happened to recognize nothing — not a
                 # filled frame; don't count it in frames_filled.
+                # 空结果也是一次真实 OCR:锚帧在此与复用状态定桩,后续
+                # 渐进浮现的内容相对它累积差异,才能触发下一次真实 OCR。
+                if curr_gray is not None:
+                    self._anchor_gray_by_roi[roi_id] = curr_gray
                 processed_results.append(initial_result_tuple)
                 i += 1
                 group_processed_count += 1
@@ -938,6 +951,13 @@ class OcrOptimizer:
                 best_result_tuple = self._get_best_ocr_result_from_sequence(similar_sequence)
             best_ocr_result = best_result_tuple[1]
             self._last_ocr_by_roi[roi_id] = best_ocr_result if isinstance(best_ocr_result, dict) else self._empty_ocr_data()
+            # 锚帧与最终复用结果同点更新,保持「与锚帧比 ≈ 与被复用结果比」
+            # 的哨兵语义:融合结果按行投票、没有单一来源帧,统一锚定其携带
+            # 的 base 首帧;若在 initial OCR 后提前设锚,序列内的二分/采样
+            # 真实 OCR 会让锚帧超前于最终被复用的内容。
+            anchor_gray = self._get_grayscale_image(best_result_tuple)
+            if anchor_gray is not None:
+                self._anchor_gray_by_roi[roi_id] = anchor_gray
 
             for j in range(start_index, last_similar_index + 1):
                 frame_data_to_fill = roi_frames[j]
@@ -975,7 +995,7 @@ class OcrOptimizer:
         self._image_cache.clear()
         self._feature_cache.clear()
         self._ocr_result_cache.clear()
-        self._last_gray_by_roi.clear()
+        self._anchor_gray_by_roi.clear()
         self._last_ocr_by_roi.clear()
         logger.debug(QCoreApplication.translate("ocr_optimizer", "Cleaning up cache."))
 

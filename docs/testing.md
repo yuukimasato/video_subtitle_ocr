@@ -341,3 +341,26 @@ diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
 > +1 帧对齐修复的实证见
 > `docs/superpowers/evidence/2026-09-18-mask-only-acceptance/acceptance.md`
 > （含完整复现命令；基线 764 passed, 1 skipped + ruff F 全绿）。
+
+### 2026-09-19 · v2.6.11 · Linux 7.2.4-070204-generic x64 · Python 3.12.3
+
+> 本版主要变化:识别文字按原文对齐回贴(新模块 `core/text_alignment.py`,
+> 四条产出路径 `\an4/\an5/\an6` 逐行选锚)+ 三处真实视频流水线修复
+> (运动哨兵锚帧对比 / 平面跟踪空白引导段重锚定 / 关键帧分批 OCR)+
+> 复测驱动完善(关键帧池一次解码、批级失败容错、剪切斜率占优度校验、
+> SCENE ≥5 行去趋势、探测 mask/进度/软校验、静态 whitespace/external
+> 回退产物整行去重、诊断键补全)。测试 841 → 856 passed, 1 skipped。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **856 passed, 1 skipped**(< 60 s;新增 22 项对齐判定/投票/剪切去趋势/锚点几何 + 关键帧换批/批级失败/锚帧刷新/多 ROI 隔离/引导段移动退回弱帧/去重与诊断键回归) |
+| 12.mp4 主流水线(overlap,118 s ROI) | 302 次 OCR 覆盖 1871 帧,167.7 s;产物与优化前**逐字节一致**(零回归);\an4/\an5/\an6 = 560/561/479 |
+| 11.mp4 混排聊天(overlap,27 s ROI,japan) | 582 行 SCENE 事件;对齐判定改善:倾斜平面伪剪切被占优度校验拒纳,左右气泡逐行翻到正确一侧(332/107/143 → 333/103/146);烧帧目检左气泡公共左缘、右气泡公共右缘 |
+| 11.mp4 external 回退 | 静态 mask → external 降级路径的 NoteBox 常驻状态栏文字「べにっぽ」55 次 → **1 次**(整行去重) |
+| DMG 邮件画面(motion,mask 策略,10 s) | 轨迹管线 9 s:174/246 帧 ok,邮件头 3 行 center(孤行归中)、正文 9 行 left;遮罩精准覆盖、`\an4` 公共左缘;滚动段 `\move` 跟踪正常(此前"滞后一格"系 burn_frames.sh 时戳 bug,已修) |
+| 烧录验证工具 | `test/burn_frames.sh` 修复 `-ss` 输入寻址未加 `-copyts` 导致 ass 滤镜恒按 t=0 渲染的问题;修复后像素差分确认字幕真实渲染 |
+| deb 构建 | `video-subtitle-ocr_2.6.11_all.deb` 构建成功,`dpkg-deb -I/-c` 抽查通过 |
+
+复测口径:主流水线 `cli.py <video> --roi-file <test/*_roi.json> -o <out>.ass`;
+轨迹管线 `scripts/motion_ass.py --video <video> --quad-file test/motion-quad.json
+--scene-text-policy mask`;烧帧 `test/burn_frames.sh`(含本次 -copyts 修复)。

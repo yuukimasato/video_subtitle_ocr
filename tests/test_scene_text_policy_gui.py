@@ -175,7 +175,7 @@ def test_whitespace_policy_places_text_in_band(scene_video, tmp_path):
 
     ws = [ln for ln in _dialogues(text) if "店铺招牌" in ln and "\\fs" in ln]
     assert len(ws) == 1
-    assert "\\an5" in ws[0]
+    assert "\\an4" in ws[0]  # 左对齐于空白带左缘(与 motion 版同一约定)
     m = re.search(r"\\pos\(([-\d.]+),([-\d.]+)\)", ws[0])
     assert m and float(m.group(2)) > float(TEXT_BOX[3])  # 落在原文字下方
     assert "\\p1" not in text

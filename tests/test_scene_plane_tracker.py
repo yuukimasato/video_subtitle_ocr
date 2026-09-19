@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -119,6 +120,70 @@ def test_tracks_translation_trajectory():
         h_mat = np.array(track.homography)
         warped = cv2.perspectiveTransform(gts[0].reshape(-1, 1, 2).astype(np.float32), h_mat).reshape(-1, 2)
         assert float(np.mean(np.hypot(warped[:, 0] - gt[:, 0], warped[:, 1] - gt[:, 1]))) < 4.0
+
+
+def test_blank_lead_in_reanchors_on_first_textured_frame():
+    # 首帧恰好无纹理(聊天界面文字逐条浮现前的空白屏、淡入首帧):不再直接
+    # 报"特征不足",而是向后锚定在第一个特征足够的帧上;之前的帧记 lost
+    # (该段无文字可回贴,不产出事件),后续轨迹与常规跟踪等价。
+    card = make_card()
+    frames = [np.full((FRAME_H, FRAME_W, 3), 200, np.uint8) for _ in range(3)]
+    led_frames, gts = [], []
+    for i in range(10):
+        frame, gt = compose_scene(card, motion_mat(tx=3.0 * i))
+        led_frames.append(frame)
+        gts.append(gt)
+    frames.extend(led_frames)
+    tracks = track_plane_frames(frames, gts[0].tolist(), start_frame_num=0)
+
+    assert len(tracks) == len(frames)
+    assert [t.status for t in tracks] == ["lost"] * 3 + ["ok"] * 10
+    assert tracks[0].quad is None
+    assert tracks[3].frame_num == 3
+    for track, gt in zip(tracks[3:], gts):
+        assert quad_error(track.quad, gt) < 4.0
+
+
+def _make_card_rows(nrows, x_limit, seed=7):
+    """与 make_card 同款的「文字」色块卡,但只画前 ``nrows`` 行、行宽到 ``x_limit``。
+
+    打字机式浮现的首帧:纹理少(特征数落在 min_matches..strong_need 之间),
+    其后内容长全的帧才是「特征丰富」候选。
+    """
+    card = np.full((CARD_H, CARD_W, 3), 245, np.uint8)
+    rng = np.random.default_rng(seed)
+    for row in range(nrows):
+        y = 16 + row * 26
+        x = 14
+        while x < x_limit:
+            seg = int(rng.integers(24, 70))
+            color = tuple(int(c) for c in rng.integers(20, 90, 3))
+            cv2.rectangle(card, (x, y), (min(x + seg, CARD_W - 14), y + 12), color, -1)
+            x += seg + int(rng.integers(6, 18))
+    return card
+
+
+def test_lead_in_plane_motion_falls_back_to_first_weak_frame(caplog):
+    # 重锚定软一致性校验:引导段内平面自身在动(帧 0 只浮现了一行字、
+    # 特征刚过下限;其后内容长全且平移超出 ~25% quad 对角线)时,最强
+    # 候选帧按 quad0 原坐标锚定会整体错位 → 校验判「动」,退回更靠近
+    # frame0 的 first_weak 候选——这里即 quad0 所在的帧 0 本身
+    # (自匹配 = 单位阵,可信)。
+    full_card = make_card()
+    partial = _make_card_rows(1, x_limit=140)
+    frame0, gt0 = compose_scene(partial, motion_mat(tx=0.0))
+    frames = [frame0]
+    for _ in range(5):
+        frames.append(compose_scene(full_card, motion_mat(tx=85.0))[0])
+
+    with caplog.at_level(logging.INFO, logger="core.scene_plane_tracker"):
+        tracks = track_plane_frames(frames, gt0.tolist(), start_frame_num=0)
+
+    assert any("lead-in consistency check" in r.message for r in caplog.records)
+    assert len(tracks) == len(frames)
+    # 锚定落在帧 0(quad0 原位),而不是平面已移动的最强帧。
+    assert tracks[0].status == "ok"
+    assert quad_error(tracks[0].quad, gt0) < 4.0
 
 
 def test_handles_scale_and_rotation():

@@ -6,6 +6,8 @@ from typing import Dict, List
 
 from PySide6.QtCore import QCoreApplication
 
+from core.text_alignment import ALIGN_LEFT, ALIGN_RIGHT, detect_line_alignments
+
 from .models import SubtitleGroup
 
 logger = logging.getLogger("core.subtitle_generator")
@@ -54,9 +56,11 @@ class _StylingMixin:
     def _apply_roi_pose_tags(self, styled_lines: List[Dict], pose: Dict) -> List[Dict]:
         """Apply the ROI's pose tags to a group's styled lines.
 
-        - Scene lines already carry their own per-line {\\an5\\pos} (from the
-          restored OCR box): keep that position and only append the rotation
-          tags, so each line stays where it was detected.
+        - Scene lines already carry their own per-line anchor tag ({\\an5\\pos}
+          for centered blocks, {\\an4\\pos}/{\\an6\\pos} at the box edge for
+          left/right-aligned blocks, from the restored OCR box): keep that
+          position and only append the rotation tags, so each line stays
+          where it was detected.
         - Bottom/Top lines are re-pinned to the ROI pose center ({\\an5\\pos})
           with rotation, replacing their margin-based placement.
         """
@@ -112,9 +116,37 @@ class _StylingMixin:
             full_text = "\\N".join([line.text for line in sorted_lines])
             dialogue_lines.append({'style': 'Top', 'text': full_text, 'tags': '{\\an8}'})
         elif location_type == 'SCENE':
-            for line in sorted_lines:
-                x = int(line.center[0]); y = int(line.center[1])
-                tags = f"{{\\an5\\pos({x},{y})}}"
+            # 逐行投票检测原文对齐(左→\an4 锚行框左缘,右→\an6 锚右缘,中→
+            # \an5 锚中心):识别行以行高回贴,渲染宽度与原框必有出入,居中
+            # 锚点会让左/右对齐的行失去公共边距(邮件正文等短行浮到中间)。
+            # 聊天界面左右气泡混排 → 同屏两种对齐并存,须逐行判定而非整组
+            # 一票;孤行(无同边距行可贴合)归中、锚自身原位。见 core.text_alignment。
+            # 组行数 ≥5 才开剪切去趋势:SCENE 组可以是 10 行邮件正文,斜放
+            # 平面在视频坐标里竖直列随 y 倾斜,不去趋势整组误归中;小组
+            # (2-4 行)样本不足以可靠估计斜率,保持不去趋势(旧行为)。
+            align_diag: Dict[str, object] = {}
+            aligns = detect_line_alignments(
+                [line.box for line in sorted_lines],
+                detrend_shear=len(sorted_lines) >= 5,
+                diagnostics=align_diag)
+            if logger.isEnabledFor(logging.DEBUG):
+                # 排查「为什么判成 left」:逐行判定结果 + 三边票数(DEBUG 级,
+                # 缺省日志级别不产生输出,不改事件输出)。
+                diag_rows = align_diag.get("rows") or []
+                logger.debug(
+                    "Scene line alignments (row/align/votes): %s (shear_slope=%s)",
+                    [(d.get("row"), d.get("align"), d.get("votes"))
+                     for d in diag_rows],
+                    align_diag.get("shear_slope"))
+            for line, align in zip(sorted_lines, aligns):
+                y = int(line.center[1])
+                if align == ALIGN_LEFT:
+                    x = int(line.box[0]); an = 4
+                elif align == ALIGN_RIGHT:
+                    x = int(line.box[2]); an = 6
+                else:
+                    x = int(line.center[0]); an = 5
+                tags = f"{{\\an{an}\\pos({x},{y})}}"
                 dialogue_lines.append({'style': 'Scene', 'text': line.text, 'tags': tags})
         return dialogue_lines
 

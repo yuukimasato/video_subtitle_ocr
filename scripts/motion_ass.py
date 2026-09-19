@@ -64,6 +64,10 @@ if PROJECT_ROOT not in sys.path:
 
 OcrFn = Callable[[Any], Dict[str, Any]]
 
+# 关键帧候选池下限:按清晰度降序分批 OCR,最清晰批无文字行时换下一批
+# (空白引导段的最清晰帧先于文字出现,见 select_keyframes 调用处注释)。
+_KEYFRAME_POOL = 12
+
 
 # ---------------------------------------------------------------------------
 # quad 输入与校验
@@ -509,13 +513,17 @@ def build_motion_events(
     # 2. 清晰关键帧(展开图 Laplacian 方差;top-K,分数降序,首个为锚定帧)。
     #    plane_size 由 init quad 边长推导,与 keyframe_selector 缺省逻辑一致
     #    (显式传入,避免依赖 ok_tracks[0].quad 的隐式推导)。
+    #    实际取 max(keyframe_count, _KEYFRAME_POOL) 的候选池,按清晰度降序
+    #    分批 OCR:最清晰的帧可能恰好落在文字出现之前(聊天界面文字逐条
+    #    浮现、信纸逐行显影的空白引导段),该批识别不出文字行时换下一批,
+    #    直到取到文字或候选池耗尽。
     plane_size = _plane_size_from_quad(quad)
-    keyframes = select_keyframes(
-        video_path, tracks, k=max(1, int(keyframe_count)),
+    keyframe_pool = select_keyframes(
+        video_path, tracks, k=max(max(1, int(keyframe_count)), _KEYFRAME_POOL),
         min_gap_sec=max(0.0, float(min_gap_sec)), plane_size=plane_size)
-    if not keyframes:  # 防御:有 ok 帧则必非空
+    if not keyframe_pool:  # 防御:有 ok 帧则必非空
         raise RuntimeError("no keyframes selected from tracking result")
-    log(f"[2/5] keyframes (sharpest first): {keyframes}")
+    log(f"[2/5] keyframe pool (sharpest first): {keyframe_pool}")
 
     # 3. 关键帧 OCR(统一坐标 = 初始帧平面坐标;窗口锚定 quad 外接矩形)
     xs = [float(p[0]) for p in quad]
@@ -525,11 +533,12 @@ def build_motion_events(
     owned_engine = None
     if ocr_fn is None:
         ocr_fn, owned_engine = _default_ocr_fn(ocr_engine)
-    try:
-        frames = _read_keyframe_frames(video_path, keyframes)
-        by_frame = {t.frame_num: t for t in ok_tracks}
-        sample_results: List[Tuple[int, Dict[str, Any]]] = []
-        for frame_num in keyframes:  # 顺序 = 清晰度降序,首个为锚定帧
+    by_frame = {t.frame_num: t for t in ok_tracks}
+    frames: Dict[int, Any] = {}
+
+    def _ocr_batch(batch: List[int]) -> List[Tuple[int, Dict[str, Any]]]:
+        results: List[Tuple[int, Dict[str, Any]]] = []
+        for frame_num in batch:  # 顺序 = 清晰度降序,首个为锚定帧
             track = by_frame[frame_num]
             window = _unwarp_quad_window(
                 frames[frame_num], track.homography_inv, plane_size, origin)
@@ -538,13 +547,53 @@ def build_motion_events(
                 raise RuntimeError(
                     f"ocr_fn must return a unified OCR dict, got "
                     f"{type(ocr_data).__name__}")
-            sample_results.append((frame_num, ocr_data))
+            results.append((frame_num, ocr_data))
+        return results
+
+    try:
+        step = max(1, int(keyframe_count))
+        # 候选池一次性顺序解码:分批循环只查内存,选定批之后的遮挡/策略
+        # 也不再重复解码(≤12 帧 1080p 约 75MB)。池级解码失败(容器帧数
+        # 虚标、尾部帧坏)不放弃整条链:留痕后退回按批补解,单批仍失败
+        # 则换下一批,保住分批兜底的初衷。
+        try:
+            frames.update(_read_keyframe_frames(video_path, keyframe_pool))
+        except RuntimeError as exc:
+            log(f"warning: keyframe pool decode failed ({exc}); "
+                "falling back to per-batch decode")
+        sample_results: List[Tuple[int, Dict[str, Any]]] = []
+        for i in range(0, len(keyframe_pool), step):
+            batch = keyframe_pool[i:i + step]
+            missing = [f for f in batch if f not in frames]
+            if missing:
+                try:
+                    frames.update(_read_keyframe_frames(video_path, missing))
+                except RuntimeError as exc:
+                    log(f"warning: keyframe batch {batch} decode failed "
+                        f"({exc}); trying next batch")
+                    continue
+            batch_results = _ocr_batch(batch)
+            if any(res[1].get("rec_texts") for res in batch_results):
+                sample_results = batch_results
+                if i:
+                    log(f"      sharpest keyframes had no text; using batch "
+                        f"{batch}")
+                break
+        if not sample_results:
+            raise RuntimeError(
+                f"no text lines recognized on any of {len(keyframe_pool)} "
+                "candidate keyframes")
     finally:
         if owned_engine is not None:
             try:
                 owned_engine.cleanup()
             except Exception:  # 引擎清理失败不影响主流程
                 pass
+
+    # 选定批(有文字的首批)的锚定帧 = 批内最清晰帧;帧与轨迹均已在手
+    # (池级帧缓存 / by_frame),后续遮挡/策略/汇总直接复用。
+    anchor_frame = int(sample_results[0][0])
+    chosen_keyframes = [int(f) for f, _ in sample_results]
 
     anchor_aabbs = _line_aabbs(sample_results[0][1])
     if anchor_aabbs is None:
@@ -585,8 +634,13 @@ def build_motion_events(
     for line_track in line_tracks:
         smooth_line_track(line_track, window=cfg.smooth_window)
     width, height = _video_size(video_path)
+    # 逐行对齐判定留痕(行 idx → left/center/right + 三边票数 + 剪切斜率):
+    # quad 展开平面坐标排查「为什么判成 left/center」时对照 OCR 行框看。
+    align_diag: Dict[str, object] = {}
     events = synthesize_events(line_tracks, tracks, cfg, style="Scene",
-                               video_height=height)
+                               video_height=height, diagnostics=align_diag)
+    log(f"      line alignments: shear_slope={align_diag.get('shear_slope')} "
+        f"{[(d.get('row'), d.get('align')) for d in align_diag.get('rows') or []]}")
 
     # 5.4 \iclip 手部遮挡蒙版(可选;策略回放前追加,whitespace/external
     #     重建事件时自然丢弃,mask 的文本事件标签原样保留):展开图 vs 锚定
@@ -601,7 +655,6 @@ def build_motion_events(
             collect_occlusions,
         )
 
-        anchor_frame = int(keyframes[0])
         anchor_window = _unwarp_quad_window(
             frames[anchor_frame], by_frame[anchor_frame].homography_inv,
             plane_size, origin)
@@ -626,7 +679,6 @@ def build_motion_events(
     if applied_policy != "overlap":
         from core.scene_text_policy import apply_policy
 
-        anchor_frame = int(keyframes[0])
         plane_img = _unwarp_quad_window(
             frames[anchor_frame], by_frame[anchor_frame].homography_inv,
             (origin[0] + plane_size[0], origin[1] + plane_size[1]), (0, 0))
@@ -709,7 +761,7 @@ def build_motion_events(
     return events, {
         "ok_frames": len(ok_tracks),
         "total_frames": len(tracks),
-        "keyframes": [int(f) for f in keyframes],
+        "keyframes": chosen_keyframes,
         "hard_lines": list(hard_lines),
         "policy": applied_policy,
         "lines": len(line_tracks),

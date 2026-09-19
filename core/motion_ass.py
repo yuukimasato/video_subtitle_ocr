@@ -13,7 +13,10 @@
 - :func:`synthesize_events` —— 标签阶梯:单段直线 → 一条 ``\\move`` 事件;
   多段 → 每段一条 ``\\move`` 事件(边界共享同一格式化时间字符串,
   段内角度/缩放超阈值叠加 ``\\t``);段数爆炸 → 帧级 ``\\pos`` 兜底;
-  lost 间隔切段(可选 ``lost_hold_sec`` 保持)。
+  lost 间隔切段(可选 ``lost_hold_sec`` 保持)。行锚点按
+  :mod:`core.text_alignment` 检测的原文对齐选 ``\\an4/\\an5/\\an6``:
+  居中块锚行框中心(旧行为),左/右对齐块锚在逐帧跟踪的行框左/右缘中点,
+  保持原排版的公共边距。
 
 平滑(阶梯 step 1)由调用方在合成前调用 :func:`smooth_line_track` 完成;
 :func:`synthesize_events` 只消费给定的 pose,不修改输入行轨迹。
@@ -38,6 +41,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from core.scene_plane_tracker import TrackedQuad
+from core.text_alignment import (
+    ALIGN_CENTER,
+    ALIGN_LEFT,
+    ALIGN_RIGHT,
+    detect_line_alignments,
+)
 
 __all__ = [
     "MotionAssConfig",
@@ -554,6 +563,38 @@ def _next_frame_time(
     return t0 + dt
 
 
+_AN_BY_ALIGN = {ALIGN_LEFT: 4, ALIGN_CENTER: 5, ALIGN_RIGHT: 6}
+
+
+def _anchored_center(
+    center: Tuple[float, float],
+    angle_deg: float,
+    scale: float,
+    box_w: float,
+    align: str,
+    x_off: float,
+) -> Tuple[float, float]:
+    """事件锚点屏幕坐标(按行对齐方式,配 ``\\an4/\\an5/\\an6``)。
+
+    居中 = 行框中心(旧行为);左/右 = 中心沿行方向(角度)回退/前进
+    半个框宽——即逐帧跟踪的行框左/右缘中点,替换文本的公共边距钉在原
+    排版边缘,渲染宽度差异向行尾方向消化。行尾标点补偿(x_off)与左/右
+    锚点同沿行方向分解:``(x_off·cos(ang), x_off·sin(ang))``——补偿修正
+    的是行尾标点墨迹在**文本行方向**上的偏移,文本随 ``\\frz`` 旋转后行
+    方向 ≠ 屏幕 x 轴,按屏幕 x 平移在大倾角下会欠/过补偿(旧近似 ≤7px,
+    斜边行距误差按角度放大)。居中分支保持既有屏幕 x 平移(补偿量 ≤7px,
+    且不与行方向锚点耦合,居中块输出与旧版逐字节一致)。
+    """
+    if align == ALIGN_CENTER:
+        return (center[0] + x_off, center[1])
+    half = float(box_w) * float(scale) / 2.0
+    ang = math.radians(float(angle_deg))
+    sign = -1.0 if align == ALIGN_LEFT else 1.0
+    along = sign * half + x_off  # 行方向上的有向偏移:半框宽 + 标点补偿
+    return (center[0] + along * math.cos(ang),
+            center[1] + along * math.sin(ang))
+
+
 def _dense_events(
     chain: List[int],
     centers: np.ndarray,
@@ -564,6 +605,10 @@ def _dense_events(
     text: str,
     x_offset: float = 0.0,
     video_height: Optional[float] = None,
+    align: str = ALIGN_CENTER,
+    box_w: float = 0.0,
+    angles: Optional[Sequence[float]] = None,
+    scales: Optional[Sequence[float]] = None,
 ) -> List[Dict]:
     """帧级 ``\\pos`` 兜底:每隔 dense_stride 个好帧一条事件,
     时间取该帧 time_sec 到下一取样好帧 time_sec。"""
@@ -579,6 +624,11 @@ def _dense_events(
         x_offset = punct_comp_offset_px(
             text, fs_h, enabled=cfg.punct_comp_enabled,
             max_px=cfg.punct_comp_max_px, video_height=video_height)
+    an = _AN_BY_ALIGN.get(align, 5)
+    if angles is None:
+        angles = [0.0] * n
+    if scales is None:
+        scales = [1.0] * n
     events: List[Dict] = []
     for k in range(0, n, stride):
         f0 = chain[k]
@@ -588,8 +638,10 @@ def _dense_events(
             t1 = _next_frame_time(tmap, f0, t0, dt)
         if t1 <= t0:
             continue  # 零长段丢弃
-        tags = (f"{{\\an5\\fs{fs_h}"
-                f"\\pos({_fmt1(centers[k][0] + x_offset)},{_fmt1(centers[k][1])})}}")
+        ax, ay = _anchored_center(centers[k], angles[k], scales[k], box_w,
+                                  align, x_offset)
+        tags = (f"{{\\an{an}\\fs{fs_h}"
+                f"\\pos({_fmt1(ax)},{_fmt1(ay)})}}")
         events.append({
             "start_time": format_ass_time(t0),
             "end_time": format_ass_time(t1),
@@ -608,6 +660,7 @@ def _chain_events(
     cfg: MotionAssConfig,
     style: str,
     video_height: Optional[float] = None,
+    align: str = ALIGN_CENTER,
 ) -> List[Dict]:
     centers = np.array([lt.poses[f].center for f in chain], dtype=np.float64)
     angles = [lt.poses[f].angle_deg for f in chain]
@@ -621,11 +674,20 @@ def _chain_events(
     x_off = punct_comp_offset_px(
         lt.text, fs_h, enabled=cfg.punct_comp_enabled,
         max_px=cfg.punct_comp_max_px, video_height=video_height)
+    # 块对齐方式(左/中/右)→ 锚点 \an4/\an5/\an6:锚在逐帧跟踪的行框
+    # 左/右缘中点,保持原排版的公共边距(居中块保持锚中心,旧行为)。
+    an = _AN_BY_ALIGN.get(align, 5)
+    box_w = float(lt.ref_box[2]) - float(lt.ref_box[0])
+    anchors = [
+        _anchored_center(centers[k], angles[k], scales[k], box_w, align, x_off)
+        for k in range(len(chain))]
 
     # 阶梯 5:段数爆炸 → 帧级 \pos 兜底(按原始 DP 分段判定;单段永不触发)
     if cfg.dense_pos_fallback and len(raw_segs) >= 2 and _is_exploded(chain, raw_segs, tmap, cfg):
         return _dense_events(chain, centers, tmap, cfg, style, fs_h, lt.text,
-                             x_offset=x_off, video_height=video_height)
+                             x_offset=x_off, video_height=video_height,
+                             align=align, box_w=box_w, angles=angles,
+                             scales=scales)
 
     events: List[Dict] = []
     multi = len(segs) > 1
@@ -653,13 +715,13 @@ def _chain_events(
         if t1 <= t0:
             continue  # 零长段丢弃
         if multi:
-            move = (f"\\move({_fmt1(centers[ai][0] + x_off)},{_fmt1(centers[ai][1])},"
-                    f"{_fmt1(centers[bi][0] + x_off)},{_fmt1(centers[bi][1])})")
+            move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
+                    f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])})")
         else:
-            move = (f"\\move({_fmt1(centers[ai][0] + x_off)},{_fmt1(centers[ai][1])},"
-                    f"{_fmt1(centers[bi][0] + x_off)},{_fmt1(centers[bi][1])},"
+            move = (f"\\move({_fmt1(anchors[ai][0])},{_fmt1(anchors[ai][1])},"
+                    f"{_fmt1(anchors[bi][0])},{_fmt1(anchors[bi][1])},"
                     f"0,{_seg_ms(t0, t1)})")
-        tags = f"{{\\an5\\fs{fs_h}{move}"
+        tags = f"{{\\an{an}\\fs{fs_h}{move}"
         tags += _overlay_tags(angles[ai], angles[bi], scales[ai], scales[bi],
                               t0, t1, cfg)
         tags += "}"
@@ -681,6 +743,7 @@ def synthesize_events(
     style: str = "Scene",
     *,
     video_height: Optional[float] = None,
+    diagnostics: Optional[Dict[str, object]] = None,
 ) -> List[Dict]:
     """行轨迹 + 平面跟踪轨迹 → ASS 事件列表(标签阶梯)。
 
@@ -690,9 +753,21 @@ def synthesize_events(
     ``video_height``(PlayResY)供行尾标点补偿的上限按分辨率缩放,缺省按
     ``punct_comp_max_px`` 原值封顶。事件携带 ``line_idx``(行下标,行序同
     输入),供逐行亮度适配等调用方回溯所属行;写入 .ass 时忽略。
+
+    行锚点按原文对齐检测(:func:`core.text_alignment.detect_line_alignments`,
+    全组逐行边缘贴合投票):居中块 ``\\an5`` 锚中心(旧行为),
+    左/右对齐块 ``\\an4``/``\\an6`` 锚在逐帧跟踪的行框左/右缘中点——替换
+    字体的公共边距钉在原排版边缘,不再整块「居中化」。``diagnostics``
+    (仅关键字,可选)传入 dict 时带出逐行判定结果(行 idx → 对齐边 +
+    三边票数 + 剪切斜率),供真实视频排查,不影响事件输出。
     """
     tmap = _frame_map(tracks)
     events: List[Dict] = []
+    # 行框是 quad 展开平面坐标:手选 quad 偏差会让竖直 UI 列随 y 漂移,
+    # 投票前先估计全局剪切斜率去趋势(detrend_shear=True)。
+    aligns = detect_line_alignments([lt.ref_box for lt in line_tracks],
+                                    detrend_shear=True,
+                                    diagnostics=diagnostics)
     for line_idx, lt in enumerate(line_tracks):
         frames = sorted(lt.poses)
         if not frames:
@@ -700,7 +775,8 @@ def synthesize_events(
         chains = _merge_chains_with_hold(_split_runs(frames), tmap, cfg.lost_hold_sec)
         for chain in chains:
             for ev in _chain_events(lt, chain, tmap, cfg, style,
-                                    video_height=video_height):
+                                    video_height=video_height,
+                                    align=aligns[line_idx]):
                 ev["line_idx"] = line_idx
                 events.append(ev)
     return events
