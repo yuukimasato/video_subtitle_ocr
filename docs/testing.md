@@ -543,5 +543,5 @@ P
 | 单元测试 | **1038 passed, 1 skipped**（1039 项收集；本轮 +1：钳制无操作不变量；既有钳制用例补 `n_roi_fallback` 断言，既有用例零翻转）；`ruff check . --select F` 全仓全绿 |
 | 观测闭环 | `LineVerifyReport.n_roi_fallback`（回退且全局峰在 ROI 外的采样数，阶段 A/B 累加），corrected/static 日志非零时附 `roi_fallback=N`；滚出回退用例断言 == 采样数、钳制用例断言 == 0 |
 | 不变量 | 全局峰可采纳且在 ROI 内 ⇔ 钳制逐位等于不钳制：钳制分支亚像素细化改用真实分数面 `res`（原实现在掩膜 `res_roi` 上细化，边界峰的 -1 邻居会把抛物线拉向 ROI 内侧最多半像素），`test_roi_clamp_noop_when_global_peak_inroi` 固化 |
-| 发布 | 本轮与「孤立 API 清理」一并作为 **2.8.0** 发布（`cli.py`/control 同步，`未发布` 节转正） |
+| 发布 | 本轮与「孤立 API 清理」一并作为 **2.7.1** 发布（2026-09-21，`cli.py`/control 同步，`未发布` 节转正） |
 | 行为约束（缓行） | 「消失段校正不得移出 ROI」仍待真实素材暴露：稀疏采样间隔内滚出文字可远移，按帧连续性/距离门控会误伤 DMG 滚出形态；`n_roi_fallback` 即为暴露时的定位依据 |
