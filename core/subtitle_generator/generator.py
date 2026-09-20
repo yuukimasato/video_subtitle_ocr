@@ -2,7 +2,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import Callable, Dict, Generator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -32,6 +32,11 @@ from .timeline import _TimelineMixin
 logger = logging.getLogger("core.subtitle_generator")
 
 _tr = QCoreApplication.translate
+
+if TYPE_CHECKING:
+    # 仅类型标注（惰性导入见 _apply_font_compliance_to_header 等）：
+    # font_intel 只依赖标准库，缺省路径不触任何导入与行为。
+    from font_intel.integration import FontComplianceConfig
 
 
 def _sanitize_ass_body(body: str) -> str:
@@ -176,6 +181,7 @@ class OCRToASSOptimizer(
         motion_events: Optional[List[Dict[str, str]]] = None,
         motion_roi_ids: Optional[set] = None,
         analysis_frame_mode: str = "single",
+        font_compliance: Optional["FontComplianceConfig"] = None,
     ):
         self.video_path = Path(video_path)
         self.output_path = Path(output_path)
@@ -228,6 +234,11 @@ class OCRToASSOptimizer(
         else:
             logger.info(_tr("OCRToASSOptimizer", "No style template used, generating a rich set of default styles."))
         self.subtitle_polisher = subtitle_polisher
+        # 字体合规闸门（T1.7/T1.8）：None 或 enabled=False 时全部路径与
+        # 旧版本逐字节一致（不开字体库、不决策、不产任何合规报告文件）。
+        self.font_compliance = font_compliance
+        self._compliance_decisions: List[dict] = []
+        self._compliance_report_written = False
 
     # ------------------------------------------------------------------
     # 场景文字显示策略(静态 \pos 路径;overlap 缺省不改变任何行为)
@@ -822,6 +833,9 @@ class OCRToASSOptimizer(
         finally:
             # 释放跨 ROI 共享的分析帧读取器(若曾创建)。
             self._close_analysis_reader()
+            # 合规收尾(所有写出路径的统一终点,含空数据/空事件早退):
+            # 有决策时写报告;合规关闭时零新文件;幂等,报告只写一次。
+            self._write_compliance_report_if_needed()
 
     def _write_final_file(self, subtitle_events: List[Dict[str, str]]) -> None:
         """事件表(+ 轨迹事件)→ Dialogue/Comment 行 → 按起始时间排序 → 写 .ass。
