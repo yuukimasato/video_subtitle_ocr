@@ -1003,6 +1003,7 @@ def test_roi_clamp_rejects_out_of_roi_ghost_peak(tmp_path):
     rep = reports[0]
     assert rep.static, rep
     assert rep.n_clamped >= 1          # 至少一次改取 ROI 内次优峰
+    assert rep.n_roi_fallback == 0     # ROI 内有可采纳峰:不走回退分支
     last = max(new_tracks[0].poses)
     cx, cy = new_tracks[0].poses[last].center
     assert abs(cx - TRUE_CENTER2[0]) < 3.0 and abs(cy - TRUE_CENTER2[1]) < 3.0
@@ -1085,10 +1086,44 @@ def test_roi_clamp_falls_back_when_no_inroi_peak(tmp_path):
     # 全部采样照常采纳(ROI 内只有背景噪声 < min_score → 回退全局峰)
     assert rep.n_good == rep.n_samples, rep
     assert rep.n_clamped == 0, rep
+    # 滚出 ROI 仍可见的形态:每个采样都走了「回退且全局峰在 ROI 外」,
+    # n_roi_fallback 如实计数(该计数同时是「消失段假锁」残留形态的观测位)
+    assert rep.n_roi_fallback == rep.n_samples, rep
     assert rep.static, rep
     last = max(new_tracks[0].poses)
     cx, cy = new_tracks[0].poses[last].center
     assert abs(cx - 196.0) < 3.0 and abs(cy - 90.0) < 3.0
+
+
+def test_roi_clamp_noop_when_global_peak_inroi(tmp_path):
+    """全局峰始终在 ROI 内:钳制是**逐位无操作**。
+
+    选峰被掩膜改写时才存在钳制语义;全局峰可采纳且在 ROI 内时,钳制路径
+    的选峰、亚像素细化都必须与不钳制完全一致(细化用真实分数面 res,不
+    得让掩膜边界的 -1 邻居进抛物线把细化拉向 ROI 内侧)。
+    """
+    bar = make_text_bar()
+
+    def draw(f):
+        frame = _bg2(f)
+        return paste(frame, bar, int(BOX2[0]), int(BOX2[1]))
+
+    video = _write_video2(str(tmp_path / "noop.avi"), draw)
+    tracks = _make_tracks2()
+
+    line_tracks = build_line_tracks([BOX2], ["歌词条"], tracks, ref_frame=0)
+    plain_tracks, plain_reports = verify_line_tracks(
+        video, tracks, line_tracks, ROI_VCFG)
+
+    line_tracks = build_line_tracks([BOX2], ["歌词条"], tracks, ref_frame=0)
+    clamped_tracks, clamped_reports = verify_line_tracks(
+        video, tracks, line_tracks, ROI_VCFG, roi_quad=ROI_QUAD)
+
+    rep = clamped_reports[0]
+    assert rep.n_clamped == 0 and rep.n_roi_fallback == 0, rep
+    assert plain_reports[0].static == rep.static
+    for f, pose in clamped_tracks[0].poses.items():
+        assert plain_tracks[0].poses[f].center == pose.center, f
 
 
 def test_quad_mask_helper_and_normalization():

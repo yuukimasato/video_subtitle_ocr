@@ -179,6 +179,13 @@ class LineVerifyReport:
     # 因 ROI 钳制改取 ROI 内次优峰的匹配次数(全局最优峰落在 ROI 外、
     # 其分数被钳制丢弃的采样次数;含阶段 B 确认帧)。
     n_clamped: int = 0
+    # ROI 内无可采纳峰而回退全局峰、且全局峰落在 ROI 外的采样次数(含
+    # 阶段 B 确认帧)。两种形态共用该计数:文字滚出 ROI 但仍可见(DMG
+    # 邮件屏,回退是**正确**行为)与文字消失后重试锁到 ROI 外相似纹理
+    # (「消失段」残留形态,当前无空间约束、靠失配分级兜底)。仅观测、
+    # 不改变任何采纳结果;后者若被真实素材暴露,「消失段校正不得把行移
+    # 出 ROI」的行为约束以该计数为定位依据单独立项。
+    n_roi_fallback: int = 0
 
 
 class _FrameCursor:
@@ -545,7 +552,9 @@ def _match_center(frame: np.ndarray, patch: np.ndarray,
     ROI 内最优峰(全局最优峰在 ROI 外的次数计入 ``stats['clamped']``);
     ROI 内无可采纳峰时**回退全局峰**(与不钳制的旧行为逐字节一致):
     滚出 ROI 但仍在画面上可见的文字(DMG 邮件屏滚出行)照常跟随,绝不
-    因钳制被判失配而出时间空洞。
+    因钳制被判失配而出时间空洞。回退次数计入 ``stats['fallback']``,
+    其中全局峰落在 ROI 外的次数(「滚出仍可见」与「消失后假锁 ROI 外
+    纹理」两种形态的观测计数)计入 ``stats['fallback_outside']``。
     """
     import cv2
 
@@ -618,10 +627,19 @@ def _match_center(frame: np.ndarray, patch: np.ndarray,
     if r_score < adopt_score:
         if stats is not None:
             stats["fallback"] = stats.get("fallback", 0) + 1
+            if not bool(_quad_inside_mask(
+                    np.array([g_mx]), np.array([g_my]), quad,
+                    margin_px)[0, 0]):
+                stats["fallback_outside"] = stats.get(
+                    "fallback_outside", 0) + 1
         return (float(g_mx), float(g_my), float(g_score))
     if stats is not None and g_score > r_score + 1e-6:
         stats["clamped"] = stats.get("clamped", 0) + 1
-    r_rx, r_ry = _refine(res_roi, r_peak)
+    # 亚像素细化用**真实分数面** res(掩膜只在选峰时生效):掩膜边界峰的
+    # 邻居在 res_roi 里是 -1,拿它进抛物线会把细化拉向 ROI 内侧——钳制
+    # 在「全局峰本就在 ROI 内」时必须逐位等于不钳制(峰值索引相同,对
+    # res 细化即逐位相同),该不变量被 test_roi_clamp_noop_when_inroi 固化。
+    r_rx, r_ry = _refine(res, r_peak)
     r_mx = wx + r_rx + (pw - 1) / 2.0
     r_my = wy + r_ry + (ph - 1) / 2.0
     return (float(r_mx), float(r_my), float(r_score))
@@ -796,6 +814,7 @@ def _match_line_samples(
             rep.borderline.append(f)
     rep.n_good = len(sample_data)
     rep.n_clamped = clamp_stats.get("clamped", 0)
+    rep.n_roi_fallback = clamp_stats.get("fallback_outside", 0)
 
     # 预选超长失配跨度的跨内确认帧(阶段 B 前整块统一补解码)。
     # 确认帧数随跨度恢复:min(cap, max(1, 跨度帧长 // long_span_frames))
@@ -881,6 +900,7 @@ def _finalize_line(
                     visible = True
                     break
             work.rep.n_clamped += clamp_stats.get("clamped", 0)
+            work.rep.n_roi_fallback += clamp_stats.get("fallback_outside", 0)
         if long_span and not visible and not tested:
             # 未测(一个确认帧都没测到):不得按「已确认」删除,整段保留
             # 并给出独立 reason,让日志/离线分析能区分「确认后删除」
@@ -944,7 +964,9 @@ def _finalize_line(
         rep.static = True
         rep.corrected = True
         log(f"pose-verify: line {li} ({lt.text!r}) static at "
-            f"({med_x:.1f},{med_y:.1f}), snapped {len(new_poses)} pose(s)")
+            f"({med_x:.1f},{med_y:.1f}), snapped {len(new_poses)} pose(s)"
+            + (f", roi_fallback={rep.n_roi_fallback}"
+               if rep.n_roi_fallback else ""))
     elif work.sample_data:
         offsets = _interp_offsets(work.sample_data, keep_frames)
         for f in keep_frames:
@@ -965,7 +987,9 @@ def _finalize_line(
             log(f"pose-verify: line {li} ({lt.text!r}) corrected "
                 f"({rep.n_good}/{rep.n_samples} samples), "
                 f"dropped {rep.dropped_frames} invisible frame(s)"
-                + (f" spans={span_txt}" if span_txt else ""))
+                + (f" spans={span_txt}" if span_txt else "")
+                + (f" roi_fallback={rep.n_roi_fallback}"
+                   if rep.n_roi_fallback else ""))
     else:
         return None, rep
 
@@ -995,7 +1019,10 @@ def verify_line_tracks(
     ROI 内存在可采纳峰(分数 ≥ ``min_score``)时,改取 ROI 内最优峰
     (计入 ``rep.n_clamped``)。**只在 ROI 内有可采纳峰时改写**:ROI 内
     无峰时回退全局峰(与不钳制的旧行为逐字节一致)——滚出 ROI 但仍可见
-    的文字照常跟随,钳制绝不制造失配、绝不删除可见位姿。4K 固定歌词条
+    的文字照常跟随,钳制绝不制造失配、绝不删除可见位姿。回退且全局峰在
+    ROI 外的采样计入 ``rep.n_roi_fallback``(仅观测:它同时覆盖「滚出
+    仍可见」的正确回退与「消失后假锁 ROI 外纹理」的残留形态,后者待真实
+    素材暴露后再以该计数为依据单独立行为约束)。4K 固定歌词条
     实测中,分辨率归一后的大搜索半径(80/160px)相对 155px 高的条带过大,
     模板在条带外锁到背景纹理,把实测正确的位姿改到偏移 115–215px 处并
     误删可见段——门控后 ROI 内真值峰优先,伪峰被抑制。ROI 非法(点数/
