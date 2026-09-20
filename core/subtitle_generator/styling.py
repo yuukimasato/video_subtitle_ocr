@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from PySide6.QtCore import QCoreApplication
 
+from core.line_restoration import merge_restoration_tags
 from core.text_alignment import ALIGN_LEFT, ALIGN_RIGHT, detect_line_alignments
 
 from .models import SubtitleGroup
@@ -20,22 +21,30 @@ class _StylingMixin:
     def _detect_language(self, text: str) -> str:
         counts = defaultdict(int)
         text_for_detection = re.sub(r'[ ,.!?\'"(){}\[\]\d-]', '', text)
-        if not text_for_detection: return 'EN'
+        if not text_for_detection:
+            return 'EN'
 
         for char in text_for_detection:
             code = ord(char)
-            if 0x4E00 <= code <= 0x9FFF: counts['CH'] += 1
-            elif 0x3040 <= code <= 0x309F or 0x30A0 <= code <= 0x30FF: counts['JP'] += 1
-            elif 0xAC00 <= code <= 0xD7A3: counts['KO'] += 1
-            elif 0x0400 <= code <= 0x04FF: counts['RU'] += 1
-            elif 0x0020 <= code <= 0x007E: counts['EN'] += 1
+            if 0x4E00 <= code <= 0x9FFF:
+                counts['CH'] += 1
+            elif 0x3040 <= code <= 0x309F or 0x30A0 <= code <= 0x30FF:
+                counts['JP'] += 1
+            elif 0xAC00 <= code <= 0xD7A3:
+                counts['KO'] += 1
+            elif 0x0400 <= code <= 0x04FF:
+                counts['RU'] += 1
+            elif 0x0020 <= code <= 0x007E:
+                counts['EN'] += 1
         
         # defaultdict 取值会物化键，须用 .get：否则查 'JP' 会把 JP:0 塞进
         # counts，下方 `if not counts` 永远不成立——全字符都在已知范围外
         # 的文本（希腊/阿拉伯/泰文等）会被误判成 'JP' 而套用日文字体，
         # 缺字形整行渲染成豆腐块。
-        if counts.get('JP', 0) > 0: return 'JP'
-        if not counts: return 'EN'
+        if counts.get('JP', 0) > 0:
+            return 'JP'
+        if not counts:
+            return 'EN'
         return max(counts, key=counts.get)
 
     def _format_pose_tag(self, pose: Dict) -> str:
@@ -97,31 +106,12 @@ class _StylingMixin:
             poly = line.get("poly")
             if "\\pos(" in tags and poly:
                 # Scene 行:逐行 frz(行多边形方向角)+ 可信时的取色标签。
-                from core.line_restoration import (
-                    format_style_tags,
-                    line_frz_deg,
-                    sample_line_style,
-                )
-
-                frz_line = line_frz_deg(poly)
-                rotation = "\\frz{:.1f}\\frx{:.1f}\\fry{:.1f}".format(
-                    frz_line, frx, fry)
-                style_tags = ""
-                if frame_img is not None:
-                    try:
-                        sampled = sample_line_style(
-                            frame_img, poly, float(line.get("height") or 0.0))
-                        if sampled:
-                            style_tags = format_style_tags(sampled)
-                    except Exception:  # 采样异常不阻塞事件输出
-                        style_tags = ""
-                # 旋转/颜色必须并入既有 override 块内部:ASS 的 \frz 等标签
-                # 写在 `}` 之外会被当作字幕字面文本渲染出来(此前 tags +
-                # rotation 直接拼接,倾斜多边形的输出会显示 "\frz8.0" 字样)。
-                if tags.endswith("}"):
-                    line["tags"] = tags[:-1] + rotation + style_tags + "}"
-                else:  # 防御:无块可并入时包成独立 override 块
-                    line["tags"] = tags + "{" + rotation + style_tags + "}"
+                # 标签合并逻辑与策略路径共用 core.line_restoration.
+                # merge_restoration_tags(旋转/颜色并入既有 override 块内部,
+                # 块外会被 libass 当字面文本渲染出来)。
+                line["tags"] = merge_restoration_tags(
+                    tags, poly, frame_img, float(line.get("height") or 0.0),
+                    frx, fry)
             elif "\\pos(" in tags:
                 # Scene 行但无多边形(理论不出现):保持 ROI 级旋转块。
                 if tags.endswith("}"):
@@ -136,12 +126,17 @@ class _StylingMixin:
 
     def _determine_style_and_position(self, group: SubtitleGroup) -> List[Dict]:
         avg_box = group.get_avg_box()
-        if not avg_box: return []
+        if not avg_box:
+            return []
         avg_y_center = (avg_box[1] + avg_box[3]) / 2
-        if avg_y_center > self.height * self.VIDEO_BOTTOM_AREA: location_type = 'BOTTOM'
-        elif avg_y_center < self.height * self.VIDEO_TOP_AREA: location_type = 'TOP'
-        else: location_type = 'SCENE'
-        dialogue_lines = []; sorted_lines = sorted(group.lines, key=lambda line: line.box[1])
+        if avg_y_center > self.height * self.VIDEO_BOTTOM_AREA:
+            location_type = 'BOTTOM'
+        elif avg_y_center < self.height * self.VIDEO_TOP_AREA:
+            location_type = 'TOP'
+        else:
+            location_type = 'SCENE'
+        dialogue_lines = []
+        sorted_lines = sorted(group.lines, key=lambda line: line.box[1])
         
         if location_type == 'BOTTOM':
             raw_text_for_detection = " ".join([line.text for line in sorted_lines])
@@ -184,11 +179,14 @@ class _StylingMixin:
             for line, align in zip(sorted_lines, aligns):
                 y = int(line.center[1])
                 if align == ALIGN_LEFT:
-                    x = int(line.box[0]); an = 4
+                    x = int(line.box[0])
+                    an = 4
                 elif align == ALIGN_RIGHT:
-                    x = int(line.box[2]); an = 6
+                    x = int(line.box[2])
+                    an = 6
                 else:
-                    x = int(line.center[0]); an = 5
+                    x = int(line.center[0])
+                    an = 5
                 tags = f"{{\\an{an}\\pos({x},{y})}}"
                 dialogue_lines.append({
                     'style': 'Scene', 'text': line.text, 'tags': tags,

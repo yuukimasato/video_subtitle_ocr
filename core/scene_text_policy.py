@@ -51,6 +51,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -77,6 +78,7 @@ from core.motion_ass import (
     synthesize_events,
 )
 from core.text_alignment import (
+    ALIGN_CENTER,
     ALIGN_LEFT,
     ALIGN_RIGHT,
     detect_line_alignments,
@@ -928,6 +930,78 @@ def _rendered_width(text: str, line_h: float) -> float:
     return units * float(line_h)
 
 
+def _row_anchors_from_aligns(
+    rows: Sequence[Row],
+    aligns: Sequence[str],
+) -> List[Optional[Tuple[int, float]]]:
+    """逐行对齐判定 → 遮罩锚点 ``(an, anchor_x)``(与 ``rows`` 同序)。
+
+    左对齐 → ``(4, 行框左缘)``,右对齐 → ``(6, 行框右缘)``,居中/未知 →
+    ``None``(遮罩走旧的对称外扩,输出逐字节不变)。锚点 x 取行框**自身**
+    的边:渲染文本由同一份对齐判定锚定在该边上,遮罩与文本共用一份判定
+    结果,不重复投票。
+    """
+    out: List[Optional[Tuple[int, float]]] = []
+    for i, (_text, box) in enumerate(rows):
+        align = aligns[i] if i < len(aligns) else ALIGN_CENTER
+        if align == ALIGN_LEFT:
+            out.append((4, float(box[0])))
+        elif align == ALIGN_RIGHT:
+            out.append((6, float(box[2])))
+        else:
+            out.append(None)
+    return out
+
+
+_AN_TAG_RE = re.compile(r"\\an(\d+)")
+
+
+def _row_anchors_from_events(
+    events: Sequence[Dict],
+    rows: Sequence[Row],
+    orig_indices: Sequence[int],
+) -> List[Optional[Tuple[int, float]]]:
+    """轨迹路径:从文本事件的 ``\\an`` 标签取逐行锚点(与 ``rows`` 同序)。
+
+    轨迹管线(:func:`core.motion_ass.synthesize_events`)已按逐行对齐判定
+    锚定渲染文本:``\\an4`` 锚行框左缘、``\\an6`` 锚右缘、``\\an5`` 锚中心,
+    事件带 ``line_idx``(= ``blocks_meta`` 输入序下标,``orig_indices`` 把
+    ``rows`` 行序映射回同一输入序)。
+
+    只取标签里的锚点**模式**(an),``anchor_x`` 取 ``rows`` 行框自身的
+    左/右缘,而不是事件 tags 里 ``\\pos``/``\\move`` 的 x:遮罩框是
+    ``rows``(参考帧平面坐标)的静态框、再经单应逐帧映射,而事件 tags 的
+    坐标是**事件所在时刻**的锚点(带 ``\\move`` 分段时每段不同、还叠加
+    跟踪/亚像素平滑),以其为锚会把参考帧的遮罩框整体带偏。取行框自身的
+    边即与 ``rows`` 严格同坐标系,且与静态路径(:func:`_row_anchors_from_aligns`)
+    语义一致。事件缺 ``line_idx``/``\\an`` 或锚点为居中 → ``None``(旧的
+    对称外扩,旧调用方输出逐字节不变)。
+    """
+    an_by_input: Dict[int, int] = {}
+    for ev in events:
+        if ev.get("line_idx") is None:
+            continue
+        m = _AN_TAG_RE.search(str(ev.get("tags") or ""))
+        if not m:
+            continue
+        try:
+            idx = int(ev["line_idx"])
+        except (TypeError, ValueError):
+            continue
+        an_by_input.setdefault(idx, int(m.group(1)))
+    out: List[Optional[Tuple[int, float]]] = []
+    for pos, (_text, box) in enumerate(rows):
+        src = orig_indices[pos] if pos < len(orig_indices) else None
+        an = an_by_input.get(int(src)) if src is not None else None
+        if an == 4:
+            out.append((4, float(box[0])))
+        elif an == 6:
+            out.append((6, float(box[2])))
+        else:
+            out.append(None)
+    return out
+
+
 def _padded_mask_box(
     rows_slice: Sequence[Row],
     plane_w: float,
@@ -936,15 +1010,32 @@ def _padded_mask_box(
     analysis_box: Optional[Tuple[int, int, int, int]] = None,
     *,
     row_dx: Optional[Sequence[float]] = None,
+    row_anchor: Optional[
+        Sequence[Optional[Tuple[int, float]]]] = None,
 ) -> Tuple[Tuple[float, float, float, float], float]:
-    """块遮罩外扩框:按行「渲染宽度居中外扩 + pad + 标点补偿」后求 union。
+    """块遮罩外扩框:按行「渲染文本跨度 + pad + 标点补偿」后求 union。
 
     mask 动态/静态路径共用:遮罩须盖住"渲染后的字幕"(替换字体字宽通常
     大于原 OCR 框),并按 ``mask_pad_ratio`` 外扩行高方向的边距。块内不同
-    文本行的渲染宽度与行尾标点补偿各不相同——先逐行以自己的行中心外扩、
-    平移 ``row_dx[i]``,再对块内各行求联合框,保证每行都被自己补偿后的框
-    覆盖(不取块级最大补偿整体平移,避免无标点行偏移或过宽);最后裁到
-    平面/分析窗。返回 ``(union 框, 平均行高)``。
+    文本行的渲染宽度与行尾标点补偿各不相同——先逐行算自己的跨度、平移
+    ``row_dx[i]``,再对块内各行求联合框,保证每行都被自己补偿后的框覆盖
+    (不取块级最大补偿整体平移,避免无标点行偏移或过宽);最后裁到平面/
+    分析窗。返回 ``(union 框, 平均行高)``。
+
+    ``row_anchor``(可选,与 ``rows_slice`` 等长)给出该行渲染文本的水平
+    锚点 ``(an, anchor_x)``(平面坐标,与 rows 同坐标系):
+
+    - ``(4, x)`` —— 渲染文本左锚于 ``x``(``\\an4``),占 ``[x, x+need_w]``;
+      遮罩取「原 OCR 框」与「渲染跨度」的并集再外扩 pad,即
+      ``[min(x1, x), max(x2, x+need_w)] ± pad``;
+    - ``(6, x)`` —— 右锚(``\\an6``),占 ``[x-need_w, x]``,取法同上;
+    - ``None``/``(5, x)`` —— 居中(``\\an5``,旧行为):以行中心 ``cx``
+      对称外扩 ``max(box_w, need_w)/2 + pad``,表达式与旧实现逐字节一致。
+
+    2.7.0 的对齐锚点把渲染文本钉在行框左/右缘后,旧实现的对称外扩在
+    左/右锚下盖不住行尾方向伸出的字幕(CJK 行右侧漏 ≈pad,纯 ASCII 行
+    ——渲染宽可达框宽两倍——漏出更多),原文字会从字幕旁露出;并入锚点
+    后遮罩按"渲染文本真实跨度"外扩,``\\an5``/缺省路径输出不变。
     """
     boxes: List[Tuple[float, float, float, float]] = []
     line_h_sum = 0.0
@@ -952,13 +1043,30 @@ def _padded_mask_box(
         x1, y1, x2, y2 = (float(v) for v in rbox)
         line_h = max(1.0, y2 - y1)
         pad = float(cfg.mask_pad_ratio) * line_h
-        # 渲染宽度外扩:遮罩水平方向取"原框"与"渲染行"的较大者(以本行
-        # 中心对称扩展),避免字幕字形悬出补丁
+        # 渲染宽度外扩:遮罩水平方向取"原框"与"渲染行"的较大者,避免字幕
+        # 字形悬出补丁
         need_w = _rendered_width(text, line_h)
         cx = (x1 + x2) / 2.0
-        half_w = (max(x2 - x1, need_w) + 2.0 * pad) / 2.0
+        anchor = (row_anchor[i]
+                  if row_anchor is not None and i < len(row_anchor) else None)
+        an = int(anchor[0]) if anchor is not None else 5
+        anchor_x = float(anchor[1]) if anchor is not None else cx
+        if an == 4:
+            # 左锚:渲染文本 [anchor_x, anchor_x+need_w];并集含原 OCR 框
+            # (need_w < box_w 时不额外外扩,也不漏盖原框右段)
+            left = min(x1, anchor_x) - pad
+            right = max(x2, anchor_x + need_w) + pad
+        elif an == 6:
+            # 右锚:渲染文本 [anchor_x-need_w, anchor_x]
+            left = min(x1, anchor_x - need_w) - pad
+            right = max(x2, anchor_x) + pad
+        else:
+            # 居中/缺省:以行中心对称外扩(旧表达式与运算次序保持一致,
+            # 保证缺省路径输出逐字节不变)
+            half_w = (max(x2 - x1, need_w) + 2.0 * pad) / 2.0
+            left, right = cx - half_w, cx + half_w
         dx = float(row_dx[i]) if row_dx is not None else 0.0
-        boxes.append((cx - half_w + dx, y1 - pad, cx + half_w + dx, y2 + pad))
+        boxes.append((left + dx, y1 - pad, right + dx, y2 + pad))
         line_h_sum += line_h
     ux1 = min(b[0] for b in boxes)
     uy1 = min(b[1] for b in boxes)
@@ -995,6 +1103,8 @@ def _apply_mask(
     orig_indices: Optional[Sequence[int]] = None,
     diag_extra: Optional[Dict[str, object]] = None,
     include_text: bool = True,
+    row_anchor: Optional[
+        Sequence[Optional[Tuple[int, float]]]] = None,
 ) -> Tuple[List[Dict], str, List[str]]:
     """mask / mask_only 模式:低层纯色遮罩盖住原文字(layer 0)+ 文本事件。
 
@@ -1013,7 +1123,11 @@ def _apply_mask(
     隐式 ``tracks[0].frame_num``,旧行为);行尾标点补偿按行计算,遮罩取
     「按行补偿后求 union」。``orig_indices`` 为排序后行位置 →
     ``blocks_meta`` 输入序下标的映射,供 external 回退时按 ``line_idx``
-    建立事件归属。
+    建立事件归属。``row_anchor``(仅关键字,可选)为排序后行位置的渲染
+    锚点 ``(an, anchor_x)`` 或 None(见 :func:`_row_anchors_from_events`),
+    遮罩按渲染文本真实跨度外扩——``\\an4``/``\\an6`` 把文本钉在行框左/右缘,
+    对称外扩会漏盖行尾方向伸出的字幕;None/``\\an5`` 保持居中对称外扩
+    (缺省 None,旧调用方输出逐字节不变)。
 
     Task 5 透视安全边界:块遮罩框裁剪后宽/高 ≤ 0(退化裁剪框),或逐帧
     四角映射退化(:func:`_mask_quad_frames`),或矩形模式(实验开关
@@ -1038,8 +1152,11 @@ def _apply_mask(
                 max_px=motion_cfg.punct_comp_max_px,
                 video_height=video_h)
             for text, rbox in rows[s:e + 1]]
-        mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
-                                         cfg, analysis_box, row_dx=row_dx)
+        mbox, _line_h = _padded_mask_box(
+            rows[s:e + 1], plane_w, plane_h, cfg, analysis_box,
+            row_dx=row_dx,
+            row_anchor=(row_anchor[s:e + 1] if row_anchor is not None
+                        else None))
         mbox_w = float(mbox[2]) - float(mbox[0])
         mbox_h = float(mbox[3]) - float(mbox[1])
         if mbox_w <= 0.0 or mbox_h <= 0.0:
@@ -1334,8 +1451,11 @@ def _apply_whitespace(
                           max_gap=motion_cfg.smooth_max_gap)
     # 逐行对齐判定结果并入 diagnostics(合成行框按约定左对齐于带左缘,
     # 判定应全为 left;偏出即说明锚点选型与布局约定脱钩,留痕便于排查)。
+    # video_height 透传:静止塌缩阈值按 video_height/1080 等比缩放,
+    # 缺省会退回 1080p 基准(高分辨率下塌缩偏激进)。
     align_diag: Dict[str, object] = {}
     events = synthesize_events(new_tracks, tracks, motion_cfg, style=style,
+                               video_height=video_h,
                                diagnostics=align_diag)
     if diag_extra is not None and align_diag:
         diag_extra["line_alignments"] = align_diag
@@ -1439,11 +1559,15 @@ def apply_policy(
         return PolicyResult(out, "external", notes, mode,
                             _merge_bg_diag(diag, diag_extra))
     if mode in ("mask", "mask_only"):
+        # 逐行渲染锚点:轨迹管线的文本事件已按同一份对齐判定锚定
+        # (\an4/\an6/\an5),\an4/\an6 时遮罩须按渲染文本真实跨度外扩,
+        # 否则行尾方向伸出的字幕会露出原文字(见 _padded_mask_box)。
+        anchors = _row_anchors_from_events(events, rows, orig_indices)
         out, applied, notes = _apply_mask(
             list(events), rows, blocks, plane_img_bgr, tracks, cfg,
             video_w, video_h, mcfg, style, [], analysis_box=analysis_box,
             ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra,
-            include_text=(mode == "mask"))
+            include_text=(mode == "mask"), row_anchor=anchors)
     elif mode == "external":
         out, applied, notes = (_apply_external(list(events), rows, blocks,
                                                tracks, cfg, video_w, video_h,
@@ -1577,13 +1701,38 @@ def _apply_static_mask(
     对齐判定(``line_alignments``:行 idx → 对齐边 + 三边票数 + 剪切斜率)
     经 ``diag_extra`` 累加供入口并入 diagnostics。回退 notes 前缀与 applied
     模式按实际模式(mask/mask_only)。
+
+    逐行对齐判定在**块循环之前**做一次,同一份结果同时供遮罩外扩(按行
+    锚点 ``\\an4``/``\\an6`` 的真实渲染跨度,见 :func:`_padded_mask_box`)与
+    文本 spec 锚点使用——遮罩与文本锚点必须同源,分别投票会在低置信行上
+    给出不一致的锚(字幕与补丁错边)。
     """
     mode_label = "mask" if include_text else "mask_only"
     plane_h, plane_w = plane_img_bgr.shape[:2]
     out: List[Dict] = []
+    # 逐行投票检测原文对齐方式(左/中/右,同 core.text_alignment,整组
+    # ROI 投票,聊天混排/邮件松行距都能归类):识别行以行高为字号回贴,
+    # 渲染宽度与原框必有出入——居中锚点会让左/右对齐的行失去公共边距。
+    # 按行选锚:左→\an4 锚行框左缘,右→\an6 锚右缘,中→\an5 锚中心(旧行为)。
+    # 遮罩框必须跟着锚点走:对称外扩只覆盖到 cx ± max(box_w,need_w)/2,
+    # 而左锚文本占 [x1, x1+need_w]——CJK 行右侧漏 ≈pad、纯 ASCII 行(渲染
+    # 宽可达框宽两倍)漏 (need_w−box_w)/2−pad,原文字从字幕旁露出(2.7.0
+    # 锚点改动打破了旧注释「对称外扩同时盖住左/右锚渲染文本」的对应关系)。
+    # 去趋势与轨迹管线同一开关:行框虽是视频坐标的轴对齐裁剪(非 quad
+    # 展开),但斜放平面上的竖直 UI 列在视频坐标里本就随 y 线性倾斜;
+    # 正面版式估计斜率为 0,开关等价于无操作。逐行判定结果(行 idx →
+    # 对齐边 + 三边票数)并入 diagnostics["line_alignments"] 供真实视频排查。
+    align_diag: Dict[str, object] = {}
+    row_align = detect_line_alignments([b for _t, b in rows],
+                                       detrend_shear=True,
+                                       diagnostics=align_diag)
+    if diag_extra is not None:
+        diag_extra["line_alignments"] = align_diag
+    row_anchor = _row_anchors_from_aligns(rows, row_align)
     for bi, (s, e) in enumerate(blocks):
         mbox, _line_h = _padded_mask_box(rows[s:e + 1], plane_w, plane_h,
-                                         cfg, analysis_box)
+                                         cfg, analysis_box,
+                                         row_anchor=row_anchor[s:e + 1])
         stats = sample_background_stats(
             plane_img_bgr, mbox,
             background_mode=cfg.background_mode,
@@ -1622,21 +1771,8 @@ def _apply_static_mask(
             return ([spec] if spec else []), "external", notes
         out.append(_static_mask_spec(mbox, stats.color_bgr,
                                      orig_indices[s:e + 1], style=style))
-    # 逐行投票检测原文对齐方式(左/中/右,同 core.text_alignment,整组
-    # ROI 投票,聊天混排/邮件松行距都能归类):识别行以行高为字号回贴,
-    # 渲染宽度与原框必有出入——居中锚点会让左/右对齐的行失去公共边距。
-    # 按行选锚:左→\an4 锚行框左缘,右→\an6 锚右缘,中→\an5 锚中心(旧行为);
-    # 对称外扩的遮罩框同时盖住左/右锚渲染的文本,无需改动。
-    # 去趋势与轨迹管线同一开关:行框虽是视频坐标的轴对齐裁剪(非 quad
-    # 展开),但斜放平面上的竖直 UI 列在视频坐标里本就随 y 线性倾斜;
-    # 正面版式估计斜率为 0,开关等价于无操作。逐行判定结果(行 idx →
-    # 对齐边 + 三边票数)并入 diagnostics["line_alignments"] 供真实视频排查。
-    align_diag: Dict[str, object] = {}
-    row_align = detect_line_alignments([b for _t, b in rows],
-                                       detrend_shear=True,
-                                       diagnostics=align_diag)
-    if diag_extra is not None:
-        diag_extra["line_alignments"] = align_diag
+    # 文本 spec:锚点用块循环前那份**同一**对齐判定(row_align),与遮罩
+    # 外扩同源;左→\an4 锚行框左缘,右→\an6 锚右缘,中→\an5 锚中心。
     for i, (text, box) in enumerate(rows):
         cx = int((float(box[0]) + float(box[2])) / 2.0)
         cy = int((float(box[1]) + float(box[3])) / 2.0)

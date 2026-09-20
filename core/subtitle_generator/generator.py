@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QCoreApplication
 
+from core.line_restoration import merge_restoration_tags
 from core.scene_text_policy import (
     POLICY_MODES,
     SceneTextPolicyConfig,
@@ -378,6 +379,10 @@ class OCRToASSOptimizer(
             "rows": [],        # [(text, 视频坐标行框)],行序 = 收集序(组内自上而下)
             "rows_motion": [],  # [(text, 视频坐标行框)] 逐帧行,仅供移动门限
             "row_times": [],   # 与 rows 对齐的 (start_time, end_time)
+            # 与 rows 对齐的逐行还原素材(策略模块不读此键):该行多边形
+            # (视频坐标)、行高、所在组的代表帧号——供 _finish_scene_policy_events
+            # 在 pose 开启时追加逐行 \frz 与取色标签。
+            "row_meta": [],
         }
 
     def _split_policy_scene_lines(self, group, styled_lines) -> tuple:
@@ -403,7 +408,19 @@ class OCRToASSOptimizer(
         return scene_lines, other_lines
 
     def _finish_scene_policy_events(self, ctx: Dict, roi_id: str) -> List[Dict]:
-        """收集完成后生成策略事件,替换该 ROI 的原 SCENE styled 事件。"""
+        """收集完成后生成策略事件,替换该 ROI 的原 SCENE styled 事件。
+
+        pose 开启(``roi_pose_tags[roi_id]`` 为真)时,``kind == "text"``
+        的策略文本事件按 ctx["row_meta"] 的逐行素材追加还原标签:逐行
+        ``\\frz``(该行多边形的长边方向角,视频坐标)+ 帧像素采样得到的
+        ``\\1c/\\3c/\\bord``(取帧/采样失败只跳过取色)。Scene 行在策略
+        路径下已被移出 styled_lines,不再经过 ``_apply_roi_pose_tags``,
+        没有这份追加就既无逐行旋转也无 ROI 级姿态标签。
+
+        ``kind == "note"``(external 的整块 NoteBox)与 ``scene_ws``
+        (whitespace 的合成行)是整块/合成放置,没有逐行几何可还原
+        (无多边形、无行高),不在逐行还原范围。
+        """
         rows_video = ctx["rows"]
         row_times = ctx["row_times"]
         if not rows_video:
@@ -456,6 +473,27 @@ class OCRToASSOptimizer(
         # note/scene_ws 单条事件的时间 = 全部 SCENE 组跨度的并集
         union_start = min((s for s, _e in row_times), key=_ts)
         union_end = max((e for _s, e in row_times), key=_ts)
+        # 逐行还原(仅 pose 开启的 ROI):策略行的多边形/行高/代表帧由
+        # convert_from_memory 按行记录在 row_meta(与 rows 同序)。
+        pose = self.roi_pose_tags.get(str(roi_id))
+        row_meta = ctx.get("row_meta") or []
+        frx = float(pose.get("frx", 0.0) or 0.0) if pose else 0.0
+        fry = float(pose.get("fry", 0.0) or 0.0) if pose else 0.0
+        frame_cache: Dict[int, Optional[np.ndarray]] = {}
+
+        def _row_frame(meta: Dict) -> Optional[np.ndarray]:
+            """该行所在帧(按帧号缓存);取帧失败返回 None(只跳过取色)。"""
+            frame_num = meta.get("frame")
+            if frame_num is None:
+                return None
+            num = int(frame_num)
+            if num not in frame_cache:
+                try:
+                    frame_cache[num] = self._get_analysis_reader().read(num)
+                except Exception:  # 取帧失败只跳过取色,不影响几何标签
+                    frame_cache[num] = None
+            return frame_cache[num]
+
         events: List[Dict] = []
         for spec in specs:
             kind = spec["kind"]
@@ -472,6 +510,15 @@ class OCRToASSOptimizer(
             elif kind == "text":
                 start, end = row_times[spec["row"]]
                 tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                if pose:
+                    # Scene 行进策略路径后不再经过 styling._apply_roi_pose_tags,
+                    # 逐行还原标签(行 frz + 取色)在此追加;几何标签必须并入
+                    # 既有 override 块内部(见 merge_restoration_tags)。
+                    meta = (row_meta[spec["row"]]
+                            if spec["row"] < len(row_meta) else {})
+                    tags = merge_restoration_tags(
+                        tags, meta.get("poly") or [], _row_frame(meta),
+                        float(meta.get("height") or 0.0), frx, fry)
                 event = {
                     "roi": roi_id, "start_time": start, "end_time": end,
                     "style": "Scene", "tags": tags, "body": spec.get("body", ""),
@@ -560,6 +607,12 @@ class OCRToASSOptimizer(
                         start_time = self._format_time(group.start_frame)
                         end_time = self._format_time(group.end_frame + 1)
                     styled_lines = self._determine_style_and_position(group)
+                    # 组代表帧(组内中间帧):逐行取色(既有 pose 路径)与策略行
+                    # 的逐行还原标签(_finish_scene_policy_events)共用同一帧,
+                    # FrameReader 按帧号缓存,同一帧只解码一次。
+                    mid_frame = None
+                    if group_frames:
+                        mid_frame = group_frames[len(group_frames) // 2].frame_num
                     if policy_ctx is not None and styled_lines:
                         # 逐行拆分:Scene 行进策略,对白/顶部行保持原路径,
                         # 同一批行里两类都不丢失。
@@ -568,6 +621,14 @@ class OCRToASSOptimizer(
                         for line in scene_lines:
                             policy_ctx["rows"].append(
                                 (line.text, tuple(float(v) for v in line.box)))
+                            # 策略模块只消费 rows(text, box);还原素材走并行
+                            # 的新键 row_meta(策略模块忽略未知键),不改变
+                            # 既有键的形状。
+                            policy_ctx["row_meta"].append({
+                                "poly": [tuple(p) for p in line.polygon],
+                                "height": line.bounding_height,
+                                "frame": mid_frame,
+                            })
                             policy_ctx["row_times"].append((start_time, end_time))
                         if scene_lines:
                             for fr in group_frames:
@@ -582,9 +643,6 @@ class OCRToASSOptimizer(
                     if pose:
                         # 取组内中间帧供逐行取色(打不开/失败时自动跳过取色);
                         # FrameReader 按帧号缓存,多组共享同一句柄。
-                        mid_frame = None
-                        if group_frames:
-                            mid_frame = group_frames[len(group_frames) // 2].frame_num
                         styled_lines = self._apply_roi_pose_tags(
                             styled_lines, pose, frame_num=mid_frame)
                     for line_info in styled_lines:

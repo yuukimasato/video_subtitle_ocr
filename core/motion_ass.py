@@ -11,7 +11,9 @@
 - :func:`simplify_and_segment` —— 中心序列 Douglas-Peucker 简化得分段点,
   并入角度/缩放显著变化帧,强制最小段长,输出连续无缝的帧号区间。
 - :func:`synthesize_events` —— 标签阶梯:连续静止段 → 一条 ``\\pos`` 事件
-  (无 ``\\move``/``\\t``);单段直线 → 一条 ``\\move`` 事件;
+  (无 ``\\move``/``\\t``;静止段组按组级复核收敛——组内任意帧的锚点距
+  组参考锚点 ≤ settle,复核不过另起一组,见 :class:`_StaticGroupCheck`);
+  单段直线 → 一条 ``\\move`` 事件;
   多段 → 每段一条 ``\\move`` 事件(边界共享同一格式化时间字符串,
   段内角度/缩放超阈值叠加 ``\\t``);段数爆炸 → 帧级 ``\\pos`` 兜底;
   lost 间隔切段(可选 ``lost_hold_sec`` 保持)。行锚点按
@@ -98,10 +100,29 @@ class MotionAssConfig:
     verify_min_score: float = 0.45       # 参与校正的最小匹配置信度
     verify_drop_score: float = 0.30      # 判定文字不可见的置信度
     verify_static_tol_px: float = 2.5    # 屏幕静止判定容差(px)
+    verify_min_static_samples: int = 3   # 静止判定所需的最少有效采样数
+    # —— 以下透传 VerifyConfig 的失配跨度证据分级 / 分块解码参数(语义见
+    #    core.pose_verify.VerifyConfig 对应字段注释)——
+    verify_retry_radius_px: float = 80.0   # 失配采样的扩半径重试搜索半径
+    verify_long_span_frames: int = 48      # 失配跨度「超长」判定(帧)
+    verify_span_confirm_max: int = 8       # 超长跨度删除前跨内补采确认帧数上限
+    verify_block_max_frames: int = 64      # 分块解码单块帧并集上限(≤0 不分块)
+    # ROI 包含门控(「校正不得把行移出所属 ROI」,语义见 VerifyConfig.roi_clamp
+    # 与 core.pose_verify.verify_line_tracks):实测中心限制在用户手绘 ROI
+    # (最小边 10%、至少 4px 外扩)内;4K 固定歌词条实测中,大搜索半径在
+    # 条带外锁到背景纹理、把正确位姿改到偏移 115–215px 处并误删可见段
+    # ——门控后伪峰被掩膜,ROI 内真值峰照常采纳。False 关闭。
+    verify_roi_clamp: bool = True
 
     # —— 静止链塌缩:链内锚点/角度/缩放全程低于阈值时输出单条 \pos 事件 ——
     collapse_static_chains: bool = True
-    collapse_settle_tol_px: float = 12.0  # 段内总位移低于此值视为静止(感知阈值)
+    # 段内总位移视为静止的感知阈值。以 1080p 为基准的绝对像素,合成时按
+    # video_height/1080 等比缩放(2160p→24px、540p→6px;1080p 或
+    # video_height 缺省时恰为原值,行为不变)——绝对像素阈值对分辨率敏感:
+    # 4K 下相对画面过小(塌缩吸死可感知的小运动),480p 下可能超过字高
+    # (塌缩形同虚设);角度/缩放速率阈值(collapse_max_*_rate)是相对量,
+    # 不随分辨率缩放。
+    collapse_settle_tol_px: float = 12.0
     # 位移低于感知阈值的段还须角度/缩放变化足够慢才塌缩(区分「单应污染
     # 的慢漂移」与「绕行中心的真实缩放/旋转动画」);单位:°/s 与 1/s。
     collapse_max_rot_rate: float = 3.0
@@ -195,7 +216,7 @@ def punct_comp_offset_px(
     if not enabled:
         return 0.0
     stripped = str(text or "").strip()
-    if not stripped or not stripped[-1] in _TRAILING_BLANK_RIGHT_PUNCT:
+    if not stripped or stripped[-1] not in _TRAILING_BLANK_RIGHT_PUNCT:
         return 0.0
     fs_px = float(fs_px or 0.0)
     if fs_px <= 0:
@@ -673,6 +694,108 @@ def _dense_events(
     return events
 
 
+@dataclass
+class _StaticGroupCheck:
+    """静止塌缩的**组级**复核状态(``_chain_events`` 阶梯 0 内部用)。
+
+    段级 ``_seg_static`` 只保证「单段首末锚点距离 ≤ settle」:同向的相邻
+    静止段串成一组后组内累计位移无上界——右移 10px 一段 + 下移 10px 一段
+    (每段各 ≤ 12px)会让组终点距组参考锚点 14.1px,而组事件只输出一个
+    ``\\pos``(错位反而超过 settle)。故候选静止段并入组前必须按**组**复核:
+
+    1. 组内每一帧的锚点相对组参考锚点(组首段首帧)的距离 ≤ settle;
+    2. 组内角度相对参考帧的最大偏离 / 整组跨度时长 ≤ rot_rate;
+    3. 组内缩放极差 / 整组跨度时长 ≤ scale_rate。
+
+    复核不过则另起一个静止组(参考锚点 = 该段首帧锚点),保持「文字不动
+    就塌缩成单条 ``\\pos``」的语义——不退回 ``\\move``,否则大量微小抖动
+    的静态文字会退化成海量 ``\\move`` 事件。
+
+    本结构增量维护组内极值(每帧至多算一次,失败不改状态),整条链的
+    复核代价 O(帧数)。
+    """
+
+    ref_ai: int          # 组参考帧(组首段首帧)在链内的下标:组 \pos 用其锚点
+    hi: int              # 已复核到的链内帧下标(闭区间,含)
+    max_move: float      # 组内锚点相对参考锚点的最大距离(px)
+    max_ang: float       # 组内角度相对参考帧角度的最大偏离(度)
+    scale_lo: float      # 组内缩放最小值
+    scale_hi: float      # 组内缩放最大值
+
+    @classmethod
+    def start(cls, scales: Sequence[float], ref_ai: int) -> "_StaticGroupCheck":
+        """以链内帧 ``ref_ai`` 为参考锚点开一个静止组。"""
+        return cls(ref_ai=int(ref_ai), hi=int(ref_ai), max_move=0.0,
+                   max_ang=0.0, scale_lo=float(scales[ref_ai]),
+                   scale_hi=float(scales[ref_ai]))
+
+    def try_extend(
+        self,
+        anchors: Sequence[Tuple[float, float]],
+        angles: Sequence[float],
+        scales: Sequence[float],
+        chain: Sequence[int],
+        tmap: Dict[int, TrackedQuad],
+        bi: int,
+        *,
+        settle: float,
+        rot_rate: float,
+        scale_rate: float,
+    ) -> bool:
+        """试把链内帧 ``(hi, bi]`` 并入本组;通过则原地更新并返回 True。
+
+        失败(锚点越界/角或缩放速率超限)时不改动任何状态,调用方另起
+        新组。``hi`` 恒为同组前一段的末帧,段间连续无缝,故 ``(hi, bi]``
+        恰为待并入段的帧(不含其首帧——该帧已在组内复核过)。
+        """
+        x0, y0 = anchors[self.ref_ai]
+        a0 = angles[self.ref_ai]
+        max_move = self.max_move
+        max_ang = self.max_ang
+        lo, hi_s = self.scale_lo, self.scale_hi
+        for k in range(self.hi + 1, bi + 1):
+            ax, ay = anchors[k]
+            dist = math.hypot(float(ax) - float(x0), float(ay) - float(y0))
+            if dist > settle:
+                return False  # 组内任一帧越界即不并(不变式:≤ settle)
+            if dist > max_move:
+                max_move = dist
+            ang = _ang_diff(angles[k], a0)
+            if ang > max_ang:
+                max_ang = ang
+            sc = float(scales[k])
+            if sc < lo:
+                lo = sc
+            if sc > hi_s:
+                hi_s = sc
+        dur = tmap[chain[bi]].time_sec - tmap[chain[self.ref_ai]].time_sec
+        if dur > 1e-6:
+            # 速率按**整组跨度**重算(参照帧 = 组参考帧),而不是复用段级
+            # 结论:段时长连续叠加、缩放区间在段交界处共享端点,正时长段
+            # 的段级速率合格确实能推出组级合格;真正依赖这道防线的是
+            # 「段级速率被跳过」的段(_seg_static 在段时长 ≤ 1e-6 时直接
+            # 判静止、不评估速率,见其 docstring 的早退分支)——组级复核
+            # 是唯一能拦住这类段把整组带偏的地方。
+            if max_ang / dur > rot_rate:
+                return False
+            if (hi_s - lo) / dur > scale_rate:
+                return False
+        self.hi = max(self.hi, int(bi))
+        self.max_move = max_move
+        self.max_ang = max_ang
+        self.scale_lo, self.scale_hi = lo, hi_s
+        return True
+
+
+@dataclass
+class _CollapseGroup:
+    """``_chain_events`` 阶梯 0 的相邻段分组:连续静止段合成单条 ``\\pos`` 事件。"""
+
+    static: bool
+    sis: List[int]                               # 组成员段下标(segs 下标,升序)
+    check: Optional[_StaticGroupCheck] = None    # 静止组的组级复核状态
+
+
 def _chain_events(
     lt: LineTrack,
     chain: List[int],
@@ -724,18 +847,41 @@ def _chain_events(
     else:
         chain_dt = 0.0
 
-    def _seg_static(ai: int, bi: int) -> bool:
-        """段内整体位移低于感知阈值、且角度/缩放变化足够慢 → 静止段。
+    # 静止塌缩的位移阈值 settle(段级与组级共用):感知阈值按分辨率归一
+    # (video_height/1080,见 _seg_static docstring),再取 move_tol_px 地板
+    # (地板不缩放,与 DP 分段同单位)。
+    settle = float(cfg.collapse_settle_tol_px)
+    if video_height is not None and float(video_height) > 0:
+        settle *= float(video_height) / 1080.0
+    settle = max(settle, float(cfg.move_tol_px))
 
-        判据用段首末锚点距离:DP 已保证段内锚点偏离弦 ≤ move_tol,首末
-        距离即段内总位移。实测校正只回贴中心,单应的角度/缩放污染仍会
-        让长时间静止的行留有数像素的慢漂移与假 \t 变化——变化速率低于
-        感知阈值的按静止处理(塌缩后这些假 \t 一并消失);绕行中心的
-        真实缩放/旋转动画(位移≈0 但角/秒、缩放/秒高)不受影响。
+    def _seg_static(ai: int, bi: int) -> bool:
+        """**段级**判据:段内整体位移低于感知阈值、且角度/缩放变化足够慢。
+
+        位移判据用段首末锚点距离,这只是「段内总位移」的下界近似:DP 只
+        保证简化后段内**中心点**偏离弦 ≤ move_tol(锚点还受逐帧角度/缩放
+        影响,见 :func:`_anchored_center`),强制最小段长的合并还会让个别
+        段的内点偏离弦更远,而本函数从不逐帧检查。因此单段合格**不**蕴含
+        组内合格——同向相邻静止段串成一组后组内累计位移无上界(每段各移
+        10px 的两段组终点错位 14.1px)。组级安全性由
+        :meth:`_StaticGroupCheck.try_extend` 逐帧复核(组内每一帧锚点
+        相对组参考锚点 ≤ settle),本函数只做便宜的段级预筛。
+
+        实测校正只回贴中心,单应的角度/缩放污染仍会让长时间静止的行留有
+        数像素的慢漂移与假 ``\\t`` 变化——变化速率低于感知阈值的按静止
+        处理(塌缩后这些假 ``\\t`` 一并消失);绕行中心的真实缩放/旋转
+        动画(位移≈0 但角/秒、缩放/秒高)不受影响。
+
+        位移阈值按分辨率归一(以 1080p 为基准):12px 是绝对像素,4K 下
+        相对画面过小、低分辨率下可能接近字高,感知项按 video_height/1080
+        等比缩放(video_height=1080 或缺省时恰为配置原值,与旧行为一致)。
+        move_tol_px 地板项不随分辨率缩放:max 的语义是「塌缩阈值不得低于
+        DP 分段容差」(段内位移 ≤ move_tol 的链不该因阈值配置过小被判
+        运动),而 DP 分段仍按绝对 move_tol_px 进行,地板须与分段同单位;
+        若一并缩放,低分辨率下 settle 会跌破 move_tol,这道防线失效。
         """
         ax, ay = anchors[ai]
         bx, by = anchors[bi]
-        settle = max(float(cfg.collapse_settle_tol_px), float(cfg.move_tol_px))
         if math.hypot(bx - ax, by - ay) > settle:
             return False
         dur = tmap[chain[bi]].time_sec - tmap[chain[ai]].time_sec
@@ -749,16 +895,36 @@ def _chain_events(
 
     # 相邻段按「静止/运动」分组:连续静止段合并成一条 \pos 事件(文字
     # 不移动就不需要 \move/\t);运动段逐段输出 \move(± \t)。
-    groups: List[List[object]] = []
+    # 段级 _seg_static 只保证单段位移 ≤ settle,同向多段串成组的累计位移
+    # 无上界(L 形:右移 10px + 下移 10px 两段各 ≤ settle,组终点错位
+    # 14.1px > settle)——并入前一静止组前逐帧复核组内锚点跨度;复核不过
+    # 则另起一个静止组(参考锚点 = 该段首帧锚点),不退回 \move。
+    # 单段自成一组仍越界(段级判据的 DP 前提被最小段长合并破坏)时按运动
+    # 段输出 \move:几何上该段确有不可忽略的位移,塌缩即错位。
+    groups: List[_CollapseGroup] = []
     for si, (ai, bi) in enumerate(segs):
         static_seg = bool(cfg.collapse_static_chains and _seg_static(ai, bi))
-        if groups and groups[-1][0] == static_seg:
-            groups[-1][1].append(si)  # type: ignore[union-attr]
-        else:
-            groups.append([static_seg, [si]])
+        if static_seg and groups and groups[-1].static:
+            group_check = groups[-1].check
+            if group_check is not None and group_check.try_extend(
+                    anchors, angles, scales, chain, tmap, bi,
+                    settle=settle, rot_rate=cfg.collapse_max_rot_rate,
+                    scale_rate=cfg.collapse_max_scale_rate):
+                groups[-1].sis.append(si)
+                continue
+        candidate = _StaticGroupCheck.start(scales, ai)
+        if static_seg and candidate.try_extend(
+                anchors, angles, scales, chain, tmap, bi,
+                settle=settle, rot_rate=cfg.collapse_max_rot_rate,
+                scale_rate=cfg.collapse_max_scale_rate):
+            groups.append(_CollapseGroup(static=True, sis=[si],
+                                         check=candidate))
+            continue
+        groups.append(_CollapseGroup(static=False, sis=[si]))
 
-    for gi, (static_group, sis) in enumerate(groups):
-        sis = list(sis)  # type: ignore[arg-type]
+    for gi, grp in enumerate(groups):
+        static_group = grp.static
+        sis = list(grp.sis)
         is_last_group = gi == len(groups) - 1
         first_ai = segs[sis[0]][0]
         last_bi = segs[sis[-1]][1]
@@ -774,6 +940,9 @@ def _chain_events(
                 t1 = _next_frame_time(tmap, end_f, t1, chain_dt)
             if t1 <= t0:
                 continue
+            # 组 \pos 锚点 = 组级复核的参考锚点:静止组恒以组首段首帧起组,
+            # 故 ref_ai == segs[sis[0]][0] == first_ai,复核已保证组内每一帧
+            # 锚点距它 ≤ settle(塌缩不变式)。
             ax, ay = anchors[first_ai]
             events.append({
                 "start_time": format_ass_time(t0),
@@ -833,9 +1002,12 @@ def synthesize_events(
     每行独立处理:pose 按 lost 间隔切链(``lost_hold_sec`` > 0 时短间隔
     合并跨越);每条链先分段(单段直线/多段 ``\\move``),段数爆炸时整条
     链改帧级 ``\\pos`` 兜底。事件按行分组、行内按时间排序;不修改输入。
-    ``video_height``(PlayResY)供行尾标点补偿的上限按分辨率缩放,缺省按
-    ``punct_comp_max_px`` 原值封顶。事件携带 ``line_idx``(行下标,行序同
-    输入),供逐行亮度适配等调用方回溯所属行;写入 .ass 时忽略。
+    ``video_height``(PlayResY)供分辨率相关阈值以 1080p 为基准等比缩放:
+    行尾标点补偿上限(缺省按 ``punct_comp_max_px`` 原值封顶)与静止链
+    塌缩位移阈值(缺省按 ``collapse_settle_tol_px`` 原值判定,行为与
+    1080p 一致);角度/缩放变化速率阈值为相对量,不缩放。事件携带
+    ``line_idx``(行下标,行序同输入),供逐行亮度适配等调用方回溯所属
+    行;写入 .ass 时忽略。
 
     行锚点按原文对齐检测(:func:`core.text_alignment.detect_line_alignments`,
     全组逐行边缘贴合投票):居中块 ``\\an5`` 锚中心(旧行为),

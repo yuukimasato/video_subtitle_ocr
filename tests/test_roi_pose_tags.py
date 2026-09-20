@@ -139,7 +139,6 @@ def test_scene_lines_keep_tilted_polygon_angle(tmp_path):
         tmp_path,
         {"roi_0": {"pos": [640.0, 360.0], "frz": 8.0, "frx": 0.0, "fry": 0.0}},
     )
-    tilt = math.radians(2.0)
     # dy=7:整型截断后 (400,300)-(200,307) 的方向角 ≈ 2.0°
     poly = [[200, 307], [400, 300], [400, 350], [200, 357]]
     items = []
@@ -186,6 +185,125 @@ def test_no_pose_tags_when_disabled(tmp_path):
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
     assert "\\frz" not in text
     assert "学成归来" in text
+
+
+# ── 策略 ROI(mask / mask_only)的逐行还原标签 ────────────────────
+#
+# 走场景文字策略时 Scene 行被 _split_policy_scene_lines 移进 policy_ctx,
+# 不再经过 styling._apply_roi_pose_tags:若 generator 侧不追加,同一 ROI
+# 勾选「写入画面位置标签」且策略为 mask/mask_only 时,Scene 行既没有逐行
+# \frz/取色,也没有 ROI 级姿态(11.mp4/12.mp4 的 write_pose_tags ROI 因
+# 轨迹管线失败落到这条静态策略路径,真实可达)。
+
+import cv2  # noqa: E402
+
+_PW, _PH, _PFPS = 320, 240, 25.0
+_POLICY_BOX = (30, 85, 130, 115)   # 场景文字,中心 (80,100) → SCENE 区
+_POLICY_RECT = (10, 60, 150, 140)  # 策略分析图外接矩形
+_POLICY_POSE = {"pos": [80.0, 100.0], "frz": 8.0, "frx": 0.0, "fry": 0.0}
+
+
+def _policy_frame() -> np.ndarray:
+    """白底 + 招牌内两条细墨条(取色墨迹占比 12/30 = 0.4,可信)。"""
+    frame = np.full((_PH, _PW, 3), 250, np.uint8)
+    x1, y1, x2, y2 = _POLICY_BOX
+    frame[y1 + 5:y1 + 11, x1 + 4:x2 - 4] = 20
+    frame[y1 + 19:y1 + 25, x1 + 4:x2 - 4] = 20
+    return frame
+
+
+def _write_policy_video(path, frame, n=30):
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"FFV1"),
+                             _PFPS, (_PW, _PH))
+    assert writer.isOpened()
+    for _ in range(n):
+        writer.write(frame)
+    writer.release()
+    return path
+
+
+def _policy_converter(video, out_path, policy="mask", pose=_POLICY_POSE):
+    return OCRToASSOptimizer(
+        video_path=str(video), output_path=str(out_path), fps=_PFPS,
+        width=_PW, height=_PH,
+        roi_pose_tags=({"roi_0": pose} if pose else None),
+        roi_scene_text_policies={"roi_0": policy},
+        roi_analysis_rects={"roi_0": _POLICY_RECT},
+    )
+
+
+def _policy_items(text="店铺招牌", frames=range(5, 21)):
+    return [_make_ocr_item(f, text, _POLICY_BOX) for f in frames]
+
+
+def test_policy_mask_text_event_gains_line_frz_and_sampled_color(tmp_path):
+    """mask 策略 + pose:策略文本事件带逐行 \\frz 与帧采样取色标签。"""
+    video = _write_policy_video(tmp_path / "in.avi", _policy_frame())
+    conv = _policy_converter(video, tmp_path / "out.ass")
+    conv.convert_from_memory(iter(_policy_items()))
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+    rows = [ln for ln in text.splitlines() if "店铺招牌" in ln]
+    assert len(rows) == 1
+    line = rows[0]
+    # 逐行 frz = 该行多边形方向角(轴对齐框 → 0.0),不继承 ROI 级 8.0;
+    # 取色 = 墨条颜色 (20,20,20) → &H141414&(BGR 十六进制)
+    assert "\\frz0.0\\frx0.0\\fry0.0" in line, line
+    assert "\\1c&H141414&\\3c&H141414&" in line, line
+    # 标签必须并入既有 override 块内部(块外会被 libass 当字面文本)
+    assert "}\\frz" not in line, line
+    assert "\\frz8.0" not in text  # ROI 级倾角不再套用到策略行
+
+
+def test_policy_mask_only_comment_line_also_gains_restoration_tags(tmp_path):
+    """mask_only 的排版参考行(Comment)同样带逐行还原标签。"""
+    video = _write_policy_video(tmp_path / "in.avi", _policy_frame())
+    conv = _policy_converter(video, tmp_path / "out.ass", policy="mask_only")
+    conv.convert_from_memory(iter(_policy_items()))
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+    rows = [ln for ln in text.splitlines()
+            if ln.startswith("Comment: 1,") and "店铺招牌" in ln]
+    assert len(rows) == 1
+    assert "\\frz0.0\\frx0.0\\fry0.0" in rows[0]
+    assert "\\1c&H141414&" in rows[0]
+
+
+def test_policy_text_event_without_pose_unchanged(tmp_path):
+    """pose 关闭:策略文本事件与改动前一致(无 \\frz/取色,仍锚在 \an5)。"""
+    video = _write_policy_video(tmp_path / "in.avi", _policy_frame())
+    conv = _policy_converter(video, tmp_path / "out.ass", pose=None)
+    conv.convert_from_memory(iter(_policy_items()))
+    text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+    rows = [ln for ln in text.splitlines() if "店铺招牌" in ln]
+    assert len(rows) == 1
+    assert "\\pos(80,100)" in rows[0]  # 平面中心 (70,40) + 外接框原点 (10,60)
+    assert "\\frz" not in rows[0] and "\\1c" not in rows[0]
+
+
+def test_policy_text_event_keeps_frz_when_frame_read_fails(tmp_path):
+    """取帧失败(视频不可打开):只缺取色,逐行 \\frz 仍在。"""
+    conv = OCRToASSOptimizer(
+        video_path=str(tmp_path / "missing.mp4"),
+        output_path=str(tmp_path / "out.ass"), fps=_PFPS,
+        width=_PW, height=_PH, roi_pose_tags={"roi_0": dict(_POLICY_POSE)},
+    )
+    poly = _make_ocr_item(10, "店铺招牌", _POLICY_BOX)[0]["dt_polys"][0]
+    ctx = {
+        "policy": "mask",
+        "plane": np.full((_PH, _PW, 3), 250, np.uint8),
+        "origin": (0, 0),
+        "rows": [("店铺招牌", tuple(float(v) for v in _POLICY_BOX))],
+        "rows_motion": [],
+        "row_times": [("0:00:00.20", "0:00:01.00")],
+        "row_meta": [{"poly": poly, "height": 30.0, "frame": 10}],
+    }
+    events = conv._finish_scene_policy_events(ctx, "roi_0")
+    texts = [ev for ev in events if ev.get("body")]
+    assert len(texts) == 1
+    assert "\\frz0.0\\frx0.0\\fry0.0}" in texts[0]["tags"], texts[0]
+    assert "\\1c&H" not in texts[0]["tags"], texts[0]
+    # 遮罩事件不受影响(仍带采样底色)
+    masks = [ev for ev in events if not ev.get("body")]
+    assert len(masks) == 1 and "\\1c&HFAFAFA&" in masks[0]["tags"]
 
 
 # ── Checkbox applies to the selected ROI immediately ────────────

@@ -222,3 +222,76 @@ def test_normalize_malformed_lines_are_skipped():
     assert data["rec_texts"] == ["good"]
     assert data["rec_scores"] == [0.9]
     assert len(data["rec_boxes"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# det 工作分辨率封顶(4K 推理内存优化)
+#
+# PaddleOCR 3.7 经 paddlex 的 OCR 管线实际生效的 det 缩放是
+# limit_side_len=64/limit_type='min'——对 ≥64px 的输入不缩放,DBNet 检测
+# 在全分辨率上跑:单张 4K 帧推理瞬时 ~2.2GB(实测 3476MB 峰值 vs 1080p
+# 1672MB)。v6 检测模型的既定工作分辨率本就是长边 960('max'),把 det 输入
+# 封顶(默认 2560)即可把内存拉回 1080p 量级;rec 裁剪仍取自原图,识别
+# 分辨率不受影响。≤封顶值的输入(1080p 全幅、条带裁剪)不缩放,行为不变。
+# ---------------------------------------------------------------------------
+
+import sys
+import types
+
+
+def _install_fake_paddleocr(monkeypatch) -> list:
+    """伪造 paddleocr 模块,捕获 PaddleOCREngine.initialize 的构造 kwargs。"""
+    captured = []
+
+    class FakePaddleOCR:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+    mod = types.ModuleType("paddleocr")
+    mod.PaddleOCR = FakePaddleOCR
+    monkeypatch.setitem(sys.modules, "paddleocr", mod)
+    return captured
+
+
+def test_initialize_det_side_cap_default_2560(monkeypatch):
+    captured = _install_fake_paddleocr(monkeypatch)
+    engine = PaddleOCREngine()
+    engine.initialize(lang="japan")
+    kwargs = captured[0]
+    assert kwargs["text_det_limit_side_len"] == 2560
+    assert kwargs["text_det_limit_type"] == "max"
+
+
+def test_initialize_det_side_cap_configurable_and_disable(monkeypatch):
+    captured = _install_fake_paddleocr(monkeypatch)
+    engine = PaddleOCREngine()
+    engine.initialize(lang="ch", det_max_side_px=1920)
+    assert captured[0]["text_det_limit_side_len"] == 1920
+    assert captured[0]["text_det_limit_type"] == "max"
+
+    captured2 = _install_fake_paddleocr(monkeypatch)
+    engine2 = PaddleOCREngine()
+    engine2.initialize(lang="ch", det_max_side_px=0)
+    assert "text_det_limit_side_len" not in captured2[0]
+    assert "text_det_limit_type" not in captured2[0]
+
+
+def test_initialize_det_cap_survives_typeerror_fallback(monkeypatch):
+    """旧版 paddleocr 拒绝 det kwargs(TypeError)时,降级重试剥掉它们,
+    而不是让整条初始化链失败。"""
+    captured = []
+
+    class PickyFakePaddleOCR:
+        def __init__(self, **kwargs):
+            if "text_det_limit_side_len" in kwargs:
+                raise TypeError("unexpected keyword argument")
+            captured.append(kwargs)
+
+    mod = types.ModuleType("paddleocr")
+    mod.PaddleOCR = PickyFakePaddleOCR
+    monkeypatch.setitem(sys.modules, "paddleocr", mod)
+
+    engine = PaddleOCREngine()
+    engine.initialize(lang="ch")
+    assert captured, "降级后仍应完成构造"
+    assert "text_det_limit_side_len" not in captured[0]

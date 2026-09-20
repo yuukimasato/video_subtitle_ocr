@@ -364,7 +364,7 @@ def test_motion_sentinel_anchor_accumulates_gradual_text(tmp_path, install_fake_
     # Comparing against the anchor frame (last real OCR) accumulates the
     # change: the 2nd block crosses 1.56% ≥ 1% and forces a real OCR that
     # finally picks up the text.
-    engine = install_fake_engine(FakeEngine(single_texts=[""], default_text="字幕B"))
+    install_fake_engine(FakeEngine(single_texts=[""], default_text="字幕B"))
     opt = make_optimizer(tmp_path)
     frames = []
     for k in range(6):

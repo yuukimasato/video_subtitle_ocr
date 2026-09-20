@@ -10,14 +10,10 @@
 - 居中块   → ``\\an5``(中心),锚在行框中心(旧行为);
 - 右对齐块 → ``\\an6``(中右),锚在各行框右缘。
 
-:func:`detect_line_alignment` 比较行框左缘/中心/右缘三组序列的极差,取
-最小者;并列按 中 > 左 > 右 偏好(等宽行块的三个极差同时为 0 → 归中,
-与旧行为一致;单行块同理归中)。不用阈值:OCR 行框抖动(几 px)远小于
-真实对齐差异(短行中心可偏移数百 px),最小极差本身即判定。
-
 :func:`detect_line_alignments` 面向**混合布局**(聊天界面左列接收气泡 +
 右列发送气泡、邮件正文行距 ≥ 行高等):逐行在全组做边缘贴合投票,每行
-独立取票数最高的对齐边,不要求垂直相邻。诊断:传仅关键字参数
+独立取票数最高且边际达标的对齐边(票数无严格多数即低置信,显式回退
+居中并留痕,见 ``min_vote_margin``),不要求垂直相邻。诊断:传仅关键字参数
 ``diagnostics``(dict)可带出逐行判定结果(行 idx → left/center/right +
 三边票数 + 去趋势剪切斜率),供真实视频排查「为什么判成 left」,不影响
 返回值。:func:`merge_line_blocks` 自 core.scene_text_policy 迁入(该模块
@@ -38,7 +34,6 @@ __all__ = [
     "ALIGN_LEFT",
     "ALIGN_CENTER",
     "ALIGN_RIGHT",
-    "detect_line_alignment",
     "detect_line_alignments",
     "merge_line_blocks",
 ]
@@ -47,8 +42,12 @@ ALIGN_LEFT = "left"
 ALIGN_CENTER = "center"
 ALIGN_RIGHT = "right"
 
-# 极差并列时的偏好序:居中优先(等宽/单行块保持旧行为),其次左、右。
+# 极差/票数并列时的偏好序:居中优先(等宽/单行块保持旧行为),其次左、右。
 _PREFERENCE = (ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT)
+
+# 诊断里「未估计」的数值占位(NaN):键必须存在(消费方直接取值不 KeyError),
+# 值明示未估计,与真实数值(含 0.0)区分——不编造 0 充数。
+_DIAG_UNSET = float("nan")
 
 
 def _linear_residuals(values: List[float], ys: List[float],
@@ -163,48 +162,12 @@ def merge_line_blocks(
     return blocks
 
 
-def detect_line_alignment(boxes: Sequence[Sequence[float]]) -> str:
-    """判断同一块内各行文本的对齐方式,返回 ``"left" | "center" | "right"``。
-
-    对左缘/中心/右缘三组坐标分别取极差(max − min),极差最小者即对齐
-    边(对齐边在排版上是设计常量,极差应≈0;其余两边随行长变化)。并列
-    按 中 > 左 > 右:等宽行块三者同时为 0,归中——与旧行为一致。少于
-    2 行、行高非正或任一坐标非有限(NaN/inf,无法判定也不得抛异常)时
-    返回 ``"center"``(单行无对齐可判,锚中心最稳)。
-    本函数面向屏幕矩形坐标的静态路径(块通常 2-5 行,样本不足以估计
-    剪切斜率);quad 展开平面的轨迹管线请用 :func:`detect_line_alignments`
-    的 ``detrend_shear=True``。
-    """
-    parsed = []
-    for b in boxes:
-        try:
-            x1, y1, x2, y2 = (float(v) for v in b)
-        except (TypeError, ValueError):
-            return ALIGN_CENTER
-        if not (math.isfinite(x1) and math.isfinite(y1)
-                and math.isfinite(x2) and math.isfinite(y2)):
-            return ALIGN_CENTER
-        parsed.append((x1, y1, x2, y2))
-    if len(parsed) < 2:
-        return ALIGN_CENTER
-    if sum(b[3] - b[1] for b in parsed) <= 0.0:
-        return ALIGN_CENTER
-    lefts = [b[0] for b in parsed]
-    centers = [(b[0] + b[2]) / 2.0 for b in parsed]
-    rights = [b[2] for b in parsed]
-    spreads = {
-        ALIGN_LEFT: max(lefts) - min(lefts),
-        ALIGN_CENTER: max(centers) - min(centers),
-        ALIGN_RIGHT: max(rights) - min(rights),
-    }
-    return min(_PREFERENCE, key=lambda k: (spreads[k], _PREFERENCE.index(k)))
-
-
 def detect_line_alignments(
     boxes: Sequence[Sequence[float]],
     *,
     edge_tol_ratio: float = 0.35,
     detrend_shear: bool = False,
+    min_vote_margin: int = 1,
     diagnostics: Optional[Dict[str, object]] = None,
 ) -> List[str]:
     """逐行对齐方式:全组边缘贴合投票,返回与 ``boxes`` 输入序对应的列表。
@@ -219,6 +182,22 @@ def detect_line_alignments(
     (三边票数都是 1,无上下文可判)归中——锚在自身中心,渲染宽度 ≈
     原框宽度,视觉位置不变。不要求垂直相邻。
 
+    低置信边际检查(``min_vote_margin``,仅关键字,默认 1):票数含自身行
+    (+1 对三边等量,不影响边际),每行的采纳证据强度记为边际——票数
+    严格多数时为「胜出边 − 次高边」的票数差;三边票数并列时按既有规则
+    取簇内残差极差更小的边缘,若极差**严格**更小(真对齐列去趋势后残差
+    几乎重合,伪列只是被容差桥接——去趋势剪切列的既有判真机制)记 1,
+    极差也并列(等宽行块)记 0。边际 ≥ ``min_vote_margin`` 才采纳;不足即
+    组内对该行「贴哪条边」没有共识,显式回退 ``center``(\\an5,锚自身行框
+    中心,视觉位置不变)并在诊断留痕,不再靠偏好序把无证据的并列硬判成
+    left/right。默认 1 的标定依据:下限——2 行全左小组每行 left 2 票 vs
+    次高 1 票、聊天屏每侧仅 2 行同理,真对齐的边际恰为 1(回归基准明示
+    此类应判 left/right),阈值 ≥2 会把这些真对齐行也回退 center,小组/
+    小屏的对齐检测即失效;上限——边际 0(票数并列且极差也打不开)是
+    证据最弱的判定,恰由 1 拦下。传 0 关闭检查(完全旧行为,并列由极差/
+    偏好打破);传 ≥2 收紧为「须更强票数多数」,边际 1 的真对齐小组与
+    极差打破的并列也一并回退。
+
     ``detrend_shear=True`` 供行框坐标自带**线性剪切**的路径使用:轨迹管线
     的 quad 展开平面坐标(手选 quad 差一两度,竖直 UI 列随 y 漂移数十
     px)与静态 mask 路径的视频坐标行框(斜放平面上的竖直列在画面里本
@@ -229,17 +208,35 @@ def detect_line_alignments(
     误归中;小组样本不足以可靠估计斜率,保持不去趋势)。
 
     ``diagnostics``(仅关键字,可选)传入 dict 时就地写入逐行判定结果,
-    便于真实视频排查「为什么判成 left」而不影响返回值:
-    ``{"shear_slope": float, "rows": [{"row": 输入行 idx, "align": 边,
-    "votes": {"left"/"center"/"right": 票数}}, ...],
-    "shear_slope_reason": 斜率采纳原因(含对数),
-    "avg_h": 平均行高, "tol": 边缘贴合容差,
-    "excluded_rows": 非有限/畸形被排除的行 idx, "n_valid": 有效行数}``;
-    非有限行 votes 全 0、align 为 center。
+    便于真实视频排查「为什么判成 left / 为什么回退 center」而不影响
+    返回值:``{"shear_slope": float, "shear_slope_reason": 斜率原因,
+    "avg_h": 平均行高, "tol": 边缘贴合容差, "n_valid": 有效行数,
+    "excluded_rows": 非有限/畸形被排除的行 idx,
+    "min_vote_margin": 边际阈值,
+    "low_margin_rows": 因边际不足回退 center 的行 idx 列表,
+    "rows": [{"row": 输入行 idx, "align": 边,
+    "votes": {"left"/"center"/"right": 票数}}, ...]}``;
+    边际回退的行在 ``rows`` 里额外带 ``"low_margin": True`` 与
+    ``"rejected_align"``(被否决的票数胜出边)两个键——未回退的行不带,
+    既有行 schema 不变;非有限行 votes 全 0、align 为 center。
+
+    上述固定键在**所有**返回路径都写入(早退路径同样带键,消费方直接
+    取 ``diag["tol"]`` 不会 KeyError),值诚实区分「未估计」与「未采纳」:
+    有效行 < 2 时不做任何行级估计,``avg_h``/``tol`` 全为 ``NaN``(键
+    存在、值即「未估计」,不是编造的 0);``avg_h ≤ 0`` 的退化几何里
+    ``avg_h`` 是真实算出的均值(如 0.0),``tol`` 按 0 行高无意义仍为
+    ``NaN``。``shear_slope_reason`` 在两条早退路径分别为 ``no_rows``
+    (有效行 < 2,含全部坐标非有限)与 ``degenerate``(平均行高 ≤ 0),
+    去趋势关闭时为 ``detrend_off``,开启时为估计器的原因(``adopted
+    (best=…/total=…)`` / ``no_pairs`` / ``insufficient_dominance(…)``
+    等),从不写 None 或空串。
     """
     n = len(boxes)
     aligns = [ALIGN_CENTER] * n
     votes: List[Optional[Dict[str, int]]] = [None] * n
+    # 边际检查留痕:输入行 idx → 被否决的票数胜出边(回退 center 的行)。
+    rejected: Dict[int, str] = {}
+    low_margin_rows: List[int] = []
 
     # 逐行解析并过滤:坐标数不足/非数值/非有限(NaN/inf)的行归中且不
     # 参与投票——NaN 会把均值、容差与比较全部污染成「无人贴合」,inf 会
@@ -261,36 +258,57 @@ def detect_line_alignments(
         parsed.append((x1, y1, x2, y2))
         valid.append(i)
 
-    def _fill_diag(slope: float, avg_h: Optional[float] = None,
-                   tol: Optional[float] = None) -> None:
+    def _fill_diag(slope: float, avg_h: float, tol: float,
+                   slope_reason: str) -> None:
+        """落盘全部固定诊断键(所有返回路径共用,键集恒定、值不编造)。
+
+        ``avg_h``/``tol`` 未估计时传 ``_DIAG_UNSET``(NaN):键存在可供
+        消费方直接取值,值本身明示「未估计」,与真实数值(哪怕 0.0)区分。
+        """
         if diagnostics is None:
             return
         diagnostics["shear_slope"] = round(float(slope), 4)
+        diagnostics["shear_slope_reason"] = slope_reason
+        diagnostics["avg_h"] = round(float(avg_h), 4)
+        diagnostics["tol"] = round(float(tol), 4)
         diagnostics["excluded_rows"] = list(excluded)
         diagnostics["n_valid"] = len(parsed)
-        if avg_h is not None:
-            diagnostics["avg_h"] = round(float(avg_h), 4)
-        if tol is not None:
-            diagnostics["tol"] = round(float(tol), 4)
-        diagnostics["rows"] = [
-            {"row": i, "align": aligns[i],
-             "votes": votes[i] or {"left": 0, "center": 0, "right": 0}}
-            for i in range(n)]
+        diagnostics["min_vote_margin"] = int(min_vote_margin)
+        diagnostics["low_margin_rows"] = list(low_margin_rows)
+        rows: List[Dict[str, object]] = []
+        for i in range(n):
+            row: Dict[str, object] = {
+                "row": i, "align": aligns[i],
+                "votes": votes[i] or {"left": 0, "center": 0, "right": 0}}
+            if i in rejected:
+                # 低置信回退留痕(未回退的行不带这两个键,schema 只增不改)
+                row["low_margin"] = True
+                row["rejected_align"] = rejected[i]
+            rows.append(row)
+        diagnostics["rows"] = rows
 
     if len(parsed) < 2:
-        _fill_diag(0.0)
+        # 行数不足(含坐标全非有限):不做行级估计,均值/容差无从谈起——
+        # 键仍带出,值为 NaN(未估计),原因记 no_rows。
+        _fill_diag(0.0, _DIAG_UNSET, _DIAG_UNSET, "no_rows")
         return aligns
     avg_h = sum(b[3] - b[1] for b in parsed) / len(parsed)
     if avg_h <= 0.0:
-        _fill_diag(0.0, avg_h)
+        # 退化几何:均值行高是真实算出值(如 0.0),容差按 0 行高无意义
+        # → 未估计(NaN),原因记 degenerate。
+        _fill_diag(0.0, avg_h, _DIAG_UNSET, "degenerate")
         return aligns
     tol = float(edge_tol_ratio) * avg_h
     if detrend_shear:
         slope = _estimate_shear_slope(parsed, avg_h, diagnostics)
+        # 估计器已把原因写入 diagnostics(含成对对数,如
+        # ``adopted(best=28/total=56)``);取回是为了让 _fill_diag 成为
+        # 固定键的唯一写入点(诊断关闭时该值不落键,仅作占位)。
+        slope_reason = (str(diagnostics.get("shear_slope_reason", ""))
+                        if diagnostics is not None else "")
     else:
-        if diagnostics is not None:
-            diagnostics["shear_slope_reason"] = "detrend_off"
         slope = 0.0
+        slope_reason = "detrend_off"
     ys = [(b[1] + b[3]) / 2.0 for b in parsed]
     edge_cols = {
         ALIGN_LEFT: _linear_residuals([b[0] for b in parsed], ys, slope),
@@ -308,11 +326,30 @@ def detect_line_alignments(
     for k, i in enumerate(valid):
         best = max(cluster[a][k] for a in _PREFERENCE)
         tied = [a for a in _PREFERENCE if cluster[a][k] == best]
-        aligns[i] = min(tied,
-                        key=lambda a: (spread[a][k], _PREFERENCE.index(a)))
-        votes[i] = {a: int(cluster[a][k]) for a in (ALIGN_LEFT, ALIGN_CENTER,
-                                                    ALIGN_RIGHT)}
-    _fill_diag(slope, avg_h, tol)
+        voted = min(tied,
+                    key=lambda a: (spread[a][k], _PREFERENCE.index(a)))
+        counts = {a: int(cluster[a][k]) for a in (ALIGN_LEFT, ALIGN_CENTER,
+                                                  ALIGN_RIGHT)}
+        votes[i] = counts
+        # 采纳证据强度(边际):票数严格多数 → 票数差;票数并列但簇内残差
+        # 极差严格更小 → 记 1(既有第二证据:真对齐列残差重合,伪列靠容
+        # 差桥接);极差也并列 → 记 0(偏好序归中等无证据结果)。
+        if len(tied) > 1:
+            strict = (spread[voted][k]
+                      < min(spread[a][k] for a in tied if a != voted))
+            margin = 1 if strict else 0
+        else:
+            margin = counts[voted] - max(counts[a] for a in counts
+                                         if a != voted)
+        if voted != ALIGN_CENTER and margin < min_vote_margin:
+            # 低置信(无达标证据):不硬判 left/right,显式回退 center 并
+            # 留痕(min_vote_margin=0 时本分支不可达,旧行为)。
+            aligns[i] = ALIGN_CENTER
+            rejected[i] = voted
+            low_margin_rows.append(i)
+        else:
+            aligns[i] = voted
+    _fill_diag(slope, avg_h, tol, slope_reason)
     return aligns
 
 

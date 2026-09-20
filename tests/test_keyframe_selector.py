@@ -7,7 +7,10 @@
 - ``status="lost"`` 的帧（整帧涂黑遮挡 / 质量门限剔除）永不被选；
 - k 大于 ok 帧数时全部返回（按分数降序）；
 - ``min_gap_sec`` 贪心分散：两两时间差 ≥ 阈值；
-- 分数并列取更早帧；无 ok 帧返回空列表；视频打不开抛 RuntimeError。
+- 分数并列取更早帧；无 ok 帧返回空列表；视频打不开抛 RuntimeError；
+- ``ensure_coverage``（默认关闭）：清晰度集中在一段时，池尾追加 ok 帧时间
+  跨度分桶的代表帧（池前缀逐位不变）、池长上界生效、单桶/零跨度/帧数少于
+  桶数等退化场景确定性收敛、``diagnostics`` 实据齐全。
 
 轨迹为手工构造的纯平移 TrackedQuad（单应精确已知），FFV1 无损编码保证
 解码帧与写入帧逐位一致，分数完全确定。
@@ -15,6 +18,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 
@@ -239,3 +243,161 @@ def test_plane_size_derivation_from_quad():
     # 退化小平面钳到最小 8px。
     tiny_quad = [[0.0, 0.0], [3.0, 0.0], [3.0, 2.0], [0.0, 2.0]]
     assert _plane_size_from_quad(tiny_quad) == (8, 8)
+
+
+# ---------------------------------------------------------------------------
+# 时间覆盖（ensure_coverage）：清晰度集中在一段时，池尾追加后段代表帧
+# ---------------------------------------------------------------------------
+
+COVERAGE_N = 48               # 48 帧 @8fps = 6s：前 16 帧清晰、后 32 帧模糊
+COVERAGE_HEAD = 16            # 清晰段帧数（"空白引导段"）
+TAIL_SHARP_FRAMES = (20, 40)  # 后段里略清晰的两帧：落在第 1/第 2 桶
+TAIL_SHARP_SIGMA = 1.5
+TAIL_BLUR_SIGMA = 9.0
+
+
+def build_sharp_head_video(tmp_path, name: str = "coverage.avi"):
+    """清晰度完全集中在前 16 帧、后 32 帧强模糊的序列（+ 手工平移轨迹）。
+
+    后段（= "文字只出现在这里" 的段落）在清晰度上毫无优势：纯清晰度 top-K
+    只会取到头几帧，后段一帧候选都没有——这正是 ``ensure_coverage`` 要补的
+    覆盖缺陷。平移 2px/帧保证卡片始终在画面内（既有 6px/帧 的构造在 48 帧上
+    会出画面，numpy 切片静默裁剪会让展开图不再等于卡片）。
+    """
+    card = make_card()
+    frames, tracks = [], []
+    for i in range(COVERAGE_N):
+        if i < COVERAGE_HEAD:
+            sigma = 0.0
+        else:
+            sigma = TAIL_SHARP_SIGMA if i in TAIL_SHARP_FRAMES else TAIL_BLUR_SIGMA
+        frames.append(compose_frame(card, tx=2 * i, blur_sigma=sigma))
+        tracks.append(make_track(i, tx=2 * i))
+    return write_video(tmp_path / name, frames), tracks
+
+
+def test_coverage_appends_frames_outside_sharp_cluster(tmp_path):
+    """清晰度集中在头部时，开启覆盖后池包含后段的桶代表帧。
+
+    3 个桶（缺省 = k）按 ok 帧时间跨度等分：桶 0 = 帧 0-15（清晰段，前缀
+    已占）、桶 1 = 帧 16-31、桶 2 = 帧 32-47。后两桶各追加桶内最清晰帧。
+    """
+    video, tracks = build_sharp_head_video(tmp_path)
+
+    base = select_keyframes(video, tracks, k=3)
+    assert base == [0, 1, 2], "清晰度全部集中在头部（前 16 帧分数并列最高）"
+
+    pool = select_keyframes(video, tracks, k=3, ensure_coverage=True)
+    assert pool[:3] == base            # 硬约束：前缀逐位不变
+    assert pool[3:] == [20, 40]        # 后两桶各取桶内最清晰帧（文字所在段）
+
+
+def test_coverage_prefix_identical_to_selection_without_coverage(tmp_path):
+    """硬约束：覆盖开启后前缀与关闭时逐位相同（min_gap 贪心结果不变）。
+
+    分批 OCR 的批边界按前缀顺序切分，前缀不变 ⇒ 既有视频（首批即有文字）
+    的接受批与产物不变；覆盖只可能在「原池一帧文字都没有」时才被走到。
+    """
+    video, tracks = build_sharp_head_video(tmp_path)
+
+    for kwargs in ({"k": 3}, {"k": 3, "min_gap_sec": 0.25},
+                   {"k": 12, "min_gap_sec": 0.125}):
+        base = select_keyframes(video, tracks, **kwargs)
+        pool = select_keyframes(video, tracks, ensure_coverage=True, **kwargs)
+        assert pool[:len(base)] == base, kwargs
+        assert len(pool) >= len(base)
+
+    # 覆盖确实起了作用（否则前半段断言退化成恒真）
+    covered = select_keyframes(video, tracks, k=3, min_gap_sec=0.25,
+                               ensure_coverage=True)
+    assert covered == [0, 2, 4, 20, 40]
+
+
+def test_coverage_degenerate_buckets_and_zero_span(tmp_path):
+    """退化场景确定性收敛（不抛错、不死循环、不追加）。"""
+    video, tracks = build_sharp_head_video(tmp_path)
+    base = select_keyframes(video, tracks, k=3)
+
+    # 单桶：唯一桶已被前缀占 → 不追加
+    assert select_keyframes(video, tracks, k=3, ensure_coverage=True,
+                            coverage_buckets=1) == base
+    # 桶数 <= 0：视作不补齐（只返回前缀）
+    for buckets in (0, -3):
+        assert select_keyframes(video, tracks, k=3, ensure_coverage=True,
+                                coverage_buckets=buckets) == base
+    # 帧数 < 桶数：空桶直接跳过（每帧各自占桶，前缀已占满有候选的桶）
+    sparse = select_keyframes(video, tracks, k=3, ensure_coverage=True,
+                              coverage_buckets=1000)
+    assert sparse[:3] == base
+    assert len(sparse) <= COVERAGE_N
+
+    # 时间跨度为零（ok 帧全在同一时刻）→ 单桶，前缀已占 → 不追加
+    flat = [dataclasses.replace(t, time_sec=0.0) for t in tracks]
+    assert select_keyframes(video, flat, k=3, ensure_coverage=True) == base
+
+    # 单帧轨迹（跨度为零 + k 未达）也不抛错
+    one = select_keyframes(video, tracks[:1], k=3, ensure_coverage=True)
+    assert one == [0]
+
+
+def test_coverage_pool_size_bound(tmp_path):
+    """池长有界：追加帧不超过 max_pool_size - 前缀长度，前缀永不被截断。"""
+    video, tracks = build_sharp_head_video(tmp_path)
+    base = select_keyframes(video, tracks, k=2)
+    assert base == [0, 1]
+
+    # 显式上限 5 = 前缀 2 + 覆盖 3（12 桶里前 3 个未占桶各一帧）
+    pool = select_keyframes(video, tracks, k=2, ensure_coverage=True,
+                            coverage_buckets=12, max_pool_size=5)
+    assert pool[:2] == base
+    assert len(pool) == 5
+
+    # 缺省上限 = 2 * k
+    default_pool = select_keyframes(video, tracks, k=2, ensure_coverage=True,
+                                    coverage_buckets=12)
+    assert len(default_pool) == 4
+
+    # 上限 <= 前缀长度：不追加；上限为负也不截断前缀
+    for limit in (1, 0, -5):
+        assert select_keyframes(video, tracks, k=2, ensure_coverage=True,
+                                coverage_buckets=12,
+                                max_pool_size=limit) == base
+
+
+def test_coverage_k_nonpositive_and_no_ok_frames_unchanged(tmp_path):
+    """既有早退行为不变：k<=0 / 无 ok 帧即使开启覆盖也返回空列表。"""
+    video, tracks = build_sharp_head_video(tmp_path)
+    assert select_keyframes(video, tracks, k=0, ensure_coverage=True) == []
+    lost = [make_track(i, ok=False) for i in range(3)]
+    assert select_keyframes(video, lost, k=3, ensure_coverage=True) == []
+
+
+def test_diagnostics_report_scores_prefix_and_coverage(tmp_path):
+    """``diagnostics`` 实据齐全：候选分数/时间、前缀、池、覆盖情况。"""
+    video, tracks = build_sharp_head_video(tmp_path)
+    diag: dict = {}
+
+    pool = select_keyframes(video, tracks, k=3, ensure_coverage=True,
+                            coverage_buckets=3, diagnostics=diag)
+
+    assert diag["pool"] == pool == [0, 1, 2, 20, 40]
+    assert diag["prefix"] == pool[:3]
+    assert diag["prefix_len"] == 3
+    # 候选帧 = 全部 ok 帧；头部（清晰）分数高于后段（模糊）
+    assert set(diag["scores"]) == set(range(COVERAGE_N))
+    assert diag["scores"][0] > diag["scores"][25]
+    assert diag["times"][COVERAGE_N - 1] == pytest.approx((COVERAGE_N - 1) / FPS)
+    cov = diag["coverage"]
+    assert cov["enabled"] is True
+    assert cov["buckets"] == 3
+    assert cov["limit"] == 6                    # 2 * k
+    assert cov["added"] == [20, 40]
+    assert cov["covered_buckets"] == 3          # 覆盖后每桶都有代表帧
+    assert cov["span_sec"] == pytest.approx([0.0, (COVERAGE_N - 1) / FPS])
+
+    # 关闭覆盖时也写入实据（覆盖段标记 enabled=False、无追加）
+    off: dict = {}
+    base = select_keyframes(video, tracks, k=3, diagnostics=off)
+    assert off["pool"] == base and off["coverage"]["enabled"] is False
+    assert off["coverage"]["added"] == [] and off["coverage"]["buckets"] == 0
+

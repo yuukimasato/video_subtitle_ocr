@@ -390,3 +390,144 @@ diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
 /tmp/11_quad.json --scene-text-policy overlap`(quad 取 11_roi_overlap.json
 的 minAreaRect);静态路径逐行还原为 12.mp4 真实帧 + rapid 引擎驱动验证
 (convert_from_memory + roi_pose_tags + 真实 video_path 走 FrameReader 取色)。
+
+### 未发布修复轮（2026-09-20）：塌缩组级复核 + 批接受判据 + 遮罩锚点外扩 + 策略逐行还原
+
+> 由「37d3341→HEAD 功能核查」发现的缺陷驱动的一轮修复（10 项，详见
+> CHANGELOG「未发布 · 修复」）：① 静止塌缩补**组级位移复核**（此前只查单段
+> 首末锚点距离，相邻静止段并组后累计位移无上界，可把真实运动吸死成一条
+> `\pos`——L 形 81 帧复现终点错位 14.1px）；② 关键帧批接受判据改用与 junk
+> filter 等价的「过滤噪声后仍有非空行」（此前 `any(rec_texts)` 会选中只返回
+> `""`/`"000"`/`"<"` 的批，随后抛错且不再尝试下一批）；③ `pose_verify` 超长
+> 跨度确认帧全不可解码时不再按「已确认」删除、确认帧数随跨度恢复（上限
+> 3→8）、`verify_min_static_samples` 补透传、像素阈值补分辨率归一；④ 遮罩
+> 补丁按行锚点外扩（此前按行中心对称外扩，左/右锚渲染文本会漏盖
+> `(need_w−box_w)/2−pad`，CJK 行约 7.6px、ASCII 行可达 27.6px）；⑤ 策略 ROI
+> 的 Scene 行接入逐行 `\frz`/`\1c`/`\3c`/`\bord`（此前该路径既无逐行还原也
+> 无 ROI 级姿态）；⑥ `line_restoration` 退化输入守卫、删除孤立 API
+> `detect_line_alignment`（单数，零生产调用点）、对齐诊断键补全、平面跟踪
+> 候选特征缓存与 `h[2,2]` 退化守卫。单元测试 905 → **974 passed, 1 skipped**。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **974 passed, 1 skipped**（975 项收集；+69 项：塌缩组级判据 9、批接受判据与 `verify_*` 透传 5、pose-verify 8、遮罩锚点外扩 9、策略逐行还原 4、`line_restoration` 9、对齐诊断与平面跟踪净 +1、关键帧池时间覆盖 10、跟踪覆盖率告警 2、4K 两遍扫描与块归一 5、平面跟踪流式来源 7）；`ruff check --select F` 全仓全绿（`ruff check .` 剩余 147 项为 GUI 既有 E701/E402/E702，未新增） |
+| 12.mp4 主流水线（静态 overlap，1871 帧 ROI） | 1600 事件，`\an4/\an5/\an6` = 551/570/479，与修复前**各项统计一致**；连跑两遍**逐字节相同**（确定性） |
+| 11.mp4 轨迹管线（overlap，650 帧） | 121 事件（静止 `\pos` 19 + `\move` 102）；**静止锚点不变式 19/19 通过**（每条 `\pos` 锚点距其跨度内每一帧真实跟踪锚点 ≤ settle 12px，最大实测偏差 **10.08px**；同口径 `collapse_static_chains=false` 为 126 条逐段 `\move`，作为真值参照） |
+| DMG 邮件画面（轨迹管线 mask，246 帧） | 36 事件（12 遮罩 + 24 文本）；**遮罩覆盖校验 12/12 通过**（每条渲染文本跨度都被同时段遮罩覆盖；该片 12 行的 `need_w ≤ box_w`，故锚点外扩分支在此为正确的空操作）；烧帧目检：原字被补丁覆盖、重绘文字落在原位、左缘对齐（`\an4`） |
+| 12.mp4 / 11.mp4 的 write_pose_tags ROI | 关键帧池全批无文字 → 轨迹管线告警回退静态策略（各 1 条 NoteBox），与修复前一致（既有行为，非本轮回归；11.mp4 的 `11_roi_plain.json` 静态 mask 亦因文字位移 >24px 回退 external） |
+| 烧帧目检（11.mp4，t=10） | 塌缩开/关像素差分 0.77%（位移 ≤10px，符合不变式）；轨迹字幕字号沿用 `\fs`=跟踪行高，大于原排版字（既有设计，`verify_screen_pose=false` 变体同样如此，非本轮引入） |
+| 关键帧池时间覆盖（`core/keyframe_selector.py`） | 11.mp4 池 12 帧已满 → 追加 8 帧（12/12 桶）、DMG 池 12 帧已满 → 追加 3 帧；两条视频**接受批、dedupe 网格步与产物逐字节一致**（复跑 diff 确认）；新增池诊断（逐帧清晰度 + 覆盖情况）与跟踪覆盖率告警（ok 占比 <50% 时说明后果） |
+| **4K 素材轨迹管线（3840×2160，NCOP，0–800 帧）** | 修复前峰值 **19.24 GB**、50.4 s；修复后 **2.16 GB（−88.8%）**、35.1 s，退出码 2 与修复前一致（关键帧池无文字，同 12.mp4 的跟踪丢锁模式）。内存问题定位为两处：`track_plane` 预载整段帧（801 帧 ≈ 20GB）与 `pose_verify` 每批从第 0 帧重读 + 批内帧与确认帧同时驻留。流式化后追踪侧峰值 658 MB 且**不随帧范围增长**（101/401/801 帧 → 670/690/690 MB），其余为解码器常数缓冲 |
+| **4K pose_verify 专项（12 行时间错开，`test_run/probe_4k_mem.py`）** | 修复前默认（有效块 64）**3651 MB / 24.3 s**；修复后 **1318 MB / 12.2 s**（−64% / −50%），显式 16 与 8 的峰值同为 1318 MB、耗时 12.3/12.7 s；**四种配置结果指纹完全一致**，另以逐行字段对拍有效块 8 vs 64 为 **0 处差异**（分块不变性成立）。真实读取量 2241 帧 = **1.01 遍视频长度**（模拟对照：无预取为 9672 帧 / 4.85 遍） |
+| **4K 主流水线（静态 ROI，0–33 s）** | 退出码 0、4 条事件（`明日もこうして 君のそばにいて` / `同じ時を過ごしていたいな` / `ゆっくりページをめくるように` / `また増やしてゆこう 君との印し`），峰值 2.96 GB、28.9 s；烧帧目检字幕落在原文歌词位置。剩余内存支配项为 PaddleOCR（模型 0.56 GB、单张 4K 推理峰值实测约 3.03 GB） |
+| **跟踪输出零回归（轨迹 JSON）** | 11.mp4 / DMG / 4K 三份 `save_trajectory` 产物与修复前**逐字节相同**（差异仅为抓基线时写入的 `meta.motion_ass` 输出路径字段）；11_overlap.ass 与 dmg_overlap.ass 亦逐字节相同；11.mp4 峰值 4.00 → 0.24 GB、DMG 1.64 → 0.22 GB |
+| **12.mp4 轨迹管线（本轮已修，见下节）** | `12_roi_motion.json` ROI（0–1870 帧）：修复前 **79/1871 帧 ok（4.2%），全部落在 t=1.42–4.67s**（该窗口手机屏空白、无文字）→ 关键帧池取不到文字行 → 回退静态策略（mask→external，1 条 NoteBox）。同区域静态主流水线 1600 条事件（t>10s 占 1579）证明文字存在。**根因实测为锚定帧选择**（锚定帧 quad 内部 0 特征，真实内容从帧 130 起才出现），修复后 **1729/1871 ok（92.4%）**、`overlap` 策略 192 条事件——详见下节 |
+
+复测口径：主流水线 `cli.py <video> --roi-file test/<roi>.json --lang <lang> -o <out>.ass`；
+轨迹管线 `scripts/motion_ass.py --video <video> --quad-file test_run/11_quad.json
+--start-frame 0 --end-frame 650 --scene-text-policy overlap [--config-json ...]`（quad
+取 `11_roi_overlap.json` 的 minAreaRect）；烧帧 `test/burn_frames.sh`。产物与校验脚本在
+`test_run/`（`check_collapse.py` 静止锚点不变式、`check_mask_cover.py` 遮罩覆盖校验），
+烧帧截图在 `test/验证截图/`。4K 口径：轨迹管线 `scripts/motion_ass.py --video <4k> --quad "1000,1990 2900,1990 2900,2145 1000,2145" --start-frame 0 --end-frame 800`、主流水线 `cli.py <4k> --roi "1000,1990,1900,155@0-33" --lang japan`，内存用 `/usr/bin/time -v` 读 `Maximum resident set size`。
+
+### 2026-09-20 · 平面跟踪锚定判据修复 + 丢锁原因可观测
+
+> 触发：对 CHANGELOG「已知限制 · 平面跟踪没有丢锁重捕机制」的代码级复核。
+> 结论是**原修复方向被实测证伪、根因另有其处**，故按实测改做锚定判据修复。
+> 证伪依据：按原计划自己的默认参数（`lowe=0.85`、`min_matches=8`、`ransac=5.0`、
+> `reacquire_max_jump_diag=1.0`）在 12.mp4 上跑 100–800 帧，ok 由 13/700 变
+> **14/700**；跨帧 113 硬切（匹配数 903→0）后，锚帧与当前帧的共同特征数长期只有
+> **2–10**（门槛 8），放松到 `lowe=0.9`/`min_matches=6`/跳变 5× 边长虽能「恢复」
+> 272–447 帧，但把锚帧特征数由 2000 改成 4000 这一无关参数即让「恢复」消失——
+> 不可复现的匹配不是跟踪。另注：该 ROI 在 12.mp4 上是 **2D 动画 ED montage**
+> 的标题卡→聊天 UI 图形（并非「同一物理平面上的内容变化」），跨切镜重捕获亦与
+> 设计文档自己的非目标冲突。
+>
+> 根因实测：**锚定帧选择**。旧规则在 `region0`（quad 外扩 `max(24, 0.35·diag)`，
+> 面积约 quad 的 3 倍）内取**第一个** ≥ `strong_need`（48）的帧就 `break`，邻域
+> 纹理足以让「平面本身完全空白」的帧达标——12.mp4 锚定帧 34 的 region0 内 61 个
+> 特征而 quad 内部 **0** 个（全为白屏 JPEG 噪声），而该 ROI 的真实内容（特征数
+> 饱和 2000）从帧 130 起才出现。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **996 项收集 / 995 passed, 1 skipped**（+21：ROI 内部锚定判据 15、丢锁原因与 `pre_anchor` 序列化 5、NaN 重投影口径 1）；`ruff check . --select F` 全仓全绿；既有用例零翻转 |
+| 锚定帧（实测首 ok 帧） | 11.mp4 **0 → 0**、DMG **0 → 0**（两者首帧 quad 内部即 2000 特征，`probe_needed=False`，特征集与修复前一致）；12.mp4 **34 → 123**；4K **156 → 230**（首帧 130/140 对照实测 98.9%） |
+| 12.mp4 轨迹 ROI（0–1870，overlap） | ok **79（4.2%）→ 1729（92.4%）**，单链 t=5.13–77.20s；丢锁原因 `pre_anchor=123, few_matches=19`；事件 **1 条 NoteBox → 192 条**（165 `\move` + 27 `\pos`，26 行），OCR 文本由乱码（`00000\Nee.ac\N…`）变为真实聊天文字（`まだ帰ってない？`/`終電になっちゃった`/`ぎゅってして`…） |
+| 12.mp4（`--scene-text-policy mask`） | 仍出 1 条 NoteBox：mask 策略**自身**的背景均匀性判据（block 0 背景 std 20.0 > `bg_max_std` 18）回退 external，与跟踪无关（既有行为，修复前后一致） |
+| 4K NCOP 轨迹（0–800，overlap） | ok **56（7.0%）→ 255（31.8%）**，2 条链 t=9.59–16.52s / 19.64–23.27s，退出码 **2 → 0**，事件 4 → 5；丢锁原因 `few_matches=264, pre_anchor=230, low_inlier=40, non_convex=9, area_jump=3`。剩余缺口为歌词**逐行出现/消失**（行间空白处丢锁后接不上后续歌词行），需按链重锚定（Phase 2，已记入已知限制） |
+| **零回归（硬门槛）** | 11.mp4 轨迹 JSON **逐字节相同**（同 `video`/`meta` 口径下与 `bl_traj_11.json` `cmp` 通过）；DMG 轨迹 246 帧**逐帧字段相同**、仅 72 个 lost 帧新增 `lost_reason`（全为 `non_convex`）；11.mp4 与 DMG 的 `.ass` **四份全部逐字节相同**（`scripts/motion_ass.py` 与 `cli.py` 两条路径各两份） |
+| 锚定判据等价性 | 差分测试（真实 `track_plane_frames` + 逐帧 `TrackedQuad` 全字段对拍，含边界/退化/随机场景）在**有限值域内 0 处分歧**；NaN 重投影在旧 `and` 表达式下判 lost，故新实现写 `not (x <= 阈)` / `not (x >= 阈)` 保持同判，并以新增用例固化（mutation 校验确认该用例可失败） |
+| 内存（4K） | 候选帧缓存仍为**常数份**：探测 50/300/900 帧峰值 RSS 增量恒为 ~7.5 MB；无索引键缓存累积（`_lead_times` ≤900 float） |
+| 全量验证方式 | 子代理独立复核：差分/预言机测试 + 12 处变异测试（7 处被杀死；存活者均为注释口径/边界覆盖缺口，无行为分歧）+ 下游消费者审计（`lost_reason` 唯一生产读取点为 `scripts/motion_ass.py` 诊断直方图，无 schema/键数校验、无位置构造、无 `dataclasses.fields` 遍历） |
+
+#### 第二轮：4K 歌词条的分块重锚定（同日）
+
+> 形态：4K NCOP 的 ROI 是**固定屏幕位置**的逐行歌词条（155px 高），行间空白处丢锁，
+> 相邻歌词字符不同、与上一行描述子无法匹配 ⇒ 单链接不上后续行。内容窗口实测为
+> 帧 207–211 / 230–396 / 414–556 / 579–718 / 721–800（**每行一个窗口**，帧 719–720 的
+> 特征低谷正是换行处），合计 537/801 = 67% 为「ROI 内有字形」（覆盖上限）。
+
+| 项目 | 结果 |
+| --- | --- |
+| 实现 | `scan_content_windows`（顺序解码、只定位一次、不中途 seek，复用 `_count_features_in_roi`）扫内容窗口；覆盖率 <80%（`REANCHOR_WINDOW_COVERED_RATIO`）的窗口按 ≤120 帧切块，**每块独立跑一趟** `build_motion_events`（各自锚定、`h_total=I`、单链 ⇒ `build_line_tracks` 的单 `ref_frame` 约定与坐标不变量逐段成立），被替换窗口内其它趟次的事件按时间丢弃。触发 `ok 占比 <0.6`、上限 `REANCHOR_MAX_PASSES=6`、OCR 回调跨趟复用 |
+| 4K 覆盖 | **255/801（31.8%）→ 532/801（66.4%）**，6 趟（pass 1 + 帧 414–533/534–556/579–698/699–718/721–800 五块），替换 3 个窗口（`[414,556]` 丢弃 2 条旧事件） |
+| 4K 歌词（verify 关） | **四行全部产出**、每行一个静止 `\pos`、y=2071.5–2074（字形带 2051–2096）：`明日もこうして`+`君のそばにいて` 9.59–16.55、`同じ時を過ごしていたいな` 17.26–23.23、`ゆっくりページをめくるように` 24.14–29.98、`また増やしてゆこう`+`君との印し` 30.07–33.40；窗口间无重叠、无旧行残留（17.27–23.19 s 只有正确歌词） |
+| 4K 烧帧目检 | `ffmpeg -vf select=eq(n,F),ass=<out>`（**注意：`-ss` 放在 `-i` 前会重置时间轴导致字幕不渲染**）对四行各烧一帧（帧 300/491/611/755），烧录帧与源帧之差**全部落在 y=2052–2100**（即字形带内）⇒ 位置正确；verify 关的四帧皆如此，verify 开时 t=25.48 s 一帧飘到 y=1838–1882（高出字形带 216px） |
+| 零回归（硬门槛） | 11.mp4/DMG 四份 `.ass` 仍**逐字节相同**（本机 `cmp` 复核）；12.mp4 **1729/1871（92.4%）、192 事件、无重锚定日志**；三者 ok 占比 ≥0.6 ⇒ 不触发也不扫描 |
+| 代价 | 只在触发时付出：一次全片 ROI 扫描（4K 16.6–23.2 s）+ 额外趟次解码/OCR（4K 全程 1 m 42 s，重锚定关闭时 40 s） |
+| 单元测试 | 1027 passed, 1 skipped；`ruff check . --select F` 全绿 |
+
+**新发现的独立缺陷（未修，见 CHANGELOG「已知限制」）**：4K 歌词条的位姿由跟踪侧给出且
+实测正确（真实 OCR 行框中心在平面 (1914, 2072)，`build_line_tracks` 输出行心逐帧
+(1914.4, 2072.0)，烧帧差分亦落在字形带内），但 `verify_screen_pose`（默认开）的模板
+匹配校正把 `ゆっくりページをめくるように`（帧 579–698 一趟）改到 y=1857.6–1957.2
+（**高出字形带 115–215px**，已出 155px 高的条带）并把帧 619–682 判为不可见删除，把一行
+碎成 10 条错位事件；关闭该校正（`--config-json '{"verify_screen_pose": false}'`）后同一趟
+为两条正确事件。该组件是既有实现、且 11.mp4/DMG 的 `.ass` 逐字节门槛依赖其当前行为，
+故未在本轮改动。
+
+### 2026-09-20（第二轮）· verify ROI 包含门控 + OCR det 分辨率封顶
+
+> 修复对象：上一节末尾记录的独立缺陷（4K 歌词条被 `verify_screen_pose`
+> 改到条带外 115–215px 并碎成 10 条错位事件）与「已知限制」中 4K 全幅
+> OCR 内存支配项。验收环境同上（Linux x64 / Python 3.12 / 32 核）。
+
+| 项 | 结果 |
+| --- | --- |
+| 单元测试 | **1037 passed, 1 skipped**（1038 项收集；本轮 +10：ROI 钳制 7、det 封顶 3；上一轮记录 995 之后未入账的既有新增 32 项一并计入）；`ruff check . --select F` 全仓全绿 |
+| 逐字节门槛 | 11.mp4（overlap，0–650 帧）与 DMG（mask，0–245 帧）`.ass` 产物与改动前基线**逐字节相同**（轨迹 JSON 差异仅 meta 输出路径字段） |
+| 4K 歌词条（verify 开） | 8 条事件与 `verify_screen_pose: false` 产物**逐事件同构**（同文本同时间跨度，位置差 ≤1px）；`ゆっくりページをめくるように` = `\move(1917.9,2060.9→1913.5,2071.0)` + `\pos(1914.5,2071.5)`，落在字形带（y 2051–2096）内——修复前为偏移 115–215px 的 10 条错位事件 |
+| 4K OCR 引擎内存 | 单张 4K 帧推理（`build_standalone_engine("paddle", …)`，帧 300）峰值 **3461 → 2038 MB（−41%）**（`det_max_side_px=0` 对照 vs 默认 2560），识别文本逐字一致 |
+| 4K 轨迹管线峰值 | verify 开 3.23GB / verify 关 2.89GB（差值为校正解码/匹配开销，与既往口径一致） |
+| 根因备注 | PaddleOCR 3.7 经 paddlex 实际生效的 det 缩放为 `64/'min'`（不缩放），v6 模型既定的 960/'max' 默认从未生效；封顶后检测输入有界，识别裁剪仍取自原图 |
+
+可复现命令（4K 口径）：
+
+```bash
+# verify 关（对照）
+python scripts/motion_ass.py --video <4k.mp4> \
+  --quad "1000,1990 2900,1990 2900,2145 1000,2145" \
+  --start-frame 0 --end-frame 800 --scene-text-policy overlap \
+  --config-json <(echo '{"verify_screen_pose": false}') --out noverify.ass
+# verify 开（默认,含 ROI 钳制）
+python scripts/motion_ass.py --video <4k.mp4> \
+  --quad "1000,1990 2900,1990 2900,2145 1000,2145" \
+  --start-frame 0 --end-frame 800 --scene-text-policy overlap --out verify_on.ass
+# 引擎内存对照
+python - <<'P'
+import resource, sys; sys.path.insert(0, ".")
+import cv2
+from core.ocr_engine_manager import build_standalone_engine
+eng = build_standalone_engine("paddle", {"lang": "japan", "det_max_side_px": 2560})
+cap = cv2.VideoCapture("<4k.mp4>"); cap.set(cv2.CAP_PROP_POS_FRAMES, 300)
+ok, im = cap.read()
+eng.predict(im)
+print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024, "MB")
+P
+```
+
+**缺陷关闭**：上一节「新发现的独立缺陷」已由本轮 ROI 包含门控修复
+（`CHANGELOG.md`「修复」节）；其「11.mp4/DMG 逐字节门槛依赖其当前行为」
+的顾虑由「只在 ROI 内有可采纳峰时改写」的严格附加语义解除（两素材产物
+逐字节不变）。

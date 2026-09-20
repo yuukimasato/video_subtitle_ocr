@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 
@@ -24,47 +25,12 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.text_alignment import (
-    detect_line_alignment,
+from core.text_alignment import (  # noqa: E402
     detect_line_alignments,
     merge_line_blocks,
 )
 
-# ── detect_line_alignment ───────────────────────────────────────
-
-
-def test_single_row_and_equal_widths_stay_center():
-    # 单行无可判对齐;等宽行块三个极差同时为 0 → 归中(旧行为逐字节不变)
-    assert detect_line_alignment([(10.0, 0.0, 50.0, 16.0)]) == "center"
-    equal = [(10.0, 0.0, 110.0, 16.0), (10.0, 20.0, 110.0, 36.0)]
-    assert detect_line_alignment(equal) == "center"
-
-
-def test_left_aligned_block_detected_by_common_left_edge():
-    # 邮件正文式:左缘一致,右缘随行长参差
-    boxes = [(40.0, 20.0, 120.0, 36.0),
-             (40.0, 40.0, 280.0, 56.0),
-             (40.0, 60.0, 70.0, 76.0)]
-    assert detect_line_alignment(boxes) == "left"
-
-
-def test_right_aligned_block_detected_by_common_right_edge():
-    boxes = [(140.0, 20.0, 240.0, 36.0),
-             (60.0, 40.0, 240.0, 56.0)]
-    assert detect_line_alignment(boxes) == "right"
-
-
-def test_centered_block_beats_edge_metrics():
-    # 居中块:中心极差≈0,左右缘都参差
-    boxes = [(100.0, 0.0, 300.0, 16.0),
-             (150.0, 20.0, 250.0, 36.0),
-             (120.0, 40.0, 280.0, 56.0)]
-    assert detect_line_alignment(boxes) == "center"
-
-
-def test_degenerate_boxes_fall_back_to_center():
-    assert detect_line_alignment([]) == "center"
-    assert detect_line_alignment([(0.0, 0.0, 0.0, 0.0)] * 2) == "center"
+# ── 逐行投票判定(detect_line_alignments)─────────────────────────
 
 
 def test_detect_line_alignments_groups_by_block_and_keeps_input_order():
@@ -161,7 +127,7 @@ def test_zero_height_rows_fall_back_to_center_without_raising():
 
 def test_non_finite_rows_centered_and_excluded_from_voting():
     # NaN/inf 行归中且不参与投票(不污染均值/容差),其余行按有限坐标判定;
-    # 单块极差判定遇非有限/畸形框保守归中,均不抛异常。
+    # 全部坐标非有限(或畸形)时整组无有效行可判 → 归中,不抛异常。
     nan, inf = float("nan"), float("inf")
     boxes = [(40.0, 20.0, 120.0, 36.0),
              (nan, 0.0, inf, 16.0),
@@ -169,9 +135,6 @@ def test_non_finite_rows_centered_and_excluded_from_voting():
     assert detect_line_alignments(boxes) == ["left", "center", "left"]
     assert detect_line_alignments([None, (40.0, 20.0, 120.0, 36.0)]) == [
         "center", "center"]
-    assert detect_line_alignment([(nan, 0.0, 50.0, 16.0),
-                                  (10.0, 20.0, 90.0, 36.0)]) == "center"
-    assert detect_line_alignment([None, (10.0, 20.0, 90.0, 36.0)]) == "center"
 
 
 # ── 诊断可见性(逐行判定结果带出)────────────────────────────────
@@ -276,6 +239,153 @@ def test_detect_line_alignments_diagnostics_reports_fit_stats():
         diagnostics=nan_diag)
     assert nan_diag["n_valid"] == 1
     assert nan_diag["excluded_rows"] == [1, 2]
+
+
+# ── 早退路径诊断键完整性与诚实取值 ─────────────────────────────
+
+_FIXED_DIAG_KEYS = ("shear_slope", "shear_slope_reason", "avg_h", "tol",
+                    "n_valid", "excluded_rows", "min_vote_margin",
+                    "low_margin_rows", "rows")
+
+
+def test_diagnostics_keys_complete_on_every_return_path():
+    # 早退路径(n<2 行 / 坐标全非有限 / 混合)此前缺 avg_h 与 tol 两个键、
+    # 也不写 shear_slope_reason:消费方 .get() 打日志出 None,分不清「没
+    # 估计」与「没采纳」;直接取 diag["tol"] 的调用方 KeyError。现固定键
+    # 在所有返回路径都写入,未估计的数值是 NaN(键在、值不编造)。
+    nan, inf = float("nan"), float("inf")
+    for boxes, n_valid, excluded in (
+            ([], 0, []),
+            ([(10.0, 0.0, 50.0, 16.0)], 1, []),
+            ([(nan, 0.0, inf, 16.0), (None, 0, 0, 0)], 0, [0, 1])):
+        diag: dict = {}
+        detect_line_alignments(boxes, diagnostics=diag)
+        assert all(k in diag for k in _FIXED_DIAG_KEYS), (boxes, sorted(diag))
+        assert diag["shear_slope_reason"] == "no_rows"
+        assert diag["shear_slope"] == 0.0
+        assert math.isnan(diag["avg_h"]) and math.isnan(diag["tol"])
+        assert diag["avg_h"] != 0.0 and diag["tol"] != 0.0  # 未估计不冒充 0
+        assert diag["n_valid"] == n_valid
+        assert diag["excluded_rows"] == excluded
+        assert diag["min_vote_margin"] == 1
+        assert diag["low_margin_rows"] == []
+    # 开启去趋势也走同一条早退:斜率根本没估计,原因仍是 no_rows(不回退
+    # 成估计器的 too_few_rows——那会误导成「估计过但样本不足」)。
+    detrend_diag: dict = {}
+    detect_line_alignments([], detrend_shear=True, diagnostics=detrend_diag)
+    assert all(k in detrend_diag for k in _FIXED_DIAG_KEYS)
+    assert detrend_diag["shear_slope_reason"] == "no_rows"
+    assert math.isnan(detrend_diag["tol"])
+    # 全非有限:有效行 0、被排除行如实列出
+    excluded_diag: dict = {}
+    detect_line_alignments([(nan, 0.0, inf, 16.0), (None, 0, 0, 0)],
+                           diagnostics=excluded_diag)
+    assert excluded_diag["n_valid"] == 0
+    assert excluded_diag["excluded_rows"] == [0, 1]
+    assert excluded_diag["shear_slope_reason"] == "no_rows"
+
+
+def test_diagnostics_degenerate_avg_h_honest_and_tol_unset():
+    # 退化几何(平均行高 ≤ 0):avg_h 是**真实算出**的均值(0.0 / 负数,
+    # 如实上报),tol 按 0 行高无意义 → NaN(未估计),原因 degenerate。
+    flat: dict = {}
+    assert detect_line_alignments([(0.0, 0.0, 0.0, 0.0)] * 2,
+                                  diagnostics=flat) == ["center", "center"]
+    assert all(k in flat for k in _FIXED_DIAG_KEYS)
+    assert flat["shear_slope_reason"] == "degenerate"
+    assert flat["avg_h"] == 0.0
+    assert math.isnan(flat["tol"])
+    assert flat["n_valid"] == 2 and flat["excluded_rows"] == []
+    # 行高为负(y2 < y1,畸形框):均值照实上报为负,不钳成 0
+    inverted: dict = {}
+    detect_line_alignments([(10.0, 30.0, 50.0, 20.0)] * 2,
+                           diagnostics=inverted)
+    assert inverted["shear_slope_reason"] == "degenerate"
+    assert inverted["avg_h"] == pytest.approx(-10.0)
+    assert math.isnan(inverted["tol"])
+
+
+def test_singular_detect_line_alignment_api_removed():
+    # 孤立单数 API(逐块整组取极差最小边)与逐行投票路径功能重叠且生产
+    # 代码零调用点,已移除:模块不再有该属性、__all__ 无条目、docstring
+    # 不提(防再次被当成对齐入口误用)。
+    import re
+
+    import core.text_alignment as ta
+    assert not hasattr(ta, "detect_line_alignment")
+    assert "detect_line_alignment" not in ta.__all__
+    assert re.search(r"detect_line_alignment(?!s)", ta.__doc__ or "") is None
+
+
+# ── 低置信边际检查(min_vote_margin)────────────────────────────
+
+
+def test_low_margin_undecided_tie_falls_back_to_center_with_diagnostics():
+    # 无证据并列回退 center:行 A 与 B 共享左缘、与 C 共享右缘(left 2 =
+    # right 2 > center 1,两簇极差同为 0,极差打不开并列)——旧行为按
+    # 中 > 左 > 右 偏好把这种零证据并列硬判成 left;现边际 0 < 默认 1,
+    # 显式回退 center 并在诊断留痕。B/C 各自的 2 票是严格多数(边际 1),
+    # 照常判 left/right——低置信检查不伤真对齐。
+    boxes = [(100.0, 0.0, 200.0, 20.0),
+             (100.0, 30.0, 180.0, 50.0),
+             (120.0, 60.0, 200.0, 80.0)]
+    diag: dict = {}
+    assert detect_line_alignments(boxes, diagnostics=diag) == [
+        "center", "left", "right"]
+    assert diag["min_vote_margin"] == 1
+    assert diag["low_margin_rows"] == [0]
+    assert diag["rows"][0] == {
+        "row": 0, "align": "center",
+        "votes": {"left": 2, "center": 1, "right": 2},
+        "low_margin": True, "rejected_align": "left"}
+    assert all("low_margin" not in r for r in diag["rows"][1:])
+
+
+def test_low_margin_min_vote_margin_zero_restores_legacy_behavior():
+    # min_vote_margin=0 关闭检查:同一并列按旧行为(极差并列 → 偏好序)
+    # 判 left,诊断无回退留痕——旧行为完全可恢复。
+    boxes = [(100.0, 0.0, 200.0, 20.0),
+             (100.0, 30.0, 180.0, 50.0),
+             (120.0, 60.0, 200.0, 80.0)]
+    diag: dict = {}
+    assert detect_line_alignments(boxes, min_vote_margin=0,
+                                  diagnostics=diag) == ["left", "left", "right"]
+    assert diag["min_vote_margin"] == 0
+    assert diag["low_margin_rows"] == []
+    assert all("low_margin" not in r for r in diag["rows"])
+
+
+def test_low_margin_spread_decided_tie_counts_as_margin_one():
+    # 票数三边并列(3/3/3)但左缘残差全重合(极差 0)、中/右缘被容差桥接
+    # (极差 2.5/5):极差严格打破并列 → 证据强度记 1,默认阈值下仍判
+    # left(去趋势剪切列「票数并列 + 极差判真列」同一机制,回归基准不得
+    # 翻转);阈值收紧到 2 时该 1 级证据也回退 center。
+    boxes = [(100.0, 0.0, 200.0, 20.0),
+             (100.0, 30.0, 200.0, 50.0),
+             (100.0, 60.0, 205.0, 80.0)]
+    assert detect_line_alignments(boxes) == ["left"] * 3
+    assert detect_line_alignments(boxes, min_vote_margin=2) == ["center"] * 3
+
+
+def test_low_margin_default_one_keeps_strict_plurality_and_center_rows():
+    # 默认阈值 1 的标定锚点:2 行全左小组(每行 left 2 票 vs 次高 1 票,
+    # 边际恰为 1)必须采纳——阈值 ≥2 会把真对齐小组也回退 center(功能
+    # 失效);等宽两行三边同票(2/2/2)是偏好序归中,非「回退」——不留
+    # low_margin 痕;n<2 早退路径也带出边际阈值键。
+    pair = [(40.0, 0.0, 120.0, 16.0), (40.0, 20.0, 200.0, 36.0)]
+    diag: dict = {}
+    assert detect_line_alignments(pair, diagnostics=diag) == ["left", "left"]
+    assert diag["low_margin_rows"] == []
+    assert all("low_margin" not in r for r in diag["rows"])
+    equal = [(40.0, 0.0, 120.0, 16.0), (40.0, 20.0, 120.0, 36.0)]
+    ediag: dict = {}
+    assert detect_line_alignments(equal, diagnostics=ediag) == [
+        "center", "center"]
+    assert ediag["low_margin_rows"] == []
+    tiny: dict = {}
+    detect_line_alignments([(10.0, 0.0, 50.0, 16.0)], diagnostics=tiny)
+    assert tiny["min_vote_margin"] == 1
+    assert tiny["low_margin_rows"] == []
 
 
 def test_merge_line_blocks_reexport_from_scene_text_policy():

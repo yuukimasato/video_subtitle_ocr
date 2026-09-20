@@ -224,6 +224,15 @@ class PaddleOCREngine(BaseOCREngine):
           ocr_version (str): Explicit model generation override, e.g.
               "PP-OCRv5"/"PP-OCRv6"; wins over the lang/tier routing.
           device (str): "cpu"/"gpu"; defaults to _get_device_mode().
+          det_max_side_px (int): 检测(DBNet)工作分辨率的长边封顶,经
+              ``text_det_limit_side_len``/``text_det_limit_type="max"`` 传给
+              PaddleOCR。paddleocr 3.7 的 OCR 管线实际生效的 det 缩放是
+              64/'min'(对 ≥64px 的输入不缩放),4K 全幅输入会让检测在全
+              分辨率上跑、单张推理瞬时 ~2.2GB(实测 3476MB 峰值,1080p 为
+              1672MB);封顶后检测输入有界,峰值回落到 1080p 量级,而识别
+              裁剪仍取自原图、识别分辨率不受影响。输入长边 ≤ 封顶值时不
+              缩放(1080p 全幅 1920、条带裁剪均不变)。默认 2560;0 关闭
+              (不传参,保持 paddleocr 缺省行为)。
         """
         if self._initialized:
             return
@@ -239,6 +248,10 @@ class PaddleOCREngine(BaseOCREngine):
             cpu_threads = int(kwargs.get("cpu_threads") or 0)
         except (TypeError, ValueError):
             cpu_threads = 0
+        try:
+            det_max_side_px = int(kwargs.get("det_max_side_px", 2560) or 0)
+        except (TypeError, ValueError):
+            det_max_side_px = 2560
 
         explicit_version = str(kwargs.get("ocr_version") or "").strip()
         if explicit_version:
@@ -268,12 +281,19 @@ class PaddleOCREngine(BaseOCREngine):
         }
         if cpu_threads > 0:
             common["cpu_threads"] = cpu_threads
+        if det_max_side_px > 0:
+            # det 工作分辨率封顶(默认 2560/'max'):检测输入有界,4K 全幅
+            # 推理的 ~2.2GB 瞬时开销回落到 1080p 量级;识别裁剪仍取自原图。
+            # 输入长边 ≤ 封顶值时不缩放,1080p 及条带裁剪行为不变。
+            common["text_det_limit_side_len"] = det_max_side_px
+            common["text_det_limit_type"] = "max"
 
         def _try_construct(extra: Dict[str, Any]) -> Any:
             """Construct PaddleOCR from common switches + extra model selection.
 
             On TypeError (older paddleocr versions may not accept the
-            enable_mkldnn/cpu_threads kwargs), retry once without them.
+            enable_mkldnn/cpu_threads/text_det_* kwargs), retry once without
+            them.
             """
             attempt = dict(common)
             attempt.update(extra)
@@ -282,13 +302,15 @@ class PaddleOCREngine(BaseOCREngine):
             except TypeError:
                 reduced = {
                     k: v for k, v in attempt.items()
-                    if k not in ("enable_mkldnn", "cpu_threads")
+                    if k not in ("enable_mkldnn", "cpu_threads",
+                                 "text_det_limit_side_len",
+                                 "text_det_limit_type")
                 }
                 if len(reduced) == len(attempt):
                     raise
                 logger.warning(
-                    "PaddleOCR rejected enable_mkldnn/cpu_threads kwargs; "
-                    "retrying without them."
+                    "PaddleOCR rejected enable_mkldnn/cpu_threads/text_det_* "
+                    "kwargs; retrying without them."
                 )
                 return PaddleOCR(**reduced)
 

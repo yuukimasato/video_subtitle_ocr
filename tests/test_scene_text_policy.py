@@ -57,6 +57,7 @@ from core.scene_plane_tracker import TrackedQuad  # noqa: E402
 from core.scene_text_policy import (  # noqa: E402
     BackgroundStats,
     SceneTextPolicyConfig,
+    _padded_mask_box,
     apply_policy,
     apply_policy_static,
     find_whitespace_band,
@@ -1195,6 +1196,226 @@ class TestMaskPerLineUnion:
         # 垂直方向覆盖两行(含 pad)
         assert y1 <= 20.0 - 1.92 + 0.5
         assert y1 + h >= 56.0 + 1.92 - 0.5
+
+
+# ---------------------------------------------------------------------------
+# 对齐锚点(\an4/\an6)与遮罩外扩:遮罩必须盖住渲染文本的真实水平跨度
+# ---------------------------------------------------------------------------
+
+def _plane_with_rows(rows) -> np.ndarray:
+    """按给定行框画细墨条的白底平面(供自定义行布局的用例)。"""
+    plane = np.full((PLANE_H, PLANE_W, 3), 250, np.uint8)
+    for _text, (x1, y1, x2, _y2) in rows:
+        plane[int(y1) + 4:int(y1) + 8, int(x1) + 4:int(x2) - 4] = 10
+    return plane
+
+
+def _mask_box_from_tags(tags: str):
+    """静态遮罩标签 → (x1, y1, x2, y2)(绘图宽高为整数取整,±1px)。"""
+    m = re.search(r"\\pos\(([-\d.]+),([-\d.]+)\)", tags)
+    assert m, tags
+    d = re.search(r"m 0 0 l (\d+) 0 (\d+) (\d+) 0 (\d+)", tags)
+    assert d, tags
+    x, y = float(m.group(1)), float(m.group(2))
+    return x, y, x + int(d.group(1)), y + int(d.group(3))
+
+
+# 左锚块:两行共享左缘 20(逐行判 left),行高 16 → pad = 0.12×16 = 1.92;
+# 行 0 渲染宽 8×16 = 128 > OCR 框宽 90(旧对称外扩右侧只到 130.92,
+# 左锚渲染文本要到 148 → 旧实现右侧漏 17.08)。
+LEFT_ANCHOR_ROWS = [
+    ("ああああああああ", (20.0, 20.0, 110.0, 36.0)),
+    ("短い", (20.0, 40.0, 60.0, 56.0)),
+]
+# 右锚块:两行共享右缘 150(逐行判 right),行 0 渲染跨度 [22, 150],
+# 旧对称外扩左缘只到 39.08 → 旧实现左侧漏 17.08。
+RIGHT_ANCHOR_ROWS = [
+    ("ああああああああ", (60.0, 20.0, 150.0, 36.0)),
+    ("短い", (110.0, 40.0, 150.0, 56.0)),
+]
+
+
+class TestMaskAnchorExpansion:
+    """锚点外扩:_padded_mask_box 按行锚点算渲染文本跨度后求 union。
+
+    2.7.0 的对齐锚点把渲染文本钉在行框左缘(\an4)/右缘(\an6),旧的居中
+    对称外扩只盖到 cx ± max(box_w, need_w)/2:左/右锚下按行尾方向伸出的
+    字幕会露出原文字(纯 ASCII 行渲染宽可达框宽两倍,漏得更多)。
+    """
+
+    def test_left_anchor_covers_rendered_right_edge(self):
+        cfg = policy_cfg("mask")
+        ref = _padded_mask_box(LEFT_ANCHOR_ROWS, PLANE_W, PLANE_H, cfg)[0]
+        box, _ = _padded_mask_box(
+            LEFT_ANCHOR_ROWS, PLANE_W, PLANE_H, cfg,
+            row_anchor=[(4, 20.0), (4, 20.0)])
+        # 旧对称外扩:块右缘 = max(cx + half) → 行 0 只到 130.92
+        assert ref[2] == pytest.approx(130.92, abs=0.02)
+        # 左锚:行 0 渲染跨度 [20, 148] → 右缘 ≥ 148(外扩至 149.92)
+        assert box[2] == pytest.approx(20.0 + 128.0 + 1.92, abs=0.02)
+        assert box[2] > ref[2] + 17.0
+        assert box[0] == pytest.approx(20.0 - 1.92, abs=0.02)
+        # 行 1(渲染宽 32 < 框宽 40)不减小覆盖范围
+        assert box[0] <= 20.0 - 1.92 + 1e-6
+        assert box[2] >= 60.0
+
+    def test_right_anchor_covers_rendered_left_edge(self):
+        cfg = policy_cfg("mask")
+        ref = _padded_mask_box(RIGHT_ANCHOR_ROWS, PLANE_W, PLANE_H, cfg)[0]
+        box, _ = _padded_mask_box(
+            RIGHT_ANCHOR_ROWS, PLANE_W, PLANE_H, cfg,
+            row_anchor=[(6, 150.0), (6, 150.0)])
+        # 旧对称外扩:块左缘 = min(cx − half) → 行 0 只到 39.08
+        assert ref[0] == pytest.approx(39.08, abs=0.02)
+        # 右锚:行 0 渲染跨度 [22, 150] → 左缘 ≤ 22(外扩至 20.08)
+        assert box[0] == pytest.approx(150.0 - 128.0 - 1.92, abs=0.02)
+        assert box[0] < ref[0] - 17.0
+        assert box[2] == pytest.approx(150.0 + 1.92, abs=0.02)
+
+    def test_center_and_default_match_legacy_symmetric_box(self):
+        """居中锚/缺省(向后兼容):逐字节等于旧的对称外扩公式。"""
+        cfg = policy_cfg("mask")
+        legacy, lh = _padded_mask_box(ROWS, PLANE_W, PLANE_H, cfg)
+        none_anchor = _padded_mask_box(
+            ROWS, PLANE_W, PLANE_H, cfg, row_anchor=[None] * len(ROWS))
+        center_anchor = _padded_mask_box(
+            ROWS, PLANE_W, PLANE_H, cfg,
+            row_anchor=[(5, (b[0] + b[2]) / 2.0) for _t, b in ROWS])
+        assert none_anchor == (legacy, lh)
+        assert center_anchor == (legacy, lh)
+        # 手工复算旧公式(对称外扩 + pad + union),验证 legacy 本身未变
+        exp = []
+        for text, (x1, y1, x2, y2) in ROWS:
+            line_h = float(y2) - float(y1)
+            pad = 0.12 * line_h
+            need = line_h * sum(0.5 if ord(c) < 0x2E80 else 1.0 for c in text)
+            half = (max(float(x2) - float(x1), need) + 2.0 * pad) / 2.0
+            cx = (float(x1) + float(x2)) / 2.0
+            exp.append((cx - half, float(y1) - pad, cx + half, float(y2) + pad))
+        expected = (min(b[0] for b in exp), min(b[1] for b in exp),
+                    max(b[2] for b in exp), max(b[3] for b in exp))
+        assert legacy == pytest.approx(expected)
+
+    def test_narrow_render_no_extra_expansion(self):
+        """渲染宽 < OCR 框宽:三种锚点都只覆盖「原框 ± pad」,无多余外扩。"""
+        cfg = policy_cfg("mask")
+        rows = [("あ", (20.0, 20.0, 100.0, 36.0))]  # 渲染宽 16 < 框宽 80
+        expected = (18.08, 18.08, 101.92, 37.92)
+        got = {
+            "default": _padded_mask_box(rows, PLANE_W, PLANE_H, cfg)[0],
+            "center": _padded_mask_box(
+                rows, PLANE_W, PLANE_H, cfg, row_anchor=[(5, 60.0)])[0],
+            "left": _padded_mask_box(
+                rows, PLANE_W, PLANE_H, cfg, row_anchor=[(4, 20.0)])[0],
+            "right": _padded_mask_box(
+                rows, PLANE_W, PLANE_H, cfg, row_anchor=[(6, 100.0)])[0],
+        }
+        for name, box in got.items():
+            assert box == pytest.approx(expected), name
+
+    def test_punct_compensation_and_anchor_expansion_together(self):
+        """行尾标点补偿(整体平移)与锚点外扩同时生效。"""
+        cfg = policy_cfg("mask")
+        rows = [("あああああああ。", (20.0, 20.0, 110.0, 36.0))]
+        box, _ = _padded_mask_box(
+            rows, PLANE_W, PLANE_H, cfg, row_anchor=[(4, 20.0)],
+            row_dx=[4.0])
+        # 左锚 + dx:右缘 = x1 + need_w + pad + dx = 20+128+1.92+4
+        assert box[2] == pytest.approx(153.92, abs=0.02)
+        assert box[0] == pytest.approx(20.0 - 1.92 + 4.0, abs=0.02)
+        # 同一行不给补偿 → 恰少 dx
+        plain, _ = _padded_mask_box(
+            rows, PLANE_W, PLANE_H, cfg, row_anchor=[(4, 20.0)])
+        assert box[2] - plain[2] == pytest.approx(4.0)
+        assert box[0] - plain[0] == pytest.approx(4.0)
+
+    def test_static_mask_uses_detected_anchors(self):
+        """静态路径:逐行对齐判定提前后,遮罩按判定锚点外扩(数值断言)。"""
+        specs, applied, _notes = apply_policy_static(
+            LEFT_ANCHOR_ROWS, _plane_with_rows(LEFT_ANCHOR_ROWS),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "mask"
+        texts = {s["body"]: s for s in specs if s["kind"] == "text"}
+        # 两行同判 left → \an4 锚行框左缘
+        assert texts["ああああああああ"]["tags"] == "{\\an4\\pos(20,28)\\fs16}"
+        assert texts["短い"]["tags"] == "{\\an4\\pos(20,48)\\fs16}"
+        masks = [s for s in specs if s["kind"] == "mask"]
+        assert len(masks) == 1
+        x1, _y1, x2, _y2 = _mask_box_from_tags(masks[0]["tags"])
+        # 遮罩必须盖住左锚渲染文本 [20, 148](旧对称外扩只到 130.92)
+        assert x1 <= 20.0 - 1.92 + 0.5
+        assert x2 >= 148.0 - 1.0, masks[0]["tags"]
+
+    def test_static_right_anchor_mask_covers_left_edge(self):
+        specs, applied, _notes = apply_policy_static(
+            RIGHT_ANCHOR_ROWS, _plane_with_rows(RIGHT_ANCHOR_ROWS),
+            policy_cfg("mask"), PLANE_W, PLANE_H)
+        assert applied == "mask"
+        texts = {s["body"]: s for s in specs if s["kind"] == "text"}
+        assert texts["ああああああああ"]["tags"] == "{\\an6\\pos(150,28)\\fs16}"
+        masks = [s for s in specs if s["kind"] == "mask"]
+        x1, _y1, x2, _y2 = _mask_box_from_tags(masks[0]["tags"])
+        # 右锚渲染文本 [22, 150] → 左缘必须 ≤ 22(旧对称外扩只到 39.08)
+        assert x1 <= 22.0 + 0.5, masks[0]["tags"]
+        assert x2 >= 150.0 - 0.5
+
+    def test_dynamic_mask_follows_event_anchor(self):
+        """轨迹路径:从事件 \an4 标签取锚点模式,遮罩按行框左缘外扩。"""
+        rows = [("ああああああああ", (20.0, 20.0, 110.0, 36.0))]
+        plane = _plane_with_rows(rows)
+        tracks = make_translation_tracks()
+        anchored = [dict(simple_event("ああああああああ", 0.0, 9 / FPS),
+                         line_idx=0, tags="{\\an4\\move(0.0,0.0,0.0,0.0)}")]
+        plain = [simple_event("ああああああああ", 0.0, 9 / FPS)]
+
+        def _mask(tags_list):
+            out, applied, _notes = apply_policy(
+                tags_list, rows, plane, tracks, policy_cfg("mask"),
+                PLANE_W, PLANE_H)
+            assert applied == "mask"
+            m = [ev for ev in out if "\\p1" in ev["tags"]]
+            assert len(m) == 1
+            return m[0]["tags"]
+
+        an4_tags = _mask(anchored)
+        an5_tags = _mask(plain)
+        # 无 line_idx 的旧调用方:\an5 → 与旧对称外扩逐字节一致
+        assert an5_tags != an4_tags
+        x4, _y4 = move_points(an4_tags)[0], move_points(an4_tags)[1]
+        d4 = re.search(r"m 0 0 l (\d+) 0", an4_tags)
+        assert d4
+        # window=5 平滑把帧 0 位姿移到帧 1(+2px),比较时减掉
+        left4 = x4 - 2.0
+        right4 = x4 + int(d4.group(1)) - 2.0
+        assert left4 <= 20.0 - 1.92 + 0.5, an4_tags
+        assert right4 >= 148.0 - 1.0, an4_tags
+        x5 = move_points(an5_tags)[0]
+        d5 = re.search(r"m 0 0 l (\d+) 0", an5_tags)
+        assert d5
+        right5 = x5 + int(d5.group(1)) - 2.0
+        # \an5/缺省 = 旧对称外扩:右缘停在 cx + half = 130.92(±1px 取整)
+        assert right5 == pytest.approx(130.92, abs=1.0)
+        assert right4 > right5 + 17.0
+
+    def test_dynamic_center_events_byte_identical_to_legacy(self):
+        """事件带 line_idx 但锚点为 \an5:输出与不带 line_idx 的历史调用一致。"""
+        rows = [("ああああああああ", (20.0, 20.0, 110.0, 36.0))]
+        plane = _plane_with_rows(rows)
+        tracks = make_translation_tracks()
+        with_idx = [dict(simple_event("ああああああああ", 0.0, 9 / FPS),
+                         line_idx=0, tags="{\\an5\\move(0.0,0.0,0.0,0.0)}")]
+        legacy = [simple_event("ああああああああ", 0.0, 9 / FPS)]
+        a = apply_policy(with_idx, rows, plane, tracks, policy_cfg("mask"),
+                         PLANE_W, PLANE_H)
+        b = apply_policy(legacy, rows, plane, tracks, policy_cfg("mask"),
+                         PLANE_W, PLANE_H)
+
+        def _strip(events):
+            # 输入事件自带的 line_idx 原样透传(旧行为),比较时剔除
+            return [{k: v for k, v in dict(ev).items() if k != "line_idx"}
+                    for ev in events]
+
+        assert _strip(a.events) == _strip(b.events)
 
 
 # ---------------------------------------------------------------------------
