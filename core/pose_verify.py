@@ -176,6 +176,12 @@ class LineVerifyReport:
     borderline: List[int] = field(default_factory=list)
     # 失配跨度判定留痕(含被拒删的保留跨度),供调用方日志与离线分析。
     spans: List[SpanDecision] = field(default_factory=list)
+    # 有效采样(分数 ≥ min_score)的实测中心:帧号 → (cx, cy, 分数)。cx/cy
+    # 为屏幕空间绝对坐标(预测位姿中心 + 实测偏移),与静止吸附用的是同一
+    # 套数;供步进/静止体制分段(core.step_segmentation)直接消费,避免
+    # 重复匹配。补丁不可用/无有效采样时为空。
+    measured: Dict[int, Tuple[float, float, float]] = field(
+        default_factory=dict)
     # 因 ROI 钳制改取 ROI 内次优峰的匹配次数(全局最优峰落在 ROI 外、
     # 其分数被钳制丢弃的采样次数;含阶段 B 确认帧)。
     n_clamped: int = 0
@@ -948,6 +954,12 @@ def _finalize_line(
         rep.max_dev_px = dev
         if dev <= cfg.static_tol_px:
             static = True
+
+    # 实测中心快照(绝对屏幕坐标):供步进/静止体制分段消费。放轨迹改写
+    # 之前——work.lt 是原始轨迹,偏移定义(实测 − 预测)以它为基准。
+    rep.measured = {
+        f: (lt.poses[f].center[0] + d[0], lt.poses[f].center[1] + d[1], s)
+        for f, s, d in work.sample_data}
 
     new_poses: Dict[int, LinePose] = {}
     if static:

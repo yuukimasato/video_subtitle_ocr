@@ -114,6 +114,46 @@ class MotionAssConfig:
     # ——门控后伪峰被掩膜,ROI 内真值峰照常采纳。False 关闭。
     verify_roi_clamp: bool = True
 
+    # —— 步进/静止体制分段(core.step_segmentation;默认开)——
+    # 实测中心(模板匹配)收敛的行按「hold 段」拆分输出逐段 \pos:全程
+    # 一段=静止(单条 \pos);段间位置跳变=步进(一拍二/三/四,逐 hold
+    # \pos 硬切,内部边界可加 \fad 渐隐);实测呈持续中间速度的行(真正
+    # 滚动/横移)不拆分、回退既有轨迹路径(\move)——模糊时偏向 \pos。
+    # 需要 verify_screen_pose 开(消费其实测采样);关闭后行为与 2.7.1
+    # 一致。逐 hold \pos 的边界由定向加密(换位窗口两阶段扫描)定位。
+    hold_pos_segmentation: bool = True
+    # hold 段内实测中心相对段中位的最大偏离(px;1080p 基准,按
+    # video_height/1080 等比缩放,与 verify_static_tol_px 同口径)。超过
+    # 即该段不算 hold:段间中间速度采样意味着连续运动,整行回退。
+    hold_tol_px: float = 2.5
+    # 相邻实测中心位移超过该值判「换位」开新 hold;0=自动
+    # max(3×hold_tol_px, 0.30×行高, 8px×分辨率缩放)。介于 hold 容差与
+    # 换位阈值之间的位移(慢漂移/亚字高滑动)不成 hold 也不成换位——但
+    # 稀疏采样下模板匹配噪声同样呈现为小幅漂移:超容差段先经**漂移复核**
+    # (段内均匀补采重测,见 drift_recheck_samples),复核后仍漂移才整行
+    # 回退既有路径。
+    step_jump_px: float = 0.0
+    # 漂移复核的段内补采帧数:段内实测偏差超 hold_tol_px 的候选段,在其
+    # 采样跨度内均匀补采这么多个帧重测(按段中位中心模板匹配,分数达
+    # verify_min_score 才采纳);复核后收敛 → 仍是 hold(补采并入该段,
+    # 中位中心随之更新);仍漂移 → 整行回退。0=关闭复核(超容差即回退)。
+    drift_recheck_samples: int = 6
+    # 内部 hold 的最少实测样本数(首/末 hold 贴着可见期端头,允许 1;
+    # 内部单样本 hold 须两侧边界都被定向加密确认,否则整行回退)。
+    min_hold_samples: int = 2
+    # 内部换位边界的 \fad 渐隐时长(ms;0=纯硬切)。前一 hold 事件尾部
+    # 渐出、后一 hold 事件头部渐入,消除换位瞬间的位置跳变突兀感;\fad
+    # 对 \t(\alpha) 亮度链是乘法叠加,二者共存。仅时间上连续(中间无
+    # 不可见跨度)的相邻 hold 事件加,可见期端头不加。
+    step_fade_ms: int = 100
+    # 定向加密:换位定位的两阶段扫描。粗扫以 densify_coarse_stride 为帧距
+    # 括出换位所在区间,再在命中点 ± densify_halfwin_frames 内逐帧精扫
+    # (±0.5s@24fps),边界精度 ±1 帧;单次换位解码帧数以 densify_max_frames
+    # 封顶(超出时自动放大粗扫帧距)。加密只发生在换位窗口内,成本有界。
+    densify_coarse_stride: int = 4
+    densify_halfwin_frames: int = 12
+    densify_max_frames: int = 96
+
     # —— 静止链塌缩:链内锚点/角度/缩放全程低于阈值时输出单条 \pos 事件 ——
     collapse_static_chains: bool = True
     # 段内总位移视为静止的感知阈值。以 1080p 为基准的绝对像素,合成时按
@@ -996,6 +1036,8 @@ def synthesize_events(
     *,
     video_height: Optional[float] = None,
     diagnostics: Optional[Dict[str, object]] = None,
+    align_boxes: Optional[Sequence[tuple]] = None,
+    line_align_index: Optional[Sequence[int]] = None,
 ) -> List[Dict]:
     """行轨迹 + 平面跟踪轨迹 → ASS 事件列表(标签阶梯)。
 
@@ -1015,23 +1057,34 @@ def synthesize_events(
     字体的公共边距钉在原排版边缘,不再整块「居中化」。``diagnostics``
     (仅关键字,可选)传入 dict 时带出逐行判定结果(行 idx → 对齐边 +
     三边票数 + 剪切斜率),供真实视频排查,不影响事件输出。
+
+    步进/静止分段(:mod:`core.step_segmentation`)把一行拆成多条恒位姿
+    轨迹输入时,对齐投票仍须在**原始行集合**上进行(拆分会复制行框,扰
+    动全组投票与剪切去趋势):``align_boxes`` 提供投票输入行框(缺省用输
+    入轨迹自身的 ref_box,行为不变),``line_align_index`` 给出输入轨迹
+    下标 → 投票行下标的映射(缺省恒等)。``line_idx`` 仍是输入轨迹下标,
+    由调用方负责重映射回原始行号。
     """
     tmap = _frame_map(tracks)
     events: List[Dict] = []
     # 行框是 quad 展开平面坐标:手选 quad 偏差会让竖直 UI 列随 y 漂移,
     # 投票前先估计全局剪切斜率去趋势(detrend_shear=True)。
-    aligns = detect_line_alignments([lt.ref_box for lt in line_tracks],
+    vote_boxes = ([tuple(b) for b in align_boxes] if align_boxes is not None
+                  else [lt.ref_box for lt in line_tracks])
+    aligns = detect_line_alignments(vote_boxes,
                                     detrend_shear=True,
                                     diagnostics=diagnostics)
     for line_idx, lt in enumerate(line_tracks):
         frames = sorted(lt.poses)
         if not frames:
             continue
-        chains = _merge_chains_with_hold(_split_runs(frames), tmap, cfg.lost_hold_sec)
-        for chain in chains:
+        arow = (line_align_index[line_idx]
+                if line_align_index is not None else line_idx)
+        for chain in _merge_chains_with_hold(
+                _split_runs(frames), tmap, cfg.lost_hold_sec):
             for ev in _chain_events(lt, chain, tmap, cfg, style,
                                     video_height=video_height,
-                                    align=aligns[line_idx]):
+                                    align=aligns[arow]):
                 ev["line_idx"] = line_idx
                 events.append(ev)
     return events

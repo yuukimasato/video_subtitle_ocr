@@ -1338,6 +1338,7 @@ def build_motion_events(
     # 合成器要用它做标点补偿上限的归一与 PlayRes;单次读取复用,不重复
     # 开容器(打不开仍按既有语义抛 RuntimeError)。
     width, height = _video_size(video_path)
+    reports: Dict[int, Any] = {}
     if cfg.verify_screen_pose:
         from core.pose_verify import VerifyConfig, verify_line_tracks
 
@@ -1368,11 +1369,52 @@ def build_motion_events(
                 "keeping homography-derived tracks")
     for line_track in line_tracks:
         smooth_line_track(line_track, window=cfg.smooth_window)
+
+    # 4.9 步进/静止体制分段(默认开):实测中心收敛的行按 hold 段拆分,
+    #     输出逐段 \pos(静止=单段;一拍二/三/四=多段硬切+连续边界 \fad
+    #     渐隐);实测呈持续中间速度的行(真正滚动/横移)不拆分,回退下方
+    #     既有轨迹路径(\move)。消费 pose-verify 的实测采样
+    #     (LineVerifyReport.measured),关闭 verify 时自然整体不生效。
+    synth_tracks = line_tracks
+    hold_orig_of: Optional[List[int]] = None
+    holds_by_line: Dict[int, Any] = {}
+    if cfg.hold_pos_segmentation:
+        from core.step_segmentation import segment_line_holds
+
+        try:
+            split = segment_line_holds(
+                line_tracks, reports, cfg, video_path=video_path,
+                log=log, video_height=height)
+            synth_tracks = split.tracks
+            hold_orig_of = split.orig_index_of
+            holds_by_line = split.holds_by_line
+        except Exception as exc:  # fail-open:分段异常回退既有轨迹路径
+            log(f"warning: step segmentation failed ({exc}); "
+                "keeping corrected tracks")
+
     # 逐行对齐判定留痕(行 idx → left/center/right + 三边票数 + 剪切斜率):
     # quad 展开平面坐标排查「为什么判成 left/center」时对照 OCR 行框看。
+    # hold 拆分会复制行框,对齐投票仍按原始行集合进行(见 synthesize_events
+    # 的 align_boxes/line_align_index)。
     align_diag: Dict[str, object] = {}
-    events = synthesize_events(line_tracks, tracks, cfg, style="Scene",
-                               video_height=height, diagnostics=align_diag)
+    events = synthesize_events(
+        synth_tracks, tracks, cfg, style="Scene",
+        video_height=height, diagnostics=align_diag,
+        align_boxes=[lt.ref_box for lt in line_tracks],
+        line_align_index=hold_orig_of)
+    if hold_orig_of is not None:
+        # line_idx 重映射回原始行号:遮挡蒙版/场景策略/逐行亮度都按原始
+        # 行下标回溯(line_tracks/line_boxes 仍是原始列表)。
+        for ev in events:
+            li = ev.get("line_idx")
+            if isinstance(li, int) and 0 <= li < len(hold_orig_of):
+                ev["line_idx"] = hold_orig_of[li]
+        if holds_by_line:
+            from core.step_segmentation import attach_step_fades
+
+            n_fade = attach_step_fades(events, holds_by_line, cfg)
+            log(f"      step-seg: {len(holds_by_line)} line(s) hold-split, "
+                f"{n_fade} fade boundary(ies)")
     log(f"      line alignments: shear_slope={align_diag.get('shear_slope')} "
         f"{[(d.get('row'), d.get('align')) for d in align_diag.get('rows') or []]}")
 
