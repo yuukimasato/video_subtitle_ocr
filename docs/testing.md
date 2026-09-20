@@ -310,7 +310,7 @@ python scripts/benchmark_regression.py \
 #    policy、回退 note；whitespace 在该视频按设计回退 mask）
 for mode in overlap mask external whitespace; do
   .venv/bin/python scripts/motion_ass.py --video "$V" \
-    --quad-file /home/hope/Tools/video_subtitle_ocr/test/motion-quad.json \
+    --quad-file ~/Tools/video_subtitle_ocr/test/motion-quad.json \
     --start-frame 0 --end-frame 245 --ocr-engine rapid \
     --scene-text-policy "$mode" --out "$E/$mode.ass" \
     2> "$E/run-stderr-$mode.txt"
@@ -323,7 +323,7 @@ ffmpeg -nostdin -hide_banner -loglevel error -y -i "$V" \
 
 # 3) overlap 基线一致性：不带策略参数重跑，输出应与 overlap.ass 逐字节一致
 .venv/bin/python scripts/motion_ass.py --video "$V" \
-  --quad-file /home/hope/Tools/video_subtitle_ocr/test/motion-quad.json \
+  --quad-file ~/Tools/video_subtitle_ocr/test/motion-quad.json \
   --start-frame 0 --end-frame 245 --ocr-engine rapid --out /tmp/no-policy.ass
 diff /tmp/no-policy.ass "$E/overlap.ass" && echo IDENTICAL
 

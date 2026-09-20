@@ -48,10 +48,13 @@
   - **水印剔除**：复核确认的水印清单在生成阶段按文本/位置匹配剔除，独立于场景过滤开关。
 - **移动文字轨迹字幕**：手机屏幕、运动招牌等**画面内移动文字**的专属管线——
   - **逐帧平面跟踪**：四点多边形 ROI + 勾选「写入画面位置标签」即自动进入轨迹管线，逐帧跟踪文字平面并合成 `\move` 运动字幕，静态 `\pos` 标签跟不动的画面由轨迹跟随；跟踪失败自动回退静态路径。
-  - **屏幕空间实测校正**：模板匹配逐行实测文字在画面中的真实位置，消除背景运动经跟踪泄漏的漂移/缩放；长时间不动的文字自动合并为单条 `\pos` 事件（无 `\move`/`\t`），只在一段期间可见的文字（聊天逐条浮现/滚出）不再渲染幽灵字幕。
+  - **屏幕空间实测校正**：模板匹配逐行实测文字在画面中的真实位置，消除背景运动经跟踪泄漏的漂移/缩放；长时间不动的文字自动合并为单条 `\pos` 事件（无 `\move`/`\t`），只在一段期间可见的文字（聊天逐条浮现/滚出）不再渲染幽灵字幕。失配跨度按证据密度分级处理——扩大半径复测、边界分保留、超长跨度补采确认后才删除，运动模糊/短时遮挡不再误删出字幕时间空洞；校验帧分块解码，行多/4K 下不再全量驻留内存。
+  - **步进/静止体制分段**：聊天轮播等「显示一段时间 → 瞬间换位 → 再显示」的画面文字，按实测采样把可见时间轴拆成 hold 段、逐段输出恒位姿 `\pos`（全程一段即静止，是特例）；换位边界经「粗扫括区间 → 逐帧精扫」两阶段定向加密定位（精度 ±1 帧，解码帧数有预算封顶），时间上连续的相邻 hold 间注入 `\fad` 渐隐消除换位突兀感；段内偏差先经补采复核（漂移复核 + 短段凑证）再判定，实测呈持续匀速运动的行（真滚动/横移）自动回退既有 `\move` 路径。
   - **自动检测移动文字**：无需手动勾选，开始识别时在每个 ROI 范围内采样检测文字行位移，检出即走轨迹管线。
   - **亮度自适应**：逐帧测量文字平面明暗，为轨迹事件追加 `\1c`/`\alpha` `\t` 标签链——字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。
   - **遮挡蒙版**：检测手部等遮挡物覆盖文字平面的帧，追加 `\iclip` 逆向蒙版，字幕不再渲染到遮挡物上。
+
+  ![移动文字轨迹字幕：原画面与实测校正/静止塌缩开关的输出对比](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
 - **场景文字显示策略**（每 ROI 独立选择）：画面文字可按需选择 **叠加**（默认重渲染原位）/ **遮罩原文字**（`\p1` 纯色遮罩盖字 + layer 1 重渲染）/ **仅遮罩**（识别文本写成 Comment 行，供排版覆写译文）/ **外置展示框** / **空白区放置**；可用性不足时按预设回退链自动降级并留痕。
 - **按 ROI 的文字过滤策略**：
   - **手动 ROI 永不过滤**：手动绘制（矩形/多边形/全宽带）的 ROI 标记为「全部保留」，场景字等识别结果全部保留——这是带标签 ASS（`\pos`/`\frz`）生产的保障。
@@ -137,6 +140,22 @@ core/                         # 核心业务逻辑模块
 ├── fullframe_scanner.py      # 全片扫描普查（字幕带/水印/场景文字统计）
 ├── subtitle_roi_suggester.py # 加载即自动字幕带 ROI 建议（顶部+底部带）
 ├── watermark_filter.py       # 水印文本剔除（文本/位置匹配）
+├── motion_detector.py        # 移动文字自动检测（采样行心位移超阈值 → 轨迹管线）
+├── scene_plane_tracker.py    # 场景文字平面跟踪（关键帧框选一次，逐帧四边形轨迹）
+├── keyframe_selector.py      # 从跟踪轨迹挑最清晰 top-K 关键帧
+├── motion_ass.py             # 轨迹 → \move/\pos ASS 合成器（MotionAssConfig）
+├── pose_verify.py            # 行轨迹屏幕空间实测校正（模板匹配）
+├── step_segmentation.py      # 步进/静止体制分段（hold 段逐段 \pos + 边界渐隐）
+├── line_restoration.py       # 静态路径逐行还原标签（\frz/\1c/\3c/\bord 估计）
+├── occlusion_mask.py         # 手部遮挡检测与 \iclip 逆向蒙版
+├── screen_luma.py            # 文字平面亮度测量（\1c/\alpha \t 自适应）
+├── text_alignment.py         # 识别行框 → 原文对齐检测（\an4/5/6）+ 段落块合并
+├── scene_text_policy.py      # 场景文字显示策略（叠加/遮罩/仅遮罩/外置/空白区）
+├── chunk_planner.py          # 进程分片并行：切窗决策（长视频提速）
+├── chunk_worker.py / chunk_merger.py / chunk_parallel_runner.py
+│                             # 分片 worker 进程 / 接缝合并 / 并行协调器
+├── pipeline_stages.py / refine_executor.py
+│                             # 流水线阶段函数 / 边界精修两遍执行器
 ├── coordinate_restorer.py    # 将ROI内坐标还原为视频全局坐标
 ├── subtitle_generator/       # ASS 字幕生成包（由原单一模块拆分，纯结构重构）
 │   ├── __init__.py           # re-export OCRToASSOptimizer/TextLine/FrameData/SubtitleGroup
@@ -174,12 +193,14 @@ docs/
 ├── optimization_analysis.md  # 模型升级与优化分析
 └── development_plan.md       # 开发方案与计划
 
-i18n/                         # 国际化（源文案为中文，跟随系统 locale 加载）
-├── app_ja_JP.qm			  # 日语翻译编译文件（lrelease 生成，随包发布）
-├── app_ja_JP.ts			  # 日语翻译源文件
-├── app_zh_CN.qm			  # 中文翻译编译文件（源文案即中文，基本为恒等映射）
-├── app_zh_CN.ts			  # 中文翻译源文件
-└── translator.py			  # QTranslator 封装（供按语言代码加载 .qm）
+i18n/                         # 国际化（源文案为中文，默认跟随系统 locale）
+├── app_zh_CN.qm / .ts		  # 简体中文（源文案即中文，基本为恒等映射）
+├── app_zh_TW.qm / .ts		  # 繁體中文
+├── app_en.qm / .ts			  # English
+├── app_ja_JP.qm / .ts		  # 日本語
+├── translations_*.py		  # 各语言翻译文案源（apply_translations.py 回填进 .ts，
+│							  #   lrelease 编译出 .qm 随包发布）
+└── translator.py			  # QTranslator 封装（locale 解析、.qm 加载、语言选择持久化）
 
 # 仓库外层（打包与测试辅助）
 ├── build_deb.sh              # 一键构建 .deb 包
@@ -310,7 +331,8 @@ sudo dpkg --configure -a
 
 安装过程说明：
 
-- 包本身仅约 5 MB（应用源码 + 启动器 + 桌面集成文件）。
+- 包本身仅约 4 MB（应用源码 + 启动器 + 桌面集成文件，xz 压缩——兼容未支持
+  zstd 的旧版 dpkg，Ubuntu 20.04/22.04、Debian 11 等亦可正常安装）。
 - `postinst` 安装脚本会在 `/opt/apps/video_subtitle_ocr/.venv` 中创建独立 Python
   虚拟环境，并从 PyPI 安装 `requirements.txt` 中的依赖（需联网，下载量数百 MB）。
   依赖安装采用**有界退避重试**：最多 5 次尝试，等待 5/10/20/40/60 秒（总等待上限 135 秒），
@@ -348,7 +370,8 @@ sudo dpkg -P video-subtitle-ocr     # 彻底清除（含 .venv 与运行残留�
 
 脚本会自动完成：构建环境检测 → 将 `video_subtitle_ocr/` 源码同步进打包树
 `video-subtitle-ocr/`（排除 `.git`、`.venv`、`__pycache__`、`tests/` 等）→ 校验必要文件 →
-清理与权限设置 → 压缩 man 手册页 → 计算安装大小 → `dpkg-deb` 构建输出
+清理与权限设置 → 压缩 man 手册页 → 计算安装大小 → 生成 `DEBIAN/md5sums` 校验清单 →
+`dpkg-deb` 以 xz 压缩构建输出
 `video-subtitle-ocr_<版本>_all.deb`。
 
 打包树的目录布局、维护脚本（`postinst`/`prerm`/`postrm`）的实现细节，以及
@@ -396,6 +419,7 @@ python3 cli.py 视频.mp4 --motion-quad "630,287 1290,287 1319,1072 599,1079@0-8
 | `--motion-quad` / `--motion-quad-file` | 移动文字轨迹：四点 quad `x1,y1 … x4,y4[@起-止]` 或 JSON 文件，可重复 |
 | `--motion-auto` | 自动检测移动文字（配合 `--motion-auto-stride` 采样间隔） |
 | `--auto-brightness` / `--occlusion-clip` | 轨迹字幕亮度自适应（`\1c/\alpha \t`）/ 遮挡蒙版（`\iclip`） |
+| `--brightness-per-line` | 配合 `--auto-brightness`：逐行独立测光，部分区域变暗（如顶部栏压暗）时不拖累其余行保持原本亮度（默认关） |
 | `--workers` | 进程分片并行的 worker 数：`0`（默认，按核数/内存/时长自动）、`1`（强制单进程）、`N`（并行数上限）。详见下文「进程分片并行」 |
 | `--template` | 外部 `.ass` 样式模板 |
 | `--keep-temp` | 保留临时目录（调试） |
@@ -482,11 +506,11 @@ deb 安装测试）、判定标准与最近一次测试记录见
 - **事件处理**：
   - 处理 **拖拽事件** (`dragEnterEvent`, `dropEvent`)，支持视频文件、ROI配置文件 (`.json`) 和ASS模板文件 (`.ass`) 的便捷加载。
   - 处理窗口关闭事件 (`closeEvent`)，在后台任务运行时提供退出确认。
-- **国际化支持**：界面语言**跟随系统 locale** 自动选择——启动时经 `QLocale().system()` 加载
-  `i18n/app_<语言>.qm` 翻译文件。当前内置 **简体中文**（源文案）与 **日语**（`app_ja_JP`）
-  两套界面文案；无对应翻译文件的 locale（如英语）回退显示中文源文案。
-  如需临时切换语言，可通过环境变量指定 locale，例如 `LANGUAGE=ja_JP ./video-subtitle-ocr`
-  或 `LC_ALL=zh_CN.UTF-8 python3 main.py`。
+- **国际化支持**：内置 **简体中文**（源文案）、**繁體中文**、**English**、**日本語**
+  四套界面文案，可在「文件操作」面板的语言选择器中**随时切换**（选择持久化保存）；
+  默认 `auto` 跟随系统 locale（也尊重 `LANGUAGE` 等 locale 环境变量），无对应
+  翻译文件的 locale 回退显示中文源文案。也可临时以环境变量指定，
+  例如 `LANGUAGE=ja_JP ./video-subtitle-ocr` 或 `LC_ALL=zh_CN.UTF-8 python3 main.py`。
 
 #### 2. `core/pipeline_worker.py` - 异步处理流水线
 

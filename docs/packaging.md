@@ -130,8 +130,12 @@ purge:   rm -rf /opt/apps/video_subtitle_ocr，尝试 rmdir /opt/apps
 6. **权限**：DEBIAN 脚本 0755、control 0644、启动器 0755、`*.py` 0644。
 7. **man 页压缩**：`gzip -9n` 所有 `.1`。
 8. **Installed-Size**：`du -sk` 自动计算并写回 control。
-9. **构建**：`dpkg-deb --root-owner-group --build`，输出
-   `video-subtitle-ocr_<版本>_<架构>.deb`。
+9. **md5sums**：对包内全部数据文件生成 `DEBIAN/md5sums`（0644），
+   供 `debsums` 等完整性校验工具使用。
+10. **构建**：`dpkg-deb --root-owner-group -Zxz --build`，显式 xz 压缩输出
+   `video-subtitle-ocr_<版本>_<架构>.deb`（新版 dpkg 默认 zstd，但 zstd
+   包要求 dpkg ≥ 1.21.18 才能解包——Ubuntu 20.04/22.04、Debian 11 等
+   旧系统会直接安装失败，故显式钉 xz）。
 
 ## 安装测试（无 root 环境）
 
