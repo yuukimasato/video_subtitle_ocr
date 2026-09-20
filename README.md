@@ -25,7 +25,7 @@
 
 
 ![主界面：一键简洁面板与自动检测的字幕带 ROI](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview1.png)
-![场景文字：手机屏幕上的多边形 ROI](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview2.png)
+![场景文字：手机屏幕多边形 ROI + OCR 识别进行中（DMG 素材）](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview2.png)
 软件提供了交互式的图形用户界面（GUI），用户可以直观地在视频上框选字幕区域（ROI），设置其生效的时间范围，并通过一键式操作启动后台OCR识别和字幕生成流程。项目内置了智能优化算法，能够大幅提升处理效率并保证识别的准确性。
 
 ## 核心功能
@@ -54,7 +54,7 @@
   - **亮度自适应**：逐帧测量文字平面明暗，为轨迹事件追加 `\1c`/`\alpha` `\t` 标签链——字幕颜色与透明度忠实跟随屏幕变暗/变亮（如手机息屏）。
   - **遮挡蒙版**：检测手部等遮挡物覆盖文字平面的帧，追加 `\iclip` 逆向蒙版，字幕不再渲染到遮挡物上。
 
-  ![移动文字轨迹字幕：LINE 聊天轮播场景（12.mp4）的提取字幕逐场景贴合重渲染](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
+  ![生成的轨迹字幕 ASS（\p1 遮罩 + \move/\t 标签链）在 Aegisub 中检查](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
 - **场景文字显示策略**（每 ROI 独立选择）：画面文字可按需选择 **叠加**（默认重渲染原位）/ **遮罩原文字**（`\p1` 纯色遮罩盖字 + layer 1 重渲染）/ **仅遮罩**（识别文本写成 Comment 行，供排版覆写译文）/ **外置展示框** / **空白区放置**；可用性不足时按预设回退链自动降级并留痕。
 - **按 ROI 的文字过滤策略**：
   - **手动 ROI 永不过滤**：手动绘制（矩形/多边形/全宽带）的 ROI 标记为「全部保留」，场景字等识别结果全部保留——这是带标签 ASS（`\pos`/`\frz`）生产的保障。
