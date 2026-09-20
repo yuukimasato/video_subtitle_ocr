@@ -215,6 +215,28 @@ class RoiEditingMixin:
             ).format(index, str(policy or "overlap"))
         )
 
+    @Slot(str)
+    def on_roi_lang_changed(self, lang: str):
+        """「识别语言」下拉变化：立即写回当前选中的 ROI（与 scene policy 同契约）。
+
+        空串表示「自动（跟随全局）」；写回空串时移除键，保持旧配置文件
+        干净（无该键 = 自动，语义相同）。
+        """
+        index = self._selected_roi_index()
+        if index is None:
+            self._warn_panel_flag_without_selection()
+            return
+        lang = str(lang or "")
+        if lang:
+            self.roi_data[index]["ocr_lang"] = lang
+        else:
+            self.roi_data[index].pop("ocr_lang", None)
+        self.logger.info(
+            QCoreApplication.translate(
+                "SubtitleOCRGUI", "ROI {} 识别语言已设为 {}"
+            ).format(index, lang or QCoreApplication.translate("SubtitleOCRGUI", "自动（跟随全局）"))
+        )
+
     def _sync_selected_roi_panel_flags(self) -> None:
         """启动识别前把详情面板的逐 ROI 开关同步进当前选中的 ROI 条目。
 
@@ -242,6 +264,11 @@ class RoiEditingMixin:
             panel.motion_occlusion_checkbox.isChecked())
         roi["scene_text_policy"] = (
             panel.scene_text_policy_combo.currentData() or "overlap")
+        roi_lang = str(panel.roi_lang_combo.currentData() or "")
+        if roi_lang:
+            roi["ocr_lang"] = roi_lang
+        else:
+            roi.pop("ocr_lang", None)
 
     @staticmethod
     def _compute_roi_pose(roi_type: str, points) -> Optional[Dict]:
@@ -342,6 +369,10 @@ class RoiEditingMixin:
             # 场景文字显示策略(仅作用于场景文字事件;缺省 overlap)。
             roi_entry["scene_text_policy"] = (
                 self.roi_def_widget.scene_text_policy_combo.currentData() or "overlap")
+            # 每 ROI 识别语言(空 = 自动,跟随全局;不写键保持配置干净)。
+            roi_lang = str(self.roi_def_widget.roi_lang_combo.currentData() or "")
+            if roi_lang:
+                roi_entry["ocr_lang"] = roi_lang
             # 手动绘制的 ROI（矩形/多边形/全宽带）永不参与文字来源过滤：
             # 场景字是本项目的核心产出，只有自动检测的"主字幕带"ROI 才按
             # 场景预设过滤（text_filter_policy="auto"）。

@@ -102,6 +102,11 @@ class PaddleOCREngine(BaseOCREngine):
     # lock would re-serialize the per-thread standalone engines on one shared
     # lock, defeating the parallel refine executor (see refine_executor docs).
 
+    # initialize(lang=...) swaps det/rec models (PP-OCRv6/v5 per-language
+    # routing) — the per-ROI language override relies on this to build one
+    # engine instance per requested language (see ocr_engine_manager).
+    supports_lang_override = True
+
     @classmethod
     def get_engine_info(cls) -> OCREngineInfo:
         return OCREngineInfo(

@@ -672,7 +672,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+224"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+225"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -717,7 +717,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+74"/>
         <source>Scene text policy: text moves more than {:.0f}px in {}; static {} would misalign, falling back to external.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -732,7 +732,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+89"/>
         <source>--- Starting conversion from in-memory data to ASS subtitles ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -762,7 +762,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+81"/>
         <source>Step 4/4: Starting ASS generation and DeepSeek post-processing...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -857,7 +857,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+160"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+239"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -870,7 +870,7 @@
 <context>
     <name>RoiDefinitionWidget</name>
     <message>
-        <location filename="../components/roi_definition.py" line="+42"/>
+        <location filename="../components/roi_definition.py" line="+45"/>
         <source>ROI 定义</source>
         <translation>ROI definition</translation>
     </message>
@@ -1016,6 +1016,81 @@
         <translation>Scene text display:</translation>
     </message>
     <message>
+        <location line="+10"/>
+        <source>自动（跟随全局）</source>
+        <translation>Auto (follow global)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>中文简体</source>
+        <translation>中文简体</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>中文繁體</source>
+        <translation>中文繁體</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>English</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>日本語</source>
+        <translation type="unfinished">日本語</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>한국어</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Русский</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Français</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Deutsch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Italiano</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Español</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Português</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>العربية</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>该 ROI 单独使用的 OCR 识别语言；默认「自动」跟随控制面板的全局「识别语言」。双语字幕请给每种语言各画一个 ROI 并分别指定语言（如繁中行设「中文繁體」、日语行设「日本語」），各 ROI 用各自的识别模型，避免单一模型漏认另一种文字。注意：每个不同语言会多加载一份识别模型，内存占用相应增加；RapidOCR 引擎不区分语言，此设置仅对 PaddleOCR 生效。</source>
+        <translation>OCR language used only by this ROI; the default &quot;Auto&quot; follows the global &quot;Recognition language&quot; in the control panel. For bilingual subtitles, draw one ROI per language and assign each its own language (e.g. the Traditional-Chinese line as 中文繁體, the Japanese line as 日本語), so each ROI runs its own recognition model instead of one model missing the other script. Note: every distinct language loads an extra recognition model and memory use grows accordingly; the RapidOCR engine uses a single multilingual model and ignores this setting — it applies to PaddleOCR only.</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>识别语言：</source>
+        <translation type="unfinished">Recognition language:</translation>
+    </message>
+    <message>
         <location line="+13"/>
         <source>文字颜色…</source>
         <translation>Text color…</translation>
@@ -1066,7 +1141,7 @@
         <translation>Delete selected ROI</translation>
     </message>
     <message>
-        <location line="+78"/>
+        <location line="+81"/>
         <source>字幕文字颜色</source>
         <translation>Subtitle text color</translation>
     </message>
@@ -1275,7 +1350,7 @@
         <location line="+10"/>
         <location line="+19"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
-        <location filename="../main_window/roi_editing.py" line="+298"/>
+        <location filename="../main_window/roi_editing.py" line="+325"/>
         <location filename="../main_window/source_config.py" line="+17"/>
         <location line="+12"/>
         <source>警告</source>
@@ -1386,7 +1461,7 @@
         <location line="+4"/>
         <location filename="../main_window/roi_config_io.py" line="-52"/>
         <location line="+88"/>
-        <location filename="../main_window/roi_editing.py" line="+62"/>
+        <location filename="../main_window/roi_editing.py" line="+66"/>
         <location filename="../main_window/scan_control.py" line="+338"/>
         <location filename="../main_window/video_playback.py" line="+28"/>
         <source>错误</source>
@@ -1466,7 +1541,7 @@
         <translation>ASS subtitle files (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/roi_editing.py" line="-320"/>
+        <location filename="../main_window/roi_editing.py" line="-351"/>
         <source>已添加新 ROI，帧范围：{}-{}</source>
         <translation>New ROI added, frame range: {}-{}</translation>
     </message>
@@ -1535,12 +1610,22 @@
         <translation>ROI {}: scene-text display set to {}</translation>
     </message>
     <message>
-        <location line="+86"/>
+        <location line="+22"/>
+        <source>ROI {} 识别语言已设为 {}</source>
+        <translation>ROI {}: recognition language set to {}</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>自动（跟随全局）</source>
+        <translation>Auto (follow global)</translation>
+    </message>
+    <message>
+        <location line="+89"/>
         <source>开始时间不能晚于结束时间。</source>
         <translation>Start time cannot be after end time.</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+63"/>
         <source>创建 ROI 条目时出错：{}</source>
         <translation>Error creating ROI entry: {}</translation>
     </message>
@@ -1758,7 +1843,7 @@ Cancel: abort this detection.</translation>
         <translation>Video Subtitle OCR Tool</translation>
     </message>
     <message>
-        <location line="+115"/>
+        <location line="+118"/>
         <source>正在深度扫描…</source>
         <translation>Deep scan in progress…</translation>
     </message>
@@ -1865,12 +1950,12 @@ Cancel: abort this detection.</translation>
 <context>
     <name>ocr_optimizer</name>
     <message>
-        <location filename="../core/ocr_optimizer.py" line="+349"/>
+        <location filename="../core/ocr_optimizer.py" line="+354"/>
         <source>Could not get image data for frame {}. Input type: {}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+279"/>
+        <location line="+296"/>
         <source>Batch OCR prediction failed; falling back to per-frame OCR.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1895,7 +1980,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+101"/>
+        <location line="+111"/>
         <source>Smart frame skipping: ROI &apos;{}&apos; from frame {} to {} has similar content, skipping {} OCR operations.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2059,27 +2144,33 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+87"/>
+        <location filename="../core/pipeline_worker.py" line="+92"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+230"/>
+        <location line="+293"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+56"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+34"/>
+        <source>Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.</source>
+        <translation>Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; using static pose tags instead.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
         <source>Motion trajectory for {0}: {1} event(s) ({2}/{3} frames ok, keyframes {4}, policy {5}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+14"/>
+        <location line="+7"/>
         <source>Motion trajectory for {0} failed ({1}); falling back to static pose tags.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2192,7 +2283,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+145"/>
+        <location line="+132"/>
         <source>Unrecognized time string {!r} for key &apos;{}&apos;; falling back to numeric seconds.</source>
         <translation type="unfinished"></translation>
     </message>

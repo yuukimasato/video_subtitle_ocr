@@ -354,14 +354,15 @@ class _StubCombo:
 
 
 class _StubRoiDefPanel:
-    """详情面板最小桩:_sync_selected_roi_panel_flags 只读这四个控件。"""
+    """详情面板最小桩:_sync_selected_roi_panel_flags 只读这五个控件。"""
 
     def __init__(self, pose=False, brightness=False, occlusion=False,
-                 policy="overlap"):
+                 policy="overlap", lang=""):
         self.pose_tags_checkbox = _StubCheckable(pose)
         self.motion_brightness_checkbox = _StubCheckable(brightness)
         self.motion_occlusion_checkbox = _StubCheckable(occlusion)
         self.scene_text_policy_combo = _StubCombo(policy)
+        self.roi_lang_combo = _StubCombo(lang)
 
 
 class _StubSelectableView:

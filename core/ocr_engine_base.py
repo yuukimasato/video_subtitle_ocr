@@ -39,6 +39,13 @@ class BaseOCREngine(ABC):
     process-level singletons, obtained via the engine manager.
     """
 
+    # True when initialize(lang=...) actually swaps recognition models, so a
+    # per-ROI language override justifies a second engine instance. Engines
+    # that ignore ``lang`` (single multilingual model, e.g. RapidOCR) keep the
+    # default False — the manager then serves every language from the shared
+    # singleton instead of loading identical models twice.
+    supports_lang_override: bool = False
+
     @classmethod
     @abstractmethod
     def get_engine_info(cls) -> OCREngineInfo:

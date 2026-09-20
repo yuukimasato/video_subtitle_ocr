@@ -193,6 +193,9 @@ class SubtitleOCRGUI(QMainWindow, VideoPlaybackMixin, RoiEditingMixin, RoiConfig
             self.on_motion_occlusion_toggled)
         self.roi_def_widget.scene_policy_changed.connect(
             self.on_scene_policy_changed)
+        # 每 ROI 识别语言同样即时写回(与 scene policy 同契约)。
+        self.roi_def_widget.roi_lang_changed.connect(
+            self.on_roi_lang_changed)
 
         self.roi_list_widget.selection_changed.connect(self.on_roi_selection_changed)
         self.roi_list_widget.copy_requested.connect(self.copy_roi)

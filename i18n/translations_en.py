@@ -385,4 +385,9 @@ DICT = {
     'ROI {} 遮挡蒙版已{}': 'ROI {}: occlusion mask {}',
     'ROI {} 场景文字显示已设为 {}': 'ROI {}: scene-text display set to {}',
 
+
+    '自动（跟随全局）': 'Auto (follow global)',
+    '该 ROI 单独使用的 OCR 识别语言；默认「自动」跟随控制面板的全局「识别语言」。双语字幕请给每种语言各画一个 ROI 并分别指定语言（如繁中行设「中文繁體」、日语行设「日本語」），各 ROI 用各自的识别模型，避免单一模型漏认另一种文字。注意：每个不同语言会多加载一份识别模型，内存占用相应增加；RapidOCR 引擎不区分语言，此设置仅对 PaddleOCR 生效。': 'OCR language used only by this ROI; the default "Auto" follows the global "Recognition language" in the control panel. For bilingual subtitles, draw one ROI per language and assign each its own language (e.g. the Traditional-Chinese line as 中文繁體, the Japanese line as 日本語), so each ROI runs its own recognition model instead of one model missing the other script. Note: every distinct language loads an extra recognition model and memory use grows accordingly; the RapidOCR engine uses a single multilingual model and ignores this setting — it applies to PaddleOCR only.',
+    'ROI {} 识别语言已设为 {}': 'ROI {}: recognition language set to {}',
+    'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.': 'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; using static pose tags instead.',
 }

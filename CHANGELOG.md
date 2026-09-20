@@ -4,6 +4,59 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
+## 2.7.3（2026-09-21）
+
+### 新增
+
+- **每 ROI 识别语言（默认「自动」跟随全局）**：双语字幕（繁體中文 + 日語
+  两个 ROI）此前只能共用全局「识别语言」——选「日本語」时繁中行识别不全，
+  选「中文繁體」时日语行又漏认。现在 ROI 详情面板新增「识别语言」下拉
+  （与全局同一份 12 种语言取值，默认「自动（跟随全局）」保持既有行为），
+  给每种语言各画一个 ROI 并分别指定语言，各 ROI 用各自的识别模型。
+  - 实现：`roi["ocr_lang"]` 随 ROI 配置 JSON 持久化（`roi_config_io` 原样
+    读写，旧配置无该键 = 自动）；选中即写回（与场景策略同契约），
+    「添加/更新 ROI」与启动识别前的面板兜底同步均携带。
+  - 引擎层（`ocr_engine_manager`）：新增 `get_engine_for_lang()`——空值或
+    与全局同语言时复用进程级单例；其他语言按
+    (引擎, 选项+lang) 缓存独立引擎实例（双语跑批两份识别模型常驻，
+    不逐帧重载），`set_engine()` 切换引擎/选项时统一清理。引擎通过
+    `supports_lang_override` 声明是否消费 `lang`（PaddleOCR 是，
+    RapidOCR 单一多语言模型置否、直接共享单例不多加载模型）。
+  - 全链路生效：主流水线逐帧 OCR（`run_batch_ocr` 按 roi dict 逐帧路由）、
+    采样批量路径（`OcrOptimizer._run_batch_ocr_on_samples` 按语言分组跑
+    原生 `predict_batch`）、并行边界精修
+    （`refine_executor._ThreadResources` 按语言懒建并缓存独立引擎）、
+    移动文字轨迹管线（`collect_motion_roi_specs` 透传 `ocr_lang`，
+    `build_motion_events` 新增 `engine_options` 参数——此前轨迹管线的
+    独立引擎**从不接收语言选项**，无论界面选什么都用默认 ch）、进程
+    分片并行的 chunk worker（经 ROI 条目自动继承）。合并画布
+    （`roi_merged`）模式与全片扫描维持全局语言。
+  - CLI：`--roi-file` 条目携带 `ocr_lang` 即覆盖 `--lang`（ROI 绑定轨迹
+    规格同样透传），无需新参数。
+- **轨迹接管覆盖门限（修复双语字幕「一种语言整段消失」）**：真实复现
+  （「一周的朋友」NCOP，顶部繁中带 + 底部日语带各一个 ROI、均勾选位置
+  标签）——轨迹管线是单链设计，平面跟踪只在对比度足够的段落锁定，顶部
+  繁中带 ok 率仅 14.8%（4 条 ok 链全部落在前 13.7s），接管却抑制了该
+  ROI 的全部静态事件，产出 23.5s 之后繁中整段缺失（日语带跟踪 1% ok
+  失败回退静态反而完整）。现在轨迹事件去重时长 / ROI 时长低于 50%
+  （`TRAJECTORY_MIN_EVENT_COVERAGE`）即判接管失败，该 ROI 整体回退静态
+  路径（与跟踪失败同路径，GUI 主流水线与 CLI ROI 绑定规格同契约），
+  并留痕覆盖率。修复后同视频双语 10+10 行全程完整；真正跟随画面运动的
+  文字（滚动屏等）事件覆盖接近全程，不受门限影响。
+  - 新增 `pipeline_worker.trajectory_event_coverage_sec()`（重叠/相邻
+    事件取并集）与 `trajectory_takeover_ok()`（ROI 帧范围/fps 非法时
+    判定按通过处理，不误杀轨迹结果）。
+
+### 测试
+
+- `tests/test_roi_ocr_lang.py`（13 项）：下拉选项/回填/未知值回退、
+  条目组装与即时写回、`get_engine_for_lang` 缓存与切换清理、不支持语言
+  覆盖引擎共享单例、逐帧路由、批量分组、精修线程按语言懒建、轨迹规格
+  透传、`roi_ocr_lang` 提取。
+- `tests/test_trajectory_coverage_gate.py`（6 项）：覆盖并集计算（实跑
+  产物形态/重叠合并/空与退化事件）、门限拒绝（15% 残段）、全程运动文字
+  通过、非法 ROI/fps 判定按通过、50% 边界。
+
 ## 2.7.2（2026-09-21）
 
 ### 新增

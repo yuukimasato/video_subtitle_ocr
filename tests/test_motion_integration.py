@@ -414,7 +414,7 @@ def fake_engine(monkeypatch):
     engine = SimpleNamespace(cleanup=lambda: None)
     monkeypatch.setattr(
         motion_cli, "_default_ocr_fn",
-        lambda engine_id=None: (make_mock_ocr([]), engine))
+        lambda engine_id=None, engine_options=None: (make_mock_ocr([]), engine))
     return engine
 
 

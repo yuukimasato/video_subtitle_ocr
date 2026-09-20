@@ -181,7 +181,7 @@ class TestCliMotionAuto:
         engine = type("E", (), {"cleanup": lambda self: None})()
         monkeypatch.setattr(
             "scripts.motion_ass._default_ocr_fn",
-            lambda engine_id=None: (make_mock_ocr([]), engine))
+            lambda engine_id=None, engine_options=None: (make_mock_ocr([]), engine))
         out = str(tmp_path / "auto.ass")
         code = cli_mod.main(
             [video_path, "-o", out, "--workers", "1", "-q",
@@ -205,7 +205,7 @@ class TestCliMotionAuto:
         engine = type("E", (), {"cleanup": lambda self: None})()
         monkeypatch.setattr(
             "scripts.motion_ass._default_ocr_fn",
-            lambda engine_id=None: (make_mock_ocr([]), engine))
+            lambda engine_id=None, engine_options=None: (make_mock_ocr([]), engine))
         out = str(tmp_path / "none.ass")
         code = cli_mod.main(
             [video_path, "-o", out, "--workers", "1", "-q", "--motion-auto"])

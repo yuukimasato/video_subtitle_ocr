@@ -15,8 +15,13 @@ from core import pipeline_stages
 from core.pipeline_stages import PipelineContext, PipelineCancelled
 from core.scene_text_policy import POLICY_MODES
 from core.subtitle_llm_polish import SubtitlePolisherConfig
+from utils.time_utils import parse_time
 
 logger = logging.getLogger(__name__)
+
+# 轨迹接管覆盖门限:轨迹事件去重时长 / ROI 时长低于该值时不接管,该 ROI
+# 整体回退静态路径(与跟踪失败同路径)。依据见 trajectory_takeover_ok。
+TRAJECTORY_MIN_EVENT_COVERAGE = 0.5
 
 
 def _roi_analysis_rect(roi: Dict[str, Any]) -> Optional[tuple]:
@@ -202,8 +207,71 @@ def collect_motion_roi_specs(roi_data: Optional[List[Dict]]) -> List[Dict[str, A
             "scene_text_policy": str(roi.get("scene_text_policy") or "overlap"),
             "auto_brightness": bool(roi.get("motion_auto_brightness", False)),
             "occlusion_clip": bool(roi.get("motion_occlusion_clip", False)),
+            "ocr_lang": str(roi.get("ocr_lang") or ""),
         })
     return specs
+
+
+def trajectory_event_coverage_sec(
+    events: List[Dict[str, Any]],
+    fps: float,
+) -> float:
+    """轨迹事件覆盖的**去重**时间总长(秒)。
+
+    事件起止是 ASS 时间串("0:00:20.02");相邻/重叠事件(同链分段)取并集
+    而非简单求和,否则链条被打断成多段时覆盖会被高估。
+    fps 无效或事件缺时间字段时按 0 处理(调用方据此判定回退)。
+    """
+    spans: List[tuple] = []
+    for event in events or []:
+        try:
+            start = parse_time(str(event.get("start_time") or ""))
+            end = parse_time(str(event.get("end_time") or ""))
+        except (TypeError, ValueError):
+            continue
+        if end > start:
+            spans.append((start, end))
+    if not spans:
+        return 0.0
+    spans.sort()
+    covered = 0.0
+    cur_start, cur_end = spans[0]
+    for start, end in spans[1:]:
+        if start > cur_end:
+            covered += cur_end - cur_start
+            cur_start, cur_end = start, end
+        else:
+            cur_end = max(cur_end, end)
+    covered += cur_end - cur_start
+    return covered
+
+
+def trajectory_takeover_ok(
+    events: List[Dict[str, Any]],
+    roi_entry: Dict[str, Any],
+    fps: float,
+    *,
+    min_coverage: float = TRAJECTORY_MIN_EVENT_COVERAGE,
+) -> tuple:
+    """判定轨迹接管是否足够完整,返回 (ok, 覆盖率)。
+
+    覆盖率 = 事件去重时间总长 / ROI 时长。轨迹管线是单链设计,平面跟踪
+    只在对比度足够的段落锁定——固定歌词带常只在头一两行锁住(实测
+    「一周的朋友」OP 顶部繁中带 ok 率 14.8%,事件仅覆盖前 13.7s),低覆盖
+    时静态路径(逐采样帧 OCR + 边界精修)的时间轴远比轨迹残段完整;而
+    轨迹的真正目标——跟随画面运动的文字(滚动屏/移动物体上的字)——事件
+    覆盖接近文字全程可见期,不受门限影响。
+    """
+    roi_start = roi_entry.get("start_frame")
+    roi_end = roi_entry.get("end_frame")
+    try:
+        span_sec = (int(roi_end) - int(roi_start) + 1) / float(fps)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return True, 1.0
+    if span_sec <= 0:
+        return True, 1.0
+    coverage = trajectory_event_coverage_sec(events, fps) / span_sec
+    return coverage >= min_coverage, coverage
 
 
 class PipelineWorker(QThread):
@@ -333,8 +401,19 @@ class PipelineWorker(QThread):
                         roi.get("motion_auto_brightness", False)),
                     "occlusion_clip": bool(
                         roi.get("motion_occlusion_clip", False)),
+                    "ocr_lang": str(roi.get("ocr_lang") or ""),
                 })
         return specs
+
+    def _roi_by_id(self, roi_id: str) -> Dict[str, Any]:
+        """roi_id("roi_N") → ROI 条目;形状不合法时返回空 dict(门限判定按
+        全通过处理,不误杀轨迹结果)。"""
+        try:
+            idx = int(str(roi_id).rsplit("_", 1)[1])
+            roi = (self.roi_data or [])[idx]
+            return roi if isinstance(roi, dict) else {}
+        except (IndexError, ValueError, TypeError):
+            return {}
 
     def _run_motion_stage(self) -> tuple:
         """移动文字轨迹阶段(pose 勾选 + 四点多边形 ROI;或自动检测命中)。
@@ -343,7 +422,9 @@ class PipelineWorker(QThread):
         引擎实例,不占用主流水线进程级单例),返回 ``(events, roi_ids)``:
         events 合并进最终 .ass,roi_ids(轨迹接管成功的 ROI)在生成器里
         抑制对应静态事件,避免同区域双份文本。单个 ROI 失败仅告警并回退
-        该 ROI 的静态 pose 路径,不中断任务链。
+        该 ROI 的静态 pose 路径,不中断任务链;轨迹事件覆盖 ROI 时间范围
+        不足(:data:`TRAJECTORY_MIN_EVENT_COVERAGE`)同样整体回退——固定
+        文字带的单链跟踪常只锁住头几行,残段远不如静态路径完整。
         """
         specs = collect_motion_roi_specs(self.roi_data)
         if not specs and self.motion_auto_detect:
@@ -351,6 +432,7 @@ class PipelineWorker(QThread):
         if not specs:
             return [], set()
         from scripts.motion_ass import (
+            MotionTrajectoryUnavailable,
             build_motion_events,
             normalize_quad_winding,
             validate_quad,
@@ -370,6 +452,10 @@ class PipelineWorker(QThread):
             roi_id = spec["roi_id"]
             try:
                 quad = validate_quad(normalize_quad_winding(spec["quad"]))
+                engine_options = dict(self.engine_options)
+                if spec.get("ocr_lang"):
+                    # 每 ROI 识别语言覆盖:轨迹管线的独立引擎按该语言初始化。
+                    engine_options["lang"] = str(spec["ocr_lang"])
                 events, summary = build_motion_events(
                     self.video_path, quad,
                     start_frame=spec["start_frame"],
@@ -378,8 +464,22 @@ class PipelineWorker(QThread):
                     auto_brightness=spec["auto_brightness"],
                     occlusion_clip=bool(spec.get("occlusion_clip", False)),
                     ocr_engine=engine_id,
+                    engine_options=engine_options,
                     log=logger.info,
                 )
+                ok, coverage = trajectory_takeover_ok(
+                    events, self._roi_by_id(roi_id), self.fps)
+                if not ok:
+                    # 覆盖门限:轨迹只锁住了 ROI 的一小段(固定文字带跟踪
+                    # 常见),残段远不如静态路径完整——该 ROI 整体回退静态
+                    # 路径,不留「轨迹覆盖前 15% + 静态覆盖全程」的残缺输出。
+                    logger.warning(
+                        QCoreApplication.translate(
+                            "pipeline_worker",
+                            "Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.",
+                        ).format(roi_id, coverage * 100.0),
+                    )
+                    continue
                 events_all.extend(events)
                 taken_over.add(roi_id)
                 logger.info(
@@ -391,6 +491,16 @@ class PipelineWorker(QThread):
                         summary["total_frames"], summary["keyframes"],
                         summary["policy"],
                     )
+                )
+            except MotionTrajectoryUnavailable as exc:
+                # 预期降级(无 ok 帧/关键帧池无文字行等):回退该 ROI 的静态
+                # pose 是设计内路径,一行告警即可,不挂完整 traceback——
+                # 崩溃栈只留给真正的 bug(下方通用 except)。
+                logger.warning(
+                    QCoreApplication.translate(
+                        "pipeline_worker",
+                        "Motion trajectory for {0} failed ({1}); falling back to static pose tags.",
+                    ).format(roi_id, exc),
                 )
             except Exception as exc:
                 logger.warning(

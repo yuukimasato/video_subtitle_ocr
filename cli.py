@@ -32,7 +32,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "2.7.2"
+__version__ = "2.7.3"
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
@@ -496,7 +496,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # contract as the GUI worker.
         motion_events_all: list = []
         motion_roi_ids: set = set()
-        from core.pipeline_worker import collect_motion_roi_specs
+        from core.pipeline_worker import (
+            collect_motion_roi_specs,
+            trajectory_takeover_ok,
+        )
         roi_motion_specs = collect_motion_roi_specs(roi_entries)
         if (args.motion_quad or args.motion_quad_file or roi_motion_specs
                 or args.motion_auto):
@@ -527,7 +530,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             def _run_motion_quad(quad, start_sec, end_sec, label,
                                  auto_brightness, occlusion_clip=None,
                                  start_frame=None, end_frame=None,
-                                 scene_text_policy=None):
+                                 scene_text_policy=None,
+                                 engine_options=None):
                 nonlocal motion_events_all
                 quad = validate_quad(normalize_quad_winding(quad))
                 if start_frame is None:
@@ -551,6 +555,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         args.brightness_per_line if auto_brightness else None),
                     occlusion_clip=occlusion_clip,
                     ocr_engine=engine_id,
+                    engine_options=engine_options,
                     log=lambda m: _info(f"      {m}", args.quiet),
                 )
                 motion_events_all.extend(events)
@@ -575,6 +580,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
             for spec in roi_motion_specs:
                 try:
+                    prev_count = len(motion_events_all)
+                    spec_engine_options = (
+                        {"lang": str(spec["ocr_lang"])}
+                        if spec.get("ocr_lang") else None)
                     _run_motion_quad(
                         spec["quad"],
                         None,
@@ -588,7 +597,28 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         start_frame=spec["start_frame"],
                         end_frame=spec["end_frame"],
                         scene_text_policy=spec.get("scene_text_policy"),
+                        engine_options=spec_engine_options,
                     )
+                    # 覆盖门限(与 GUI 主流水线同契约):轨迹事件只覆盖 ROI
+                    # 的一小段时(固定文字带跟踪常只在头几行锁定),残段远
+                    # 不如静态路径完整——丢弃轨迹事件、不接管该 ROI。
+                    spec_events = motion_events_all[prev_count:]
+                    try:
+                        roi_index = int(str(spec["roi_id"]).rsplit("_", 1)[1])
+                        roi_entry = roi_entries[roi_index]
+                    except (IndexError, ValueError):
+                        roi_entry = {}
+                    takeover_ok, coverage = trajectory_takeover_ok(
+                        spec_events, roi_entry, info["fps"])
+                    if not takeover_ok:
+                        del motion_events_all[prev_count:]
+                        _info(
+                            f"Warning: motion ROI {spec['roi_id']} covers only "
+                            f"{coverage * 100:.0f}% of the ROI time range; "
+                            "falling back to its static events.",
+                            args.quiet,
+                        )
+                        continue
                     motion_roi_ids.add(str(spec["roi_id"]))
                 except Exception as exc:
                     _info(

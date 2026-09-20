@@ -550,7 +550,6 @@ class OcrOptimizer:
         """
         try:
             self._ensure_engine_selected()
-            engine = ocr_engine_manager.get_engine()
 
             results_by_pos: Dict[int, Tuple] = {}
             pending = []  # (position, frame_data, image) needing prediction
@@ -567,56 +566,69 @@ class OcrOptimizer:
             if not pending and not results_by_pos:
                 return None
 
-            batch_normalizer = getattr(engine, "normalize_batch_result", None)
+            # 每 ROI 语言的覆盖在批量路径同样生效:按语言分组,各组用自己的
+            # 引擎跑原生 predict_batch(同一采样序列几乎总是同一个 ROI,实际
+            # 只有一组;分组只为了跨语言混采时不错用识别模型)。
+            pending_by_lang: Dict[str, List[Tuple]] = {}
+            for pos, frame_data, img in pending:
+                pending_by_lang.setdefault(
+                    ocr_engine_manager.roi_ocr_lang(frame_data[0]), []
+                ).append((pos, frame_data, img))
 
-            def predict_chunk(chunk: List[Tuple]) -> None:
-                """One native predict_batch call for ``chunk`` of pending items."""
-                raw_list = engine.predict_batch([img for _, _, img in chunk])
-                if not isinstance(raw_list, list) or len(raw_list) != len(chunk):
-                    raise ValueError(
-                        "predict_batch returned {} results for {} images".format(
-                            len(raw_list) if isinstance(raw_list, list) else type(raw_list).__name__,
-                            len(chunk)
-                        )
-                    )
-                # Prefer the engine's own batch normalizer (shape-specific, e.g.
-                # RapidOCR's flat triples vs PaddleOCR's per-image dicts); fall
-                # back to the PaddleOCR-style [item] wrap for minimal fake engines.
-                normalized_items = (
-                    list(batch_normalizer(raw_list))
-                    if callable(batch_normalizer)
-                    else [engine.normalize_result([raw_item]) for raw_item in raw_list]
-                )
-                if len(normalized_items) != len(chunk):
-                    # 静默截断会让返回列表与 sample_frames 错位（锚定帧语义
-                    # 被破坏），宁可走逐帧回退也不输出错位结果。
-                    raise ValueError(
-                        "normalize_batch_result returned {} items for {} images".format(
-                            len(normalized_items), len(chunk)
-                        )
-                    )
-                for (pos, frame_data, _), ocr_data in zip(chunk, normalized_items):
-                    # Same tuple shape and time handling as _run_single_ocr.
-                    frame_time_sec = float(frame_data[4]) if len(frame_data) >= 5 and frame_data[4] is not None else 0.0
-                    result = (
-                        frame_data[0],
-                        ocr_data,
-                        frame_data[2],
-                        frame_data[3],
-                        frame_time_sec
-                    )
-                    results_by_pos[pos] = result
-                    self._cache_put(
-                        self._ocr_result_cache,
-                        (frame_data[3], frame_data[2]),
-                        result,
-                        self.image_cache_max_entries,
-                    )
+            def _predict_group(lang: str, group: List[Tuple]) -> None:
+                engine = ocr_engine_manager.get_engine_for_lang(lang)
+                batch_normalizer = getattr(engine, "normalize_batch_result", None)
 
-            if pending:
+                def predict_chunk(chunk: List[Tuple]) -> None:
+                    """One native predict_batch call for ``chunk`` of pending items."""
+                    raw_list = engine.predict_batch([img for _, _, img in chunk])
+                    if not isinstance(raw_list, list) or len(raw_list) != len(chunk):
+                        raise ValueError(
+                            "predict_batch returned {} results for {} images".format(
+                                len(raw_list) if isinstance(raw_list, list) else type(raw_list).__name__,
+                                len(chunk)
+                            )
+                        )
+                    # Prefer the engine's own batch normalizer (shape-specific, e.g.
+                    # RapidOCR's flat triples vs PaddleOCR's per-image dicts); fall
+                    # back to the PaddleOCR-style [item] wrap for minimal fake engines.
+                    normalized_items = (
+                        list(batch_normalizer(raw_list))
+                        if callable(batch_normalizer)
+                        else [engine.normalize_result([raw_item]) for raw_item in raw_list]
+                    )
+                    if len(normalized_items) != len(chunk):
+                        # 静默截断会让返回列表与 sample_frames 错位（锚定帧语义
+                        # 被破坏），宁可走逐帧回退也不输出错位结果。
+                        raise ValueError(
+                            "normalize_batch_result returned {} items for {} images".format(
+                                len(normalized_items), len(chunk)
+                            )
+                        )
+                    for (pos, frame_data, _), ocr_data in zip(chunk, normalized_items):
+                        # Same tuple shape and time handling as _run_single_ocr.
+                        frame_time_sec = float(frame_data[4]) if len(frame_data) >= 5 and frame_data[4] is not None else 0.0
+                        result = (
+                            frame_data[0],
+                            ocr_data,
+                            frame_data[2],
+                            frame_data[3],
+                            frame_time_sec
+                        )
+                        results_by_pos[pos] = result
+                        self._cache_put(
+                            self._ocr_result_cache,
+                            (frame_data[3], frame_data[2]),
+                            result,
+                            self.image_cache_max_entries,
+                        )
+
                 chunk_size = self._predict_batch_chunk_size()
-                for start in range(0, len(pending), chunk_size):
-                    predict_chunk(pending[start:start + chunk_size])
+                for start in range(0, len(group), chunk_size):
+                    predict_chunk(group[start:start + chunk_size])
+
+            for lang, group in pending_by_lang.items():
+                _predict_group(lang, group)
             if not results_by_pos:
                 return None
             if len(results_by_pos) != len(sample_frames):

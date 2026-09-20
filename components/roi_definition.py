@@ -37,6 +37,9 @@ class RoiDefinitionWidget(QGroupBox):
     motion_brightness_toggled = Signal(bool)
     motion_occlusion_toggled = Signal(bool)
     scene_policy_changed = Signal(str)
+    # 每 ROI 识别语言切换(与 scene_policy 同契约):切换后立即写回当前
+    # 选中的 ROI;空串表示「自动(跟随全局)」。
+    roi_lang_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(QCoreApplication.translate("RoiDefinitionWidget", "ROI 定义"), parent)
@@ -216,6 +219,42 @@ class RoiDefinitionWidget(QGroupBox):
             self.scene_text_policy_combo,
         )
 
+        # 每 ROI 识别语言(与控制面板全局语言同一份取值):空串 = 自动,
+        # 跟随全局「识别语言」。双语字幕(如繁中+日语两行各一个 ROI)时,
+        # 全局选日语会导致中文行识别不全——把繁中 ROI 单独设为中文繁體
+        # 即可各用各的识别模型。随 ROI json(ocr_lang 键)持久化。
+        self.roi_lang_combo = QComboBox()
+        for text, data in (
+            (QCoreApplication.translate("RoiDefinitionWidget", "自动（跟随全局）"), ""),
+            (QCoreApplication.translate("RoiDefinitionWidget", "中文简体"), "ch"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "中文繁體"), "chinese_cht"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "English"), "en"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "日本語"), "japan"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "한국어"), "korean"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Русский"), "russian"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Français"), "french"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Deutsch"), "german"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Italiano"), "it"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Español"), "es"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "Português"), "pt"),
+            (QCoreApplication.translate("RoiDefinitionWidget", "العربية"), "arabic"),
+        ):
+            self.roi_lang_combo.addItem(text, data)
+        self.roi_lang_combo.setToolTip(
+            QCoreApplication.translate(
+                "RoiDefinitionWidget",
+                "该 ROI 单独使用的 OCR 识别语言；默认「自动」跟随控制面板的全局「识别语言」。"
+                "双语字幕请给每种语言各画一个 ROI 并分别指定语言（如繁中行设「中文繁體」、"
+                "日语行设「日本語」），各 ROI 用各自的识别模型，避免单一模型漏认另一种文字。"
+                "注意：每个不同语言会多加载一份识别模型，内存占用相应增加；"
+                "RapidOCR 引擎不区分语言，此设置仅对 PaddleOCR 生效。",
+            )
+        )
+        roi_layout.addRow(
+            QCoreApplication.translate("RoiDefinitionWidget", "识别语言："),
+            self.roi_lang_combo,
+        )
+
         # Color-restrict details live in their own container so the form row
         # collapses (hidden) until the checkbox is ticked — keeps the panel short.
         self._color_details_widget = QWidget()
@@ -295,6 +334,9 @@ class RoiDefinitionWidget(QGroupBox):
         self.scene_text_policy_combo.currentIndexChanged.connect(
             lambda _idx: self.scene_policy_changed.emit(
                 self.scene_text_policy_combo.currentData() or "overlap"))
+        self.roi_lang_combo.currentIndexChanged.connect(
+            lambda _idx: self.roi_lang_changed.emit(
+                self.roi_lang_combo.currentData() or ""))
 
         self.color_restrict_checkbox.toggled.connect(self._on_color_restrict_toggled)
         self.text_color_btn.clicked.connect(self._pick_text_color)
@@ -378,6 +420,7 @@ class RoiDefinitionWidget(QGroupBox):
         self.motion_occlusion_checkbox.setEnabled(
             enabled and self.pose_tags_checkbox.isChecked())
         self.scene_text_policy_combo.setEnabled(enabled)
+        self.roi_lang_combo.setEnabled(enabled)
 
     def get_color_restrict_dict(self) -> Optional[Dict]:
         if not self.color_restrict_checkbox.isChecked():
@@ -403,6 +446,8 @@ class RoiDefinitionWidget(QGroupBox):
             self.motion_occlusion_checkbox.setChecked(False)
             # 新 ROI 复位:场景文字显示策略回到默认「叠加」。
             self.scene_text_policy_combo.setCurrentIndex(0)
+            # 新 ROI 复位:识别语言回到默认「自动(跟随全局)」。
+            self.roi_lang_combo.setCurrentIndex(0)
             self._text_bgr = [255, 255, 255]
             self._outline_bgr = [0, 0, 0]
             self._shadow_bgr = [0, 0, 0]
@@ -432,6 +477,9 @@ class RoiDefinitionWidget(QGroupBox):
             str(roi.get("scene_text_policy") or "overlap"))
         self.scene_text_policy_combo.setCurrentIndex(
             policy_idx if policy_idx >= 0 else 0)
+        # 回填识别语言(旧配置缺省/未知值 → 自动,跟随全局)。
+        lang_idx = self.roi_lang_combo.findData(str(roi.get("ocr_lang") or ""))
+        self.roi_lang_combo.setCurrentIndex(lang_idx if lang_idx >= 0 else 0)
         if not isinstance(spec, dict) or not spec.get("enabled"):
             self.color_restrict_checkbox.setChecked(False)
             tb = spec.get("text_bgr") if isinstance(spec, dict) else None

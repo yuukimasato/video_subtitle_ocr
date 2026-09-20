@@ -366,6 +366,8 @@ class _ThreadResources:
         self.fps = fps
         self.min_score = min_score
         self.cancel_check = cancel_check
+        self.engine_id = engine_id
+        self.engine_options = dict(engine_options or {})
         self.cap = cv2.VideoCapture(video_path)
         try:
             if not self.cap.isOpened():
@@ -376,6 +378,36 @@ class _ThreadResources:
         except Exception:
             self.cap.release()
             raise
+        # 每 ROI 语言覆盖(roi["ocr_lang"]):按语言懒建并缓存独立引擎。
+        # 双语字幕的边界精修与主路径一样按 ROI 语言走各自的识别模型;
+        # 单语言 ROI 永远只命中默认引擎,不多加载任何模型。
+        self._ocr_by_lang: Dict[str, StandaloneOCR] = {}
+
+    def ocr_for_lang(self, roi_entry: Optional[Dict]) -> StandaloneOCR:
+        """StandaloneOCR for this ROI's language override (default engine otherwise)."""
+        try:
+            lang = str((roi_entry or {}).get("ocr_lang") or "").strip()
+        except Exception:
+            lang = ""
+        if not lang:
+            return self.ocr
+        cached = self._ocr_by_lang.get(lang)
+        if cached is not None:
+            return cached
+        engine_cls = (
+            ocr_engine_manager.OCREngineRegistry.get(self.engine_id)
+            if self.engine_id and self.engine_id != "auto" else None)
+        if engine_cls is not None and not getattr(
+                engine_cls, "supports_lang_override", False):
+            # 引擎不区分语言(单一多语言模型):独立实例只会重复加载同样的
+            # 模型,直接复用默认引擎。
+            self._ocr_by_lang[lang] = self.ocr
+            return self.ocr
+        options = dict(self.engine_options)
+        options["lang"] = lang
+        ocr = StandaloneOCR(self.engine_id, options)
+        self._ocr_by_lang[lang] = ocr
+        return ocr
 
     def _ocr_at(self, roi_entry: Dict, roi_id: str, frame_num: int, upscale: bool) -> Optional[tuple]:
         if self.cancel_check():
@@ -389,7 +421,8 @@ class _ThreadResources:
             h, w = crop.shape[:2]
             if w > 0 and h > 0 and max(w * 2, h * 2) <= 8192:
                 crop = cv2.resize(crop, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
-        return self.ocr.run((roi_entry, crop, int(frame_num), roi_id, float(time_sec)))
+        return self.ocr_for_lang(roi_entry).run(
+            (roi_entry, crop, int(frame_num), roi_id, float(time_sec)))
 
     def ocr_frame_func(self, roi_entry: Dict, roi_id: str, frame_num: int) -> Optional[tuple]:
         return self._ocr_at(roi_entry, roi_id, frame_num, upscale=False)
@@ -408,6 +441,10 @@ class _ThreadResources:
         except Exception:
             pass
         self.ocr.cleanup()
+        for ocr in self._ocr_by_lang.values():
+            if ocr is self.ocr:
+                continue
+            ocr.cleanup()
 
 
 def refine_boundaries_parallel(
@@ -475,7 +512,8 @@ def refine_boundaries_parallel(
                 return
             frame_datas = [(roi_entry, ct[0], f, roi_id, float(ct[1]))
                            for f, ct in valid]
-            for f, r in zip([f for f, _ in valid], res.ocr.run_batch(frame_datas)):
+            for f, r in zip([f for f, _ in valid],
+                            res.ocr_for_lang(roi_entry).run_batch(frame_datas)):
                 _ground_set(job_store, roi_id, r, min_score)
 
         def item_at(roi_id: str, frame_num: int) -> Optional[tuple]:

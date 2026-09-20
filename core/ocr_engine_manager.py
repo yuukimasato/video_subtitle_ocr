@@ -26,6 +26,32 @@ _current_engine_id: Optional[str] = None
 # Engine initialization options saved by set_engine() and applied (as kwargs)
 # in get_engine() when the engine instance is lazily initialized.
 _engine_options: Dict[str, Any] = {}
+# Per-language engine instances for the per-ROI language override
+# (roi["ocr_lang"]). Key: (engine_id, sorted options items with lang
+# overridden). Bilingual subtitles need two recognition models loaded side by
+# side; switching the singleton per frame would thrash model loads instead.
+_lang_engines: Dict[Any, BaseOCREngine] = {}
+
+
+def _cleanup_lang_engines() -> None:
+    """Drop and clean up every cached per-language engine (lock held)."""
+    global _lang_engines
+    for engine in _lang_engines.values():
+        try:
+            engine.cleanup()
+        except Exception as e:
+            logger.warning(f"Error cleaning up per-language OCR engine: {e}")
+    _lang_engines = {}
+
+
+def roi_ocr_lang(roi_entry: Any) -> str:
+    """Read the per-ROI language override from an ROI dict ('' = follow global)."""
+    if not isinstance(roi_entry, dict):
+        return ""
+    try:
+        return str(roi_entry.get("ocr_lang") or "").strip()
+    except Exception:
+        return ""
 
 
 def _engine_is_ready(engine: BaseOCREngine) -> bool:
@@ -68,6 +94,9 @@ def set_engine(engine_id: str, options: Optional[Dict[str, Any]] = None) -> None
             except Exception as e:
                 logger.warning(f"Error cleaning up OCR engine: {e}")
             _engine_instance = None
+        # Per-language engines were built for the previous engine/options;
+        # they no longer match and would silently keep stale models alive.
+        _cleanup_lang_engines()
         _current_engine_id = engine_id
         _engine_options = new_options
         logger.info(f"OCR engine switched to: {engine_id} (options={_engine_options})")
@@ -129,6 +158,65 @@ def get_engine() -> BaseOCREngine:
         return _engine_instance
 
 
+def get_engine_for_lang(lang: Optional[str]) -> BaseOCREngine:
+    """Get an engine instance for ``lang`` (per-ROI language override).
+
+    Empty/None ``lang`` (or the language already selected via set_engine)
+    returns the normal process singleton — the default "auto (follow global)"
+    path adds no extra model loads. Any other language builds (once) and
+    caches a dedicated engine whose initialize() receives the global options
+    with ``lang`` overridden, so bilingual runs keep both recognition models
+    resident instead of reloading per frame.
+
+    Thread-safe with the same lock as get_engine(); cached instances are
+    dropped when set_engine() switches engine or options.
+    """
+    lang = str(lang or "").strip()
+    # Whether the request can share the singleton; decided under the lock but
+    # get_engine() itself must be called OUTSIDE it (it takes the same
+    # non-reentrant lock when the singleton needs lazy initialization).
+    share_singleton = True
+    with _engine_lock:
+        engine_id = _current_engine_id or OCREngineRegistry.get_default()
+        if lang and lang != str(_engine_options.get("lang") or "ch"):
+            engine_cls = OCREngineRegistry.get(engine_id) if engine_id else None
+            if engine_cls is None:
+                raise RuntimeError(
+                    f"OCR engine '{engine_id}' is not registered or not available. "
+                    f"Available engines: {[e.engine_id for e in OCREngineRegistry.list_available()]}"
+                )
+            if getattr(engine_cls, "supports_lang_override", False):
+                if not engine_id:
+                    raise RuntimeError(
+                        "No OCR engine available. Please install at least one OCR engine "
+                        "(e.g., PaddleOCR: pip install paddleocr)."
+                    )
+                share_singleton = False
+                options = dict(_engine_options)
+                options["lang"] = lang
+                key = (engine_id, tuple(sorted(options.items())))
+                cached = _lang_engines.get(key)
+                if cached is not None and _engine_is_ready(cached):
+                    return cached
+                engine = engine_cls()
+                try:
+                    engine.initialize(**options)
+                except Exception:
+                    try:
+                        engine.cleanup()
+                    except Exception:
+                        pass
+                    raise
+                _lang_engines[key] = engine
+                logger.info(f"Initialized per-language OCR engine for lang={lang} ({engine_id}).")
+                return engine
+    if share_singleton:
+        # Empty lang, or the engine ignores initialize(lang=...) (single
+        # multilingual model — a dedicated instance would load identical
+        # models for nothing), or the language is the singleton's own.
+        return get_engine()
+
+
 def get_current_engine_id() -> str:
     """Get the currently selected engine ID (may not be initialized yet)."""
     return _current_engine_id or OCREngineRegistry.get_default()
@@ -188,7 +276,7 @@ def run_batch_ocr(
     Yields:
         (roi_entry, ocr_data_dict, frame_num, roi_identifier, frame_time_sec)
     """
-    engine = get_engine()
+    engine = None
 
     ocr_output_dir = None
     if save_json:
@@ -207,9 +295,21 @@ def run_batch_ocr(
         except (TypeError, ValueError):
             frame_time_sec = 0.0
 
+        # Per-ROI language override: a roi dict carrying "ocr_lang" routes to
+        # that language's engine (cached; "" follows the global selection).
+        # The singleton itself is resolved lazily so a run whose ROIs all
+        # carry explicit languages doesn't load an unused global model.
+        roi_lang = roi_ocr_lang(roi_entry_orig)
+        if roi_lang:
+            frame_engine = get_engine_for_lang(roi_lang)
+        else:
+            if engine is None:
+                engine = get_engine()
+            frame_engine = engine
+
         # Run OCR through the current engine
-        raw_result = engine.predict(img_input)
-        ocr_data_dict = engine.normalize_result(raw_result)
+        raw_result = frame_engine.predict(img_input)
+        ocr_data_dict = frame_engine.normalize_result(raw_result)
 
         # Optionally save JSON
         if ocr_output_dir:

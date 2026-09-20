@@ -148,6 +148,12 @@ def reset_engine_manager_state():
         mgr._engine_instance = None
         mgr._current_engine_id = None
         mgr._engine_options = {}
+        for engine in getattr(mgr, "_lang_engines", {}).values():
+            try:
+                engine.cleanup()
+            except Exception:
+                pass
+        mgr._lang_engines = {}
 
     _reset()
     yield

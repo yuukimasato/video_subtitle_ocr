@@ -77,6 +77,19 @@ if PROJECT_ROOT not in sys.path:
 
 OcrFn = Callable[[Any], Dict[str, Any]]
 
+
+class MotionTrajectoryUnavailable(RuntimeError):
+    """轨迹管线对该 ROI 不可用(预期降级,应回退静态 pose 路径)。
+
+    覆盖场景:平面跟踪无 ok 帧、关键帧池取不到文字行、锚定帧无可用行框
+    几何等——共同特征是「该 ROI 出不了轨迹字幕」而非「流水线出错」,
+    调用方(pipeline_worker / cli / run_pipeline 重锚定趟)的正确反应都是
+    留一行告警后回退静态策略。继承 RuntimeError 保持既有
+    ``except RuntimeError`` / ``pytest.raises(RuntimeError)`` 兼容;与普通
+    RuntimeError 的区别在于调用方无需为它打印完整 traceback(bug 才需要)。
+    """
+
+
 # 关键帧候选池下限:按清晰度降序分批 OCR,最清晰批无文字行时换下一批
 # (空白引导段的最清晰帧先于文字出现,见 select_keyframes 调用处注释)。
 _KEYFRAME_POOL = 12
@@ -609,11 +622,15 @@ def dedupe_rows(
     return kept, removed
 
 
-def _default_ocr_fn(engine_id: Optional[str]) -> Tuple[OcrFn, Any]:
+def _default_ocr_fn(engine_id: Optional[str],
+                    engine_options: Optional[Dict[str, Any]] = None) -> Tuple[OcrFn, Any]:
     """用引擎管理器构造独立引擎实例(不占用进程级单例),返回 (ocr_fn, engine)。
 
     图像 → 统一 OCR dict(rec_texts/rec_scores/rec_boxes/rec_polys/dt_polys),
     与 ``ocr_engine_manager.run_batch_ocr`` 的取数方式一致。
+
+    ``engine_options``(如每 ROI 识别语言的 {"lang": ...})原样传给引擎
+    initialize;不传时与旧签名行为一致。
 
     指定的引擎依赖缺失时(如安装版未带 rapidocr)不直接失败:告警后回退到
     注册表默认可用引擎,保持任务链可用;完全无可用引擎才抛错退出。
@@ -633,7 +650,7 @@ def _default_ocr_fn(engine_id: Optional[str]) -> Tuple[OcrFn, Any]:
                     file=sys.stderr,
                 )
                 resolved = fallback
-    engine = build_standalone_engine(resolved)
+    engine = build_standalone_engine(resolved, engine_options)
 
     def _predict(img):
         return engine.normalize_result(engine.predict(img))
@@ -652,16 +669,19 @@ class _LazyOcrFn:
     故这里只在**被调用**时构造,并把引擎的生命周期交回调用方。
     """
 
-    __slots__ = ("_engine_id", "_fn", "_engine")
+    __slots__ = ("_engine_id", "_engine_options", "_fn", "_engine")
 
-    def __init__(self, engine_id: Optional[str]) -> None:
+    def __init__(self, engine_id: Optional[str],
+                 engine_options: Optional[Dict[str, Any]] = None) -> None:
         self._engine_id = engine_id
+        self._engine_options = engine_options
         self._fn: Optional[OcrFn] = None
         self._engine: Any = None
 
     def __call__(self, image: Any) -> Dict[str, Any]:
         if self._fn is None:
-            self._fn, self._engine = _default_ocr_fn(self._engine_id)
+            self._fn, self._engine = _default_ocr_fn(self._engine_id,
+                                                     self._engine_options)
         return self._fn(image)
 
     def release(self) -> None:
@@ -1070,6 +1090,7 @@ def build_motion_events(
     brightness_per_line: Optional[bool] = None,
     occlusion_clip: Optional[bool] = None,
     scene_text_policy: str = "overlap",
+    engine_options: Optional[Dict[str, Any]] = None,
     ocr_fn: Optional[OcrFn] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> Tuple[List[Dict[str, str]], Dict[str, Any]]:
@@ -1081,7 +1102,8 @@ def build_motion_events(
     :func:`normalize_quad_winding` 纠正。
 
     ``ocr_fn``(图像 → 统一 OCR dict)可注入;缺省用 ``ocr_engine`` 指定的
-    引擎(未指定时取注册表默认)构造独立实例并在结束时清理。行融合后按
+    引擎(未指定时取注册表默认)构造独立实例并在结束时清理,``engine_options``
+    (如每 ROI 识别语言的 ``{"lang": ...}``)原样传给该实例的 initialize。行融合后按
     ``cfg.junk_line_filter``(默认开)用 :func:`core.text_utils.is_noise_text`
     剔除噪声行(纯符号/纯数字/单字非标点——手机状态栏与导航栏图标的
     典型误读),被剔除的行经 ``log`` 留痕。
@@ -1143,7 +1165,7 @@ def build_motion_events(
         video_path, quad, start_frame=start_frame, end_frame=end_frame)
     ok_tracks = [t for t in tracks if t.status == "ok"]
     if not ok_tracks:
-        raise RuntimeError(
+        raise MotionTrajectoryUnavailable(
             "plane tracking produced no ok frames; cannot build motion subtitles")
     log(f"      {len(ok_tracks)}/{len(tracks)} frames ok")
     # 轨迹诊断(纯报告,不参与任何下游决策):ok 占比、ok 链(连续可跟踪
@@ -1196,7 +1218,7 @@ def build_motion_events(
         min_gap_sec=max(0.0, float(min_gap_sec)), plane_size=plane_size,
         ensure_coverage=True, diagnostics=coverage_diag)
     if not keyframe_pool:  # 防御:有 ok 帧则必非空
-        raise RuntimeError("no keyframes selected from tracking result")
+        raise MotionTrajectoryUnavailable("no keyframes selected from tracking result")
     log(f"[2/5] keyframe pool (sharpest first): {keyframe_pool}")
     for line in _describe_keyframe_pool(keyframe_pool, coverage_diag):
         log(f"      {line}")
@@ -1208,7 +1230,7 @@ def build_motion_events(
 
     owned_engine = None
     if ocr_fn is None:
-        ocr_fn, owned_engine = _default_ocr_fn(ocr_engine)
+        ocr_fn, owned_engine = _default_ocr_fn(ocr_engine, engine_options)
     by_frame = {t.frame_num: t for t in ok_tracks}
     frames: Dict[int, Any] = {}
 
@@ -1264,7 +1286,7 @@ def build_motion_events(
                 + (f"noise-only ({texts})" if texts else "no text")
                 + "; trying next batch")
         if not sample_results:
-            raise RuntimeError(
+            raise MotionTrajectoryUnavailable(
                 f"no text lines recognized on any of {len(keyframe_pool)} "
                 "candidate keyframes")
     finally:
@@ -1281,7 +1303,7 @@ def build_motion_events(
 
     anchor_aabbs = _line_aabbs(sample_results[0][1])
     if anchor_aabbs is None:
-        raise RuntimeError(
+        raise MotionTrajectoryUnavailable(
             "anchor keyframe OCR result has no usable line geometry (dt_polys)")
 
     # 4. 按位置投票融合(锚定 = 最清晰关键帧;阶段一不接 VLM,宽松阈值)
@@ -1320,7 +1342,7 @@ def build_motion_events(
     if n_dup:
         log(f"      dedupe: merged {n_dup} near-duplicate line(s)")
     if not rows:
-        raise RuntimeError("no text lines recognized on any keyframe")
+        raise MotionTrajectoryUnavailable("no text lines recognized on any keyframe")
     # 窗口像素坐标 + 外接矩形偏移 = 初始帧平面坐标(常量平移,见模块 docstring)
     qx1, qy1 = origin
     line_boxes = [
@@ -1581,6 +1603,7 @@ def run_pipeline(
     brightness_per_line: Optional[bool] = None,
     occlusion_clip: Optional[bool] = None,
     scene_text_policy: str = "overlap",
+    engine_options: Optional[Dict[str, Any]] = None,
     ocr_fn: Optional[OcrFn] = None,
     quiet: bool = False,
 ) -> Dict[str, Any]:
@@ -1626,7 +1649,7 @@ def run_pipeline(
     if ocr_fn is None:
         # 首趟与各重锚定趟共用一个 OCR 可调用对象(引擎只加载一次);引擎仍在
         # 首次 OCR 调用时才构造,前置失败路径的时序与改动前一致。
-        ocr_holder = _LazyOcrFn(ocr_engine)
+        ocr_holder = _LazyOcrFn(ocr_engine, engine_options)
         ocr_fn = ocr_holder
     try:
         events, summary = build_motion_events(

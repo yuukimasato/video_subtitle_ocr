@@ -1940,7 +1940,7 @@ class TestLazyOcrFn:
             def cleanup(self):
                 self.cleaned += 1
 
-        def fake_default(engine_id=None):
+        def fake_default(engine_id=None, engine_options=None):
             engine = _Engine()
             built.append(engine)
             return (lambda _img: {"engine": engine_id, "loads": len(built)}), engine
@@ -1961,7 +1961,7 @@ class TestLazyOcrFn:
     def test_release_without_use_is_noop(self, monkeypatch):
         monkeypatch.setattr(
             motion_cli, "_default_ocr_fn",
-            lambda engine_id=None: (_ for _ in ()).throw(
+            lambda engine_id=None, engine_options=None: (_ for _ in ()).throw(
                 AssertionError("must not load the engine")))
         motion_cli._LazyOcrFn(None).release()  # 没调用过 → 不构造也不释放
 
