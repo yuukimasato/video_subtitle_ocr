@@ -1,0 +1,11 @@
+# video-subtitle-ocr font_intel optional requirements
+# Optional dependencies for font_intel.fontlib_index (T1.2 local font library
+# indexing). See docs/development_plan_font_translation_compliance.md.
+# font_intel degrades gracefully when these are missing (optional-import mode):
+# only the local font indexing / glyph rendering feature is disabled.
+#   pip install -r requirements-fontintel.txt
+# fontTools: parse name/OS-2 tables (family, vendor, license, weight) of
+# local .ttf/.otf/.ttc/.otc files for metadata indexing.
+fontTools>=4.4
+# Pillow: render reference glyphs for glyph-level font matching/caching.
+Pillow>=10
