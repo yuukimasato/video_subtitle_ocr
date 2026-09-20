@@ -23,16 +23,16 @@
   裁剪校验,空轨迹与全无效行按回退链优雅降级并留痕;
 - 自动回退链 **whitespace → mask → external**(仅当所选模式为三者之一且
   不可用时降级;overlap 不参与回退),降级原因记录在返回的 notes 里;
-- :func:`sample_background_color` —— 块区域剔除墨水像素后的中位色 +
-  通道标准差(mask 可用性判据);:func:`sample_background_stats` 是其加强
-  版:额外给出稳健离散(MAD/IQR 的 σ 等价)、采样像素数与置信度,并以
-  ``background_mode="robust"`` 启用双向墨剔除 + MAD/IQR 判定(默认
-  ``"std"`` 与旧阈值规则完全一致,置信度只作诊断不参与判定);
+- :func:`sample_background_stats` —— 块区域剔除墨水像素后的中位色 +
+  通道标准差(mask 可用性判据),并给出稳健离散(MAD/IQR 的 σ 等价)、
+  采样像素数与置信度;``background_mode="robust"`` 启用双向墨剔除 +
+  MAD/IQR 判定(默认 ``"std"`` 与旧阈值规则完全一致,置信度只作诊断
+  不参与判定);
 - :func:`merge_line_blocks` —— 段落块合并(整段一次盖住,行距缝隙不露字;
   实现迁至 :mod:`core.text_alignment`,此处 re-export 保持 API);
-- :func:`find_whitespace_band` —— 墨迹二值化 + 行占用剖面找空白带;
-  :func:`find_whitespace_band_scored` 额外返回候选带的 confidence 评分
-  (面积/宽高/背景均匀性/可排版长度)与逐项分量,并支持 ``threshold_mode``
+- :func:`find_whitespace_band_scored` —— 墨迹二值化 + 行占用剖面找空白带,
+  额外返回候选带的 confidence 评分(面积/宽高/背景均匀性/可排版长度)
+  与逐项分量,并支持 ``threshold_mode``
   = ``percentile``(行内百分位,适应渐变)/``otsu``(默认 ``global`` 与
   旧行为一致);低置信度带由调用方沿既定回退链降级并在 diagnostics 留痕;
 - 透视遮罩安全边界(Task 5):mask 模式逐帧检查遮罩框四角经单应映射后
@@ -89,10 +89,8 @@ __all__ = [
     "SceneTextPolicyConfig",
     "PolicyResult",
     "BackgroundStats",
-    "sample_background_color",
     "sample_background_stats",
     "merge_line_blocks",
-    "find_whitespace_band",
     "find_whitespace_band_scored",
     "wrap_cjk",
     "fit_font_size",
@@ -107,7 +105,7 @@ POLICY_MODES = ("overlap", "mask", "mask_only", "external", "whitespace")
 # "robust" —— 双向墨剔除 + MAD/IQR σ 等价离散 + 样本数/置信度判定。
 BACKGROUND_MODES = ("std", "robust")
 
-# find_whitespace_band 的 threshold_mode 取值:
+# 空白带(_ink_mask / find_whitespace_band_scored)的 threshold_mode 取值:
 # "global"     —— 旧规则:全图中位灰 − ink 阈值(默认,兼容);
 # "percentile" —— 行内百分位阈值(逐行自适应,适应纵向渐变);
 # "otsu"       —— 全图 Otsu 二值化阈值。
@@ -309,8 +307,7 @@ def _clip_box(box: Sequence[float], width: int, height: int) -> Optional[Tuple[i
 class BackgroundStats:
     """背景取色统计(:func:`sample_background_stats` 的返回值)。
 
-    ``color_bgr`` / ``std_max_channel`` 与 :func:`sample_background_color`
-    的旧二元组语义一致;其余字段为 Task 3 加固新增——``robust_spread_mad``
+    ``color_bgr`` / ``std_max_channel`` 即旧二元组接口 ``(color, std)`` 的语义;其余字段为 Task 3 加固新增——``robust_spread_mad``
     = ``1.4826 × MAD``、``robust_spread_iqr`` = ``IQR / 1.349``(均为逐通道
     最大值的 σ 等价离散),``n_samples`` 为剔除墨水后的采样像素数,
     ``confidence`` ∈ [0, 1] = 均匀度 × 采样充足度,``uniform`` 为当前模式
@@ -346,7 +343,7 @@ def sample_background_stats(
     bg_min_samples: int = 512,
     bg_min_confidence: float = 0.2,
 ) -> BackgroundStats:
-    """块区域背景取色的完整统计(旧 :func:`sample_background_color` 的加强版)。
+    """块区域背景取色的完整统计。
 
     区域内灰度中位值 ``m``;``background_mode="std"``(默认)沿用旧规则:
     灰度 < ``m - ink_drop_delta`` 判墨剔除,剩余像素按通道取中位 → 遮罩色,
@@ -416,25 +413,6 @@ def sample_background_stats(
                            confidence, background_mode, uniform)
 
 
-def sample_background_color(
-    plane_img_bgr: np.ndarray,
-    box: Sequence[float],
-    *,
-    ink_drop_delta: int = _INK_DROP_DELTA,
-) -> Tuple[Tuple[int, int, int], float]:
-    """块区域内剔除墨水像素后的背景色 (B, G, R) 与均匀性(最大通道 std)。
-
-    旧接口的兼容包装(语义与加固前完全一致):区域内灰度中位值 ``m``,
-    灰度 < ``m - ink_drop_delta`` 判为墨水剔除;剩余像素按通道取中位 →
-    遮罩色,同时返回非墨像素的通道标准差(最大通道,> ``bg_max_std`` 视为
-    背景杂色、mask 降级)。剔除后无像素 → 全区域中位色,std=0;空区域 →
-    ``((0, 0, 0), 0.0)``。需要 MAD/IQR、样本数与置信度时改用
-    :func:`sample_background_stats`。
-    """
-    stats = sample_background_stats(plane_img_bgr, box,
-                                    ink_drop_delta=ink_drop_delta)
-    return stats.color_bgr, stats.std_max_channel
-
 
 def _ink_mask(
     gray: np.ndarray,
@@ -482,7 +460,7 @@ def find_whitespace_band_scored(
     threshold_mode: str = "global",
     ws_percentile: float = 25.0,
 ) -> Tuple[Optional[Tuple[int, int, int, int]], float, Dict[str, object]]:
-    """:func:`find_whitespace_band` 的评分版:返回 ``(band, confidence, info)``。
+    """空白带查找(带 confidence 评分):返回 ``(band, confidence, info)``。
 
     候选带选择与旧规则一致(面积最大者);confidence ∈ [0,1] 按「面积占比、
     宽高达标度、背景均匀性、可排版长度」四项等权平均——可排版长度一项需
@@ -567,31 +545,6 @@ def find_whitespace_band_scored(
     })
     return band, confidence, info
 
-
-def find_whitespace_band(
-    plane_img_gray: np.ndarray,
-    occupied_boxes: Sequence[Sequence[float]],
-    *,
-    line_h: float,
-    min_lines: int = 2,
-    min_width_ratio: float = 0.6,
-    threshold_mode: str = "global",
-    ws_percentile: float = 25.0,
-) -> Optional[Tuple[int, int, int, int]]:
-    """在平面展开图上找可放文本的空白带,返回平面坐标 (x1, y1, x2, y2);无则 None。
-
-    墨迹 = :func:`_ink_mask`(默认「全图中位灰 − 40」,与旧行为一致),
-    膨胀(核 ≈ ``line_h``/4)后得行占用剖面;``occupied_boxes`` 所在行同样
-    算占用。候选带 = 连续未占用行段(首块上方/块间空隙/末块下方),高 ≥
-    ``min_lines``×``line_h``、宽 ≥ ``min_width_ratio``×平面宽;取面积最大者。
-    ``threshold_mode``/``ws_percentile`` 见 :func:`_ink_mask`;需要
-    confidence 评分时改用 :func:`find_whitespace_band_scored`。
-    """
-    band, _confidence, _info = find_whitespace_band_scored(
-        plane_img_gray, occupied_boxes, line_h=line_h, min_lines=min_lines,
-        min_width_ratio=min_width_ratio, threshold_mode=threshold_mode,
-        ws_percentile=ws_percentile)
-    return band
 
 
 # 行首禁则字符(不得出现在折行后行首)

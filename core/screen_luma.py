@@ -31,7 +31,6 @@ import numpy as np
 from core.scene_plane_tracker import TrackedQuad
 
 __all__ = [
-    "measure_luma_curve",
     "measure_luma_curve_with_baseline",
     "measure_line_luma_curves",
 ]
@@ -60,7 +59,7 @@ def measure_luma_curve_with_baseline(
     *,
     baseline_percentile: float = 90.0,
 ) -> Tuple[List[Tuple[float, float]], float]:
-    """同 :func:`measure_luma_curve`,另返回基线亮度。
+    """逐 ok 帧测量文字平面区域亮度,返回 ``([(time_sec, ratio)], baseline)``。
 
     基线供调用方把亮度级容差(如 ``brightness_tol``)换算到比值空间
     (``core.motion_ass.simplify_luma_curve`` 的 ``baseline_luma``)。
@@ -111,24 +110,6 @@ def measure_luma_curve_with_baseline(
         curve.append((t, ratio))
     return curve, baseline
 
-
-def measure_luma_curve(
-    video_path: str,
-    tracks: List[TrackedQuad],
-    *,
-    baseline_percentile: float = 90.0,
-) -> List[Tuple[float, float]]:
-    """逐 ok 帧测量文字平面区域亮度,返回 ``[(time_sec, ratio)]``(按帧号升序)。
-
-    - 顺序解码一遍;对每个 ok 帧取 quad 外接矩形(裁到画面内)的灰度中位值;
-    - baseline = 各帧中位值的 ``baseline_percentile`` 分位;
-    - ratio = luma / baseline,截到 (0, 1];baseline <= 0(全黑退化)时全部
-      返回 1.0;
-    - 无 ok 帧返回 [];视频打不开抛 :class:`RuntimeError`(与 tracker 同风格)。
-    """
-    curve, _baseline = measure_luma_curve_with_baseline(
-        video_path, tracks, baseline_percentile=baseline_percentile)
-    return curve
 
 
 # ---------------------------------------------------------------------------

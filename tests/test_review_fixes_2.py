@@ -5,7 +5,6 @@
 - color_presence_gate：色相环形均值与跨界 inRange 两段区间
 - subtitle_generator/styling：_detect_language 不再被 defaultdict 键物化污染
 - subtitle_generator/timeline：毫秒时间戳的浮点截断噪声
-- aligner：连续插入 run 不再顶掉真实行、行首占位可填充
 - ocr_optimizer：平票按"无多数"送审、批量 OCR 错位防护、失败图像不进缓存
 - scene_plane_tracker：容器帧数为 0 时读到 EOF、退化单应显式报错
 """
@@ -18,7 +17,6 @@ import pytest
 import core.color_presence_gate as gate
 import core.ocr_optimizer as oo
 import core.scene_plane_tracker as spt
-from core.aligner import SubtitleAligner
 from core.subtitle_generator.styling import _StylingMixin
 
 
@@ -114,40 +112,6 @@ def test_format_time_millisecond_stamp_not_truncated_early():
     assert mixin._format_time_seconds(1.1599) == "0:00:01.15"
 
 
-# ── aligner ─────────────────────────────────────────────────
-
-
-def test_aligner_insert_run_keeps_all_target_lines():
-    s, t = SubtitleAligner().align_texts(["a", "b"], ["a", "x1", "x2", "b"])
-    assert s == ["a", "\n", "\n", "b"]
-    assert t == ["a", "x1", "x2", "b"]
-
-
-def test_aligner_leading_source_extra_fills_empty():
-    s, t = SubtitleAligner().align_texts(["x", "a"], ["a"])
-    assert s == ["x", "a"]
-    assert t == ["", "a"]
-
-
-def test_aligner_docstring_example():
-    a = SubtitleAligner()
-    t1 = ["ab", "b", "c", "d", "e", "f", "g", "h", "i"]
-    t2 = ["a", "b", "c", "d", "f", "g", "h", "i"]
-    s, t = a.align_texts(t1, t2)
-    assert s == t1
-    assert t == ["a", "b", "c", "d", "d", "f", "g", "h", "i"]
-
-
-def test_aligner_equal_lengths_always():
-    cases = [
-        (["a"], ["a", "b"]),
-        (["a", "b"], ["a"]),
-        (["a", "b", "c"], ["a", "x", "b", "c"]),
-        ([], []),
-    ]
-    for src, tgt in cases:
-        s, t = SubtitleAligner().align_texts(list(src), list(tgt))
-        assert len(s) == len(t), (src, tgt, s, t)
 
 
 # ── ocr_optimizer 平票 / 批量对齐 / 图像缓存 ─────────────────

@@ -275,6 +275,26 @@
   `test_roi_clamp_noop_when_global_peak_inroi` 固化；既有用例补
   `n_roi_fallback` 断言（钳制路径为 0、滚出回退路径等于采样数）。
 
+- **孤立 API 清理（AST 全仓扫描 + 交叉引用核实后移除）**：① 整模块
+  `core/aligner.py`（`SubtitleAligner`：自 v2.1.0 起从未接入任何产线路径，
+  仅测试续命；2.7.0 的「插入段错位」修复实为对休眠代码的修复）及其 4 项
+  测试；② 被取代的兼容/便捷包装：`scene_text_policy.sample_background_color`
+  （→ `sample_background_stats`）、`find_whitespace_band`（→
+  `find_whitespace_band_scored`）、`screen_luma.measure_luma_curve`（→
+  `measure_luma_curve_with_baseline`）、`roi_extractor.extract_single_roi_crop`
+  （→ `extract_single_roi_crop_with_time`）；③ 零引用死代码：
+  `text_utils.is_mainly_cjk`、`motion_detector._union_bbox`、
+  `scene_presets.get_default_preset`、`llm_prompts.list_prompts`/`reload_cache`、
+  `video_type_detector.compute_text_location_entropy`。配套测试改写为直接
+  调用现役接口（lost 帧跳过/无法打开的视频等用例改为 with_baseline 口径）。
+  **刻意保留**（声明 API 或规划原型，非孤立）：`homography_between`/
+  `simplify_and_segment`（`__all__` 声明 API）、`track_plane_frames`（内存
+  路径入口）、`load_trajectory`（轨迹 JSON 契约）、`apply_refine_jobs`
+  （refine 模块声明 API）、`suggest_subtitle_rois`（模块入口）、
+  `ffmpeg_roi_segmenter`（README/P6 规划原型）、`extract_visual_features`
+  （CHANGELOG 记录的未接入特征钩子）。测试 1039 → 1023 项收集（移除
+  16 项被删 API 专项测试），全绿零翻转。
+
 ### 已知限制（本轮实测记录，未修）
 
 - **4K 下剩余内存主要由 OCR 推理占用**：检测阶段工作分辨率封顶（见「优化」

@@ -16,29 +16,6 @@ _NO_SPACE_LANGUAGES = (
 )
 
 
-def is_mainly_cjk(text: str, threshold: float = 0.5) -> bool:
-    """判断是否主要为不使用空格的亚洲语言文本
-
-    包括: 中日韩、泰文、缅甸文、高棉文、印地语等
-
-    Args:
-        text: 待检测的文本
-        threshold: 阈值比例（默认0.5，即超过50%）
-
-    Returns:
-        True表示主要为不使用空格的亚洲语言，False表示其他
-    """
-    if not text:
-        return False
-
-    no_space_count = len(re.findall(_NO_SPACE_LANGUAGES, text))
-    # 分母只统计"文字类"字符（字母或 CJK 等），排除标点/数字/拉丁之外的符号，
-    # 避免混排文本低估 CJK 占比；若无文字类字符再退回非空白字符计数。
-    letter_total = sum(1 for ch in text if ch.isalpha())
-    total_chars = letter_total if letter_total > 0 else len("".join(text.split()))
-
-    return no_space_count / total_chars > threshold if total_chars > 0 else False
-
 
 def count_words(text: str) -> int:
     """统计文本字符/单词数

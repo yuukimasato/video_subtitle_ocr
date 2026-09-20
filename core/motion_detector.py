@@ -94,13 +94,6 @@ def _norm_text(text: str) -> str:
     return "".join(str(text).split())
 
 
-def _union_bbox(
-    a: Tuple[float, float, float, float],
-    b: Tuple[float, float, float, float],
-) -> Tuple[float, float, float, float]:
-    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
-
-
 def _bbox_overlap(a: Tuple[float, float, float, float],
                   b: Tuple[float, float, float, float]) -> bool:
     return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])

@@ -3,12 +3,8 @@
 
 覆盖《场景文字显示策略设计》§3/§4/§6:
 
-- sample_background_color:白底黑字 → 近白 + 低 std;花色噪声 → 高 std;
-  均匀暗区 → 精确取色且 std≈0;
 - merge_line_blocks:邮件式布局(标题栏/发件人/10 行正文)→ 3 块;
   水平不重叠的相邻行不并块;输入乱序时按 y 内部排序;
-- find_whitespace_band:上半有字下半空 → 命中下半带;全满 → None;
-  occupied_boxes 占用行同样参与剖面;
 - wrap_cjk:行首禁则(」。，、不下头);ASCII 单词尽量不断;超长词硬切;
 - fit_font_size:按带高/带宽夹取到 [min_fs, base];
 - apply_policy:overlap 原样返回;mask 生成 `\\p1` 遮罩(layer 0)+ 文本
@@ -60,11 +56,9 @@ from core.scene_text_policy import (  # noqa: E402
     _padded_mask_box,
     apply_policy,
     apply_policy_static,
-    find_whitespace_band,
     find_whitespace_band_scored,
     fit_font_size,
     merge_line_blocks,
-    sample_background_color,
     sample_background_stats,
     wrap_cjk,
 )
@@ -137,48 +131,6 @@ def policy_cfg(mode: str, **kw) -> SceneTextPolicyConfig:
     return SceneTextPolicyConfig(mode=mode, **kw)
 
 
-# ---------------------------------------------------------------------------
-# sample_background_color
-# ---------------------------------------------------------------------------
-
-class TestSampleBackgroundColor:
-    def test_white_bg_black_text_near_white_low_std(self):
-        img = np.full((80, 120, 3), 245, np.uint8)
-        cv2.rectangle(img, (10, 10), (60, 30), (10, 10, 10), -1)  # ~13% 墨水
-        color, std = sample_background_color(img, (0, 0, 120, 80))
-        assert all(c >= 240 for c in color), color
-        assert std < 2.0
-
-    def test_colorful_background_high_std(self):
-        rng = np.random.default_rng(1)
-        img = rng.integers(0, 256, (80, 120, 3), dtype=np.uint8)
-        color, std = sample_background_color(img, (0, 0, 120, 80))
-        assert std > 40.0
-
-    def test_uniform_dark_region_exact_color(self):
-        # 中位灰即背景(均匀暗区):不判墨、逐通道中位 = 该色,std≈0
-        img = np.full((60, 60, 3), 100, np.uint8)
-        color, std = sample_background_color(img, (5, 5, 55, 55))
-        assert color == (100, 100, 100)
-        assert std == pytest.approx(0.0, abs=1e-6)
-
-    def test_ink_removed_from_std(self):
-        # 白底 + 大面积黑字:剔除墨水后 std 仍≈0(不剔除会显著放大)
-        img = np.full((100, 100, 3), 200, np.uint8)
-        cv2.rectangle(img, (0, 40), (99, 60), (5, 5, 5), -1)  # 21% 墨水
-        color, std = sample_background_color(img, (0, 0, 100, 100))
-        assert color == (200, 200, 200)
-        assert std < 2.0
-
-    def test_box_clipped_to_image(self):
-        img = np.full((50, 50, 3), 245, np.uint8)
-        color, _std = sample_background_color(img, (-20, -20, 500, 500))
-        assert color == (245, 245, 245)
-
-    def test_empty_region_guard(self):
-        img = np.full((50, 50, 3), 245, np.uint8)
-        color, std = sample_background_color(img, (60, 60, 90, 90))
-        assert color == (0, 0, 0) and std == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -214,52 +166,6 @@ class TestMergeLineBlocks:
         assert merge_line_blocks(boxes) == [(0, 1)]
 
 
-# ---------------------------------------------------------------------------
-# find_whitespace_band
-# ---------------------------------------------------------------------------
-
-class TestFindWhitespaceBand:
-    def test_bottom_half_hit(self):
-        img = np.full((300, 200), 240, np.uint8)
-        img[20:120, 10:190] = 20  # 上半有字
-        band = find_whitespace_band(img, [], line_h=20.0)
-        assert band is not None
-        x1, y1, x2, y2 = band
-        assert y1 >= 120 - 10  # 膨胀余量内
-        assert y2 >= 290
-        assert (x2 - x1) >= 0.6 * 200
-
-    def test_full_plane_returns_none(self):
-        img = np.full((300, 200), 240, np.uint8)
-        for y in range(0, 300, 6):
-            img[y:y + 3, :] = 20  # 全满
-        assert find_whitespace_band(img, [], line_h=20.0) is None
-
-    def test_occupied_boxes_block_rows(self):
-        img = np.full((300, 200), 240, np.uint8)
-        # 无墨迹,但 occupied_boxes 盖满全部行 → None
-        band = find_whitespace_band(
-            img, [(0.0, 0.0, 200.0, 300.0)], line_h=20.0)
-        assert band is None
-
-    def test_band_between_blocks(self):
-        img = np.full((400, 200), 240, np.uint8)
-        img[20:80, :] = 20
-        img[200:260, :] = 20
-        band = find_whitespace_band(img, [], line_h=16.0)
-        assert band is not None
-        _x1, y1, _x2, y2 = band
-        # 两个候选带(84~196 与 264~400),取面积最大者 = 下带
-        assert y1 >= 260 - 10 and y2 - y1 >= 2 * 16.0
-
-    def test_area_max_band_chosen(self):
-        img = np.full((500, 200), 240, np.uint8)
-        img[0:40, :] = 20      # 首块上方带高 0(顶格)
-        img[240:280, :] = 20   # 上带 40px / 下带 220px → 取下带
-        band = find_whitespace_band(img, [], line_h=16.0)
-        assert band is not None
-        _x1, y1, _x2, _y2 = band
-        assert y1 >= 280 - 10
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +494,7 @@ class TestWhitespaceTrackReuse:
             policy_cfg("whitespace"), PLANE_W, PLANE_H)
         assert applied == "whitespace"
         # 按 apply_policy 的折行/字号/排布公式重建行框
-        band = find_whitespace_band(
+        band, _conf, _info = find_whitespace_band_scored(
             cv2.cvtColor(make_white_plane(), cv2.COLOR_BGR2GRAY),
             [b for _t, b in ROWS], line_h=16.0)
         assert band is not None
@@ -1561,15 +1467,6 @@ class TestBackgroundRobustStats:
         assert stats.n_samples == 0
         assert stats.confidence == 0.0
         assert stats.uniform is False
-        # 旧接口行为不变
-        assert sample_background_color(img, (60, 60, 90, 90)) == ((0, 0, 0), 0.0)
-
-    def test_legacy_wrapper_matches_std_mode(self):
-        img = make_white_plane()
-        color, std = sample_background_color(img, (0, 0, PLANE_W, 200))
-        stats = sample_background_stats(img, (0, 0, PLANE_W, 200))
-        assert (color, std) == (stats.color_bgr, stats.std_max_channel)
-
     def test_unknown_mode_raises(self):
         img = np.full((10, 10, 3), 128, np.uint8)
         with pytest.raises(ValueError):
@@ -1642,7 +1539,7 @@ class TestWhitespaceBandScoring:
     def test_unknown_threshold_mode_raises(self):
         img = np.full((50, 50), 240, np.uint8)
         with pytest.raises(ValueError):
-            find_whitespace_band(
+            find_whitespace_band_scored(
                 img, [], line_h=10.0, threshold_mode="bogus")
 
 

@@ -27,7 +27,6 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.screen_luma import (  # noqa: E402
-    measure_luma_curve,
     measure_luma_curve_with_baseline,
     measure_line_luma_curves,
 )
@@ -115,16 +114,13 @@ def test_curve_levels_ordered_by_frame_num(tmp_path):
         assert ratio == pytest.approx(lvl / 247.0)
         assert 0.0 < ratio <= 1.0
 
-    # 便捷封装只返回曲线本体
-    assert measure_luma_curve(video, tracks) == curve
-
 
 def test_lost_frames_skipped(tmp_path):
     lost = {3, 10}
     video = write_levels(tmp_path / "lost.avi", LEVELS)
     tracks = [make_track(i, ok=(i not in lost)) for i in range(len(LEVELS))]
 
-    curve = measure_luma_curve(video, tracks)
+    curve, _baseline = measure_luma_curve_with_baseline(video, tracks)
 
     assert [t for t, _ in curve] == [
         i / FPS for i in range(len(LEVELS)) if i not in lost]
@@ -137,12 +133,12 @@ def test_no_ok_frames_returns_empty(tmp_path):
     tracks = [make_track(i, ok=False) for i in range(4)]
 
     assert measure_luma_curve_with_baseline(video, tracks) == ([], 0.0)
-    assert measure_luma_curve(video, tracks) == []
 
 
 def test_unopenable_video_raises_runtimeerror():
     with pytest.raises(RuntimeError):
-        measure_luma_curve("/nonexistent/no_such_video.avi", [make_track(0)])
+        measure_luma_curve_with_baseline("/nonexistent/no_such_video.avi",
+                                         [make_track(0)])
 
 
 def test_all_black_baseline_degenerates_to_ones(tmp_path):
@@ -162,7 +158,7 @@ def test_ratio_clipped_to_one(tmp_path):
     video = write_levels(tmp_path / "clip.avi", levels)
     tracks = [make_track(i) for i in range(len(levels))]
 
-    curve = measure_luma_curve(video, tracks)
+    curve, _baseline = measure_luma_curve_with_baseline(video, tracks)
 
     assert all(r <= 1.0 for _t, r in curve)
     assert curve[-1][1] == pytest.approx(1.0)
@@ -179,7 +175,7 @@ def test_median_robust_to_local_highlights(tmp_path):
     video = write_video(tmp_path / "hl.avi", frames)
     tracks = [make_track(i) for i in range(10)]
 
-    curve = measure_luma_curve(video, tracks)
+    curve, _baseline = measure_luma_curve_with_baseline(video, tracks)
 
     for _t, r in curve[:9]:
         assert r == pytest.approx(1.0)
@@ -199,7 +195,7 @@ def test_quad_outside_frame_clipped(tmp_path):
     tracks.append(make_track(9, quad=quad_right))
     tracks.append(make_track(10, quad=quad_left))
 
-    curve = measure_luma_curve(video, tracks)
+    curve, _baseline = measure_luma_curve_with_baseline(video, tracks)
 
     assert [t for t, _ in curve] == [i / FPS for i in range(11)]
     assert curve[9][1] == pytest.approx(1.0)      # 裁剪后 = 247/247
@@ -250,7 +246,7 @@ def test_per_line_partial_dim_follows_local_luma(tmp_path):
     assert all(r == pytest.approx(30.0 / 247.0) for _t, r in top[8:])
     assert all(r == pytest.approx(1.0) for _t, r in bottom)
     # 对照:整平面中位被调暗区(>半)拖暗,底行比值随之失真
-    quad_curve = measure_luma_curve(video, tracks)
+    quad_curve, _quad_bl = measure_luma_curve_with_baseline(video, tracks)
     assert quad_curve[10][1] < 0.5
 
 

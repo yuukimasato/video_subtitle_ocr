@@ -371,41 +371,6 @@ def extract_motion_features(
 
     return avg_motion, motion_var, cut_count, cut_freq, static_ratio
 
-
-def compute_text_location_entropy(
-    text_boxes: List[Tuple[int, int, int, int]],
-    frame_w: int,
-    frame_h: int,
-) -> float:
-    """Compute entropy of text location distribution.
-
-    Low entropy = text concentrated in few positions (typical OVERLAY)
-    High entropy = text scattered everywhere (typical SCENE or variety show)
-
-    Returns value in [0, 1].
-    """
-    if not text_boxes:
-        return 0.0
-
-    grid = np.zeros((5, 5))
-    for (x1, y1, x2, y2) in text_boxes:
-        cx = (x1 + x2) / 2 / max(frame_w, 1)
-        cy = (y1 + y2) / 2 / max(frame_h, 1)
-        gx = min(4, int(cx * 5))
-        gy = min(4, int(cy * 5))
-        grid[gy][gx] += 1
-
-    total = grid.sum()
-    if total == 0:
-        return 0.0
-    prob = grid.flatten() / total
-    prob = prob[prob > 0]
-
-    entropy = -np.sum(prob * np.log2(prob + 1e-10))
-    max_entropy = np.log2(25)
-    return float(entropy / max_entropy)
-
-
 def compute_multi_font_score(text_regions: List[np.ndarray]) -> float:
     """Assess text style diversity within a frame.
 
@@ -451,6 +416,7 @@ def compute_multi_font_score(text_regions: List[np.ndarray]) -> float:
     stroke_var = np.var(stroke_widths) / (np.mean(stroke_widths) ** 2 + 1e-6)
 
     return float(np.clip((height_var + color_var + stroke_var) / 3, 0, 1))
+
 
 
 def detect_letterbox(sample_frames: List[np.ndarray]) -> Tuple[float, float]:

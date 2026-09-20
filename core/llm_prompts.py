@@ -67,24 +67,3 @@ def get_prompt(prompt_path: str, **kwargs) -> str:
     # 使用 Template 进行变量替换
     template = Template(raw_prompt)
     return template.safe_substitute(**kwargs)
-
-
-def list_prompts() -> list:
-    """列出所有可用的提示词路径
-
-    Returns:
-        提示词路径列表，如 ["subtitle"]
-    """
-    prompts = []
-    for md_file in PROMPTS_DIR.rglob("*.md"):
-        if md_file.name == "README.md":
-            continue
-        rel_path = md_file.relative_to(PROMPTS_DIR)
-        prompt_path = str(rel_path.with_suffix("")).replace("\\", "/")
-        prompts.append(prompt_path)
-    return sorted(prompts)
-
-
-def reload_cache():
-    """清空提示词缓存（用于开发模式热重载）"""
-    _load_prompt_file.cache_clear()

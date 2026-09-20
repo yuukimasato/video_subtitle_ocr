@@ -196,19 +196,6 @@ def extract_single_roi_crop_with_time(
             cap.release()
 
 
-def extract_single_roi_crop(
-    video_path: str,
-    roi_entry: Dict,
-    frame_num: int,
-) -> Optional[np.ndarray]:
-    """
-    Random-access extract a single ROI crop at a given frame index.
-    Intended for boundary refinement (small number of seeks).
-    """
-    result = extract_single_roi_crop_with_time(video_path, roi_entry, frame_num)
-    return result[0] if result is not None else None
-
-
 def get_roi_frame_number(roi_entry: Dict, fps: float, time_key: str, frame_key: str) -> int:
     if frame_key in roi_entry and roi_entry[frame_key] is not None:
         return int(roi_entry[frame_key])

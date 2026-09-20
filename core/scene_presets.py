@@ -250,8 +250,3 @@ ALL_PRESET_IDS = [
 def get_preset_by_id(preset_id: str) -> Optional[ScenePreset]:
     """Look up a preset by its ID."""
     return PRESETS.get(preset_id)
-
-
-def get_default_preset() -> ScenePreset:
-    """Return the default preset (film_tv — most common use case)."""
-    return PRESETS["film_tv"]
