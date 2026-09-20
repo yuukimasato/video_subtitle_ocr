@@ -55,6 +55,8 @@
   - **遮挡蒙版**：检测手部等遮挡物覆盖文字平面的帧，追加 `\iclip` 逆向蒙版，字幕不再渲染到遮挡物上。
 
   ![生成的轨迹字幕 ASS（\p1 遮罩 + \move/\t 标签链）在 Aegisub 中检查](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview3.png)
+
+  ![移动文字轨迹字幕：DMG 滚动邮件屏实跑（0–84 帧循环）——\p1 遮罩盖字与重渲染文字随画面滚动实时跟随](https://github.com/yuukimasato/video_subtitle_ocr/blob/main/resources/preview4.gif)
 - **场景文字显示策略**（每 ROI 独立选择）：画面文字可按需选择 **叠加**（默认重渲染原位）/ **遮罩原文字**（`\p1` 纯色遮罩盖字 + layer 1 重渲染）/ **仅遮罩**（识别文本写成 Comment 行，供排版覆写译文）/ **外置展示框** / **空白区放置**；可用性不足时按预设回退链自动降级并留痕。
 - **按 ROI 的文字过滤策略**：
   - **手动 ROI 永不过滤**：手动绘制（矩形/多边形/全宽带）的 ROI 标记为「全部保留」，场景字等识别结果全部保留——这是带标签 ASS（`\pos`/`\frz`）生产的保障。
