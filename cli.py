@@ -285,6 +285,31 @@ def _translation_config_from_args(args: argparse.Namespace):
     return cfg
 
 
+def _font_identify_config_from_args(args: argparse.Namespace):
+    """``--font-identify`` → ``FontIdentifyConfig``；开关关闭时返回 None
+    （识别整体关闭，零行为变化——不打开视频、不 import torch 相关模块）。
+
+    ``--font-db`` 缺省为空 → ``db_path=None``：识别与合规链路运行时落
+    ``font_intel.fonts_db.default_db_path()``（XDG 数据目录，库不存在时
+    许可查询优雅降级，不凭空建库）。识别开启时主流水线随附合规闸门
+    （T3.4 闭环：识别 → 合规决策 → 逐事件 \\fn 落名 + 报告 + 建议包）。
+    """
+    if not getattr(args, "font_identify", False):
+        return None
+    try:
+        from font_intel.identify_stage import FontIdentifyConfig
+    except Exception as exc:
+        # font_intel 附加依赖缺失：优雅降级为不识别，不阻断出片。
+        _info(
+            f"Warning: font identify module unavailable ({exc}); "
+            "continuing without font identification.",
+            args.quiet,
+        )
+        return None
+    db_path = (getattr(args, "font_db", "") or "").strip()
+    return FontIdentifyConfig(enabled=True, db_path=db_path or None)
+
+
 def _run_chunk_stages(args: argparse.Namespace, video_path: str,
                       roi_entries: list, info: dict, work_dir: str, plan):
     """Stages 1-3 through chunk-parallel workers; returns (records, elapsed).
@@ -786,6 +811,46 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 f"(provider: {args.translate_provider})",
                 args.quiet,
             )
+        # font_identify 后置阶段（T3.4，与 GUI worker 同缝）：本地计算、
+        # 主进程执行，restored_results 之后、构造优化器之前；任何失败
+        # 降级为无识别结果，不阻断出片。
+        font_identify_config = _font_identify_config_from_args(args)
+        font_identifications = None
+        font_compliance_config = None
+        if font_identify_config is not None:
+            _info(
+                "      font identify: enabled "
+                f"(db: {font_identify_config.db_path or 'default XDG path'})",
+                args.quiet,
+            )
+            try:
+                from font_intel.identify_stage import run_font_identify_stage
+                font_identifications = run_font_identify_stage(
+                    list(restored_results), video_path, info["fps"],
+                    font_identify_config,
+                    roi_data=roi_entries,
+                    video_width=info["width"],
+                    video_height=info["height"])
+            except Exception as exc:
+                _info(
+                    f"Warning: font identify failed ({exc}); continuing "
+                    "without identifications.",
+                    args.quiet,
+                )
+            if font_identifications is not None:
+                # 识别开启即随附合规闸门（事件级 \fn 落名的决策入口）。
+                try:
+                    from font_intel.integration import FontComplianceConfig
+                    font_compliance_config = FontComplianceConfig(
+                        enabled=True,
+                        db_path=font_identify_config.db_path,
+                        interactive=False)
+                except Exception as exc:
+                    _info(
+                        f"Warning: font compliance gate unavailable ({exc}); "
+                        "identification results will not be applied.",
+                        args.quiet,
+                    )
         converter = subtitle_generator.OCRToASSOptimizer(
             video_path=video_path,
             output_path=out_path,
@@ -795,6 +860,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             template_path=args.template,
             subtitle_polisher=None,
             translation_config=translation_config,
+            font_compliance=font_compliance_config,
+            font_identifications=font_identifications,
             roi_ocr_langs=roi_ocr_langs or None,
             source_filter_config=source_filter_config,
             roi_text_filter_policies=roi_policies or None,
@@ -993,6 +1060,19 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="max rendered chars per translated line (longest \\N segment); "
              "overlong lines trigger one shorten pass; 0 disables the "
              "limit (default: 42)",
+    )
+    parser.add_argument(
+        "--font-identify", action="store_true",
+        help="identify subtitle fonts (local compute, main process, after "
+             "stage 3) and route the results through the compliance gate: "
+             "per-event \\fn overrides plus a compliance report and a font "
+             "update suggestion package next to the .ass (default: off — "
+             "output is byte-identical to a run without this flag)",
+    )
+    parser.add_argument(
+        "--font-db", default="", metavar="PATH",
+        help="fonts.db path for --font-identify license/chain lookups "
+             "(default: the XDG data default from font_intel.fonts_db)",
     )
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")

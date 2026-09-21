@@ -238,16 +238,32 @@ class _StylingMixin:
         return bool(config is not None and getattr(config, "enabled", False))
 
     def _accumulate_compliance_decisions(self, decisions) -> None:
-        # _get_ass_header 在一次 convert 里可能被多次调用:按字体名去重
-        # 累积,报告保证一字体一节,重复生成头部不产生重复决策。
+        # _get_ass_header 在一次 convert 里可能被多次调用:按
+        # (字体名, scope, 最终字体, 动作) 去重累积——Style 行决策跨多次
+        # 头部生成只出一条;事件级决策（scope="event"）与 Style 决策、
+        # 不同替换结果的决策互不覆盖,同类事件合并时事件计数累加。
         store = getattr(self, "_compliance_decisions", None)
         if store is None:
             store = []
             self._compliance_decisions = store
-        known = {d.get("font_name") for d in store}
+
+        def _key(d):
+            return (d.get("font_name"), str(d.get("scope") or "style"),
+                    d.get("final_font"), d.get("action"))
+
+        known = {_key(d) for d in store}
         for entry in decisions or []:
-            if entry.get("font_name") not in known:
-                store.append(entry)
+            if _key(entry) in known:
+                # 同类事件决策合并:事件计数累加(其余字段以首条为准)。
+                if str(entry.get("scope") or "style") == "event":
+                    for d in store:
+                        if _key(d) == _key(entry):
+                            d["events"] = (int(d.get("events") or 0)
+                                           + int(entry.get("events") or 1))
+                            break
+                continue
+            known.add(_key(entry))
+            store.append(entry)
 
     def _apply_font_compliance_to_header(self, header_text: str) -> str:
         """内嵌默认头部路径:按决策替换 Style 行字体名(禁用时原样返回)。"""
@@ -301,6 +317,69 @@ class _StylingMixin:
         finally:
             # 只尝试一次:写失败也不在后续收尾里反复重试刷日志。
             self._compliance_report_written = True
+
+    # ------------------------------------------------------------------
+    # 识别 → 合规 → \fn 落名闭环(T3.4):font_identifications 为 None 或
+    # 合规关闭时全部路径与旧版本逐字节一致。font_intel 惰性导入;任何
+    # 异常只降级记日志,绝不中断出片。
+    # ------------------------------------------------------------------
+
+    def _capture_event_font_idents(self, subtitle_events) -> None:
+        """翻译/润色改写 body 之前,按 OCR 原文把识别侧表挂到事件
+        (私有键,绝不进入 ASS 输出);无侧表时零操作。"""
+        idents = getattr(self, "font_identifications", None)
+        if idents is None:
+            return
+        try:
+            from font_intel.closure import capture_event_identifications
+            capture_event_identifications(subtitle_events, idents)
+        except Exception as exc:  # 识别联动永不中断出片
+            logger.warning(_tr("OCRToASSOptimizer",
+                               "Font identification capture failed (output unaffected): {}").format(exc))
+
+    def _apply_event_font_closure(self, subtitle_events) -> None:
+        """事件级合规决策 + 逐事件 \\fn 覆盖(合规关闭时零操作)。"""
+        if not self._compliance_enabled():
+            return
+        try:
+            from font_intel.closure import apply_event_font_closure
+            decisions, suggestions = apply_event_font_closure(
+                subtitle_events, self.font_compliance,
+                translation_config=getattr(self, "translation_config", None))
+        except Exception as exc:  # 合规永不中断出片
+            logger.warning(_tr("OCRToASSOptimizer",
+                               "Font identification closure failed (output unaffected): {}").format(exc))
+            return
+        self._accumulate_compliance_decisions(decisions)
+        store = getattr(self, "_font_update_suggestions", None)
+        if store is None:
+            store = []
+            self._font_update_suggestions = store
+        store.extend(suggestions)
+
+    def _write_font_update_suggestions_if_needed(self) -> None:
+        """convert 收尾:有更新建议时写
+        ``<stem>_font_update_suggestions.json``(幂等只写一次;无建议时
+        零新文件。worker 不弹 GUI——对话框由用户在主窗口主动触发)。"""
+        if getattr(self, "_font_suggestions_written", False):
+            return
+        self._font_suggestions_written = True
+        suggestions = getattr(self, "_font_update_suggestions", None)
+        output_path = getattr(self, "output_path", None)
+        if not suggestions or output_path is None:
+            return
+        try:
+            from font_intel.closure import (
+                build_update_suggestions_package,
+                suggestions_path_for,
+                write_update_suggestions_package,
+            )
+            package = build_update_suggestions_package(suggestions)
+            write_update_suggestions_package(
+                package, suggestions_path_for(output_path))
+        except Exception as exc:
+            logger.warning(_tr("OCRToASSOptimizer",
+                               "Font update suggestions export failed (export not blocked): {}").format(exc))
 
     def _get_ass_header(self) -> str:
         if self.template_path and self.template_path.exists():

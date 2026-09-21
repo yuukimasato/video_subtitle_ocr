@@ -58,6 +58,11 @@ BLOCKED_URL_MARKERS = (
     "注册机",
 )
 
+# §5.4 防御：未经人工确认的 LLM 推断行标记（建议包/缺口分析产出的
+# method 标注；不属 VALID_METHODS 的事实方法枚举）。带该标记的记录在
+# 未经人工确认前绝不参与 replace_auto 自动替换（只作建议展示）。
+LLM_INFERRED_METHOD = "llm_inferred"
+
 RuleKey = tuple  # (license_category, usage_scene)
 
 
@@ -259,6 +264,52 @@ def sanitize_url(url: Optional[str]) -> str:
     return text
 
 
+# ── §5.4 防御：llm_inferred 不参与 replace_auto ──────────────────
+
+def _is_unconfirmed_llm_candidate(db: Optional[FontsDB], name: str) -> bool:
+    """候选名的映射证据是否**仅**来自未经人工确认的 llm_inferred 行。
+
+    判定（宁可多拦不漏放的反向口径——只拦有推断行痕迹且无确认行的候选）：
+    - 映射表存在提及该候选的行（cn_name 或 jp_name），且这些行的 method
+      全部为 ``llm_inferred``、无任何 rule/llm/vlm/human 确认行 → 拦截；
+    - 无映射行痕迹（如 fonts.alternates 字段链、调用方自带替代源）→
+      不拦截；查询失败按不拦截处理（决策侧另有 unknown 从严兜底）。
+    """
+    if db is None or not name:
+        return False
+    try:
+        conn = getattr(db, "_conn", None)
+        if conn is None:
+            return False
+        rows = conn.execute(
+            "SELECT method FROM jp_cn_font_map WHERE cn_name=? OR jp_name=?",
+            (name, name),
+        ).fetchall()
+    except Exception as exc:
+        logger.warning("llm_inferred 防御查询失败，按不拦截处理: name=%s, error=%s",
+                       name, exc)
+        return False
+    if not rows:
+        return False
+    methods = {(row[0] or "").strip() for row in rows}
+    methods.discard("")
+    return bool(methods) and methods <= {LLM_INFERRED_METHOD}
+
+
+def _strip_unconfirmed_alternatives(db: Optional[FontsDB],
+                                    alternatives: list) -> list:
+    """replace_auto 候选防御过滤：剔除仅由未确认 llm_inferred 行支撑的
+    候选（§5.4：未经人工确认不参与自动替换，只作建议展示）。"""
+    kept = [a for a in alternatives
+            if not _is_unconfirmed_llm_candidate(db, str(a))]
+    dropped = len(alternatives) - len(kept)
+    if dropped:
+        logger.warning(
+            "replace_auto 候选中 %d 项仅由未确认的 llm_inferred 记录支撑，"
+            "已剔除（待人工确认后生效）", dropped)
+    return kept
+
+
 # ── 决策对象 ─────────────────────────────────────────────────────
 
 @dataclass
@@ -346,6 +397,7 @@ def decide(
         reason = f"许可类别 {category} 来自字体库，规则 {category}×{scene} → {action}。"
 
     # 4) replace_auto 门槛：仅高置信度且替代链非空时生效，否则降级 prompt。
+    #    候选先过 §5.4 防御：仅由未确认 llm_inferred 记录支撑的候选剔除。
     alternatives: list[str] = []
     if action == "replace_auto":
         if alternatives_provider is not None:
@@ -355,6 +407,7 @@ def decide(
                 logger.warning("替代字体查询失败，按空替代链处理: font=%s, error=%s",
                                name, exc)
                 alternatives = []
+        alternatives = _strip_unconfirmed_alternatives(db, alternatives)
         if confidence is None or float(confidence) < REPLACE_AUTO_MIN_CONFIDENCE:
             action = "prompt"
             reason += (f"replace_auto 仅对识别置信度 ≥ {REPLACE_AUTO_MIN_CONFIDENCE} 生效，"

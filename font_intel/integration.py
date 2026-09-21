@@ -239,11 +239,18 @@ def _resolve_final_font(decision, config: FontComplianceConfig) -> tuple:
 # ── 合规报告 ─────────────────────────────────────────────────────
 
 def _normalize_decision(d: dict) -> dict:
-    """决策 dict → 报告记录（官方链接复用 sanitize_url 消毒）。"""
+    """决策 dict → 报告记录（官方链接复用 sanitize_url 消毒）。
+
+    T3.4 扩展：事件级决策（``scope="event"``，识别 → 合规 → ``\\fn``
+    落名闭环）可携带附加字段——``scope`` / ``events`` / ``fn_written`` /
+    ``identified_score`` / ``mapping_basis`` / ``target_lang`` /
+    ``unmapped``；缺省时回落 Style 行决策的既有形状，老调用方输出兼容。
+    """
     styles = [str(s) for s in (d.get("styles") or [])]
     single = str(d.get("style") or "")
     if single and single not in styles:
         styles.insert(0, single)
+    score = d.get("identified_score")
     return {
         "style": single,
         "styles": styles,
@@ -257,6 +264,15 @@ def _normalize_decision(d: dict) -> dict:
         "official_url": sanitize_url(d.get("official_url")),
         "alternatives": [str(a) for a in (d.get("alternatives") or [])],
         "granted": bool(d.get("granted")),
+        # T3.4 事件级扩展字段（Style 行决策缺省不变）。
+        "scope": str(d.get("scope") or "style"),
+        "events": int(d.get("events") or 0),
+        "fn_written": bool(d.get("fn_written")),
+        "identified_score": (float(score) if isinstance(score, (int, float))
+                             and not isinstance(score, bool) else None),
+        "mapping_basis": str(d.get("mapping_basis") or ""),
+        "target_lang": str(d.get("target_lang") or ""),
+        "unmapped": bool(d.get("unmapped")),
     }
 
 
@@ -274,9 +290,28 @@ def _render_markdown(payload: dict) -> str:
         "",
     ]
     for rec in payload["decisions"]:
+        head = rec["font_name"]
+        if rec.get("scope") == "event":
+            head += f"（事件级 · {rec.get('style') or '样式继承'}）"
         lines.extend([
-            f"## {rec['font_name']}",
+            f"## {head}",
             "",
+        ])
+        if rec.get("scope") == "event":
+            lines.append(
+                f"- 应用方式: 逐事件 \\fn 覆盖（{rec.get('events') or 0} 个事件，"
+                + ("已写入 \\fn）" if rec.get("fn_written")
+                   else "保留样式字体，未写 \\fn）"))
+            if rec.get("identified_score") is not None:
+                lines.append(
+                    f"- 识别置信度: {rec['identified_score']:.2f}")
+            if rec.get("target_lang"):
+                basis = rec.get("mapping_basis") or ""
+                basis_text = f"（依据 {basis}）" if basis else ""
+                lines.append(
+                    f"- 翻译联动: 目标语言 {rec['target_lang']}{basis_text}"
+                    + ("；映射链未命中（未映射）" if rec.get("unmapped") else ""))
+        lines.extend([
             f"- 涉及样式: {', '.join(rec['styles']) or '（无）'}",
             f"- 许可类别: {rec['license_category']}",
             f"- 决策: {rec['action']}"

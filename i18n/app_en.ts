@@ -831,6 +831,99 @@
     </message>
 </context>
 <context>
+    <name>FontUpdateReviewDialog</name>
+    <message>
+        <location filename="../components/font_update_review_dialog.py" line="+42"/>
+        <source>新增字体记录</source>
+        <translation>New font record</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>映射修正</source>
+        <translation>Mapping correction</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>新增映射</source>
+        <translation>New mapping</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>模型推断（未经人工确认）</source>
+        <translation>Model-inferred (not human-confirmed)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字形重排证据</source>
+        <translation>Glyph-rerank evidence</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>{0}：{1} → {2}</source>
+        <translation>{0}: {1} → {2}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>{0}：{1}</source>
+        <translation>{0}: {1}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>{0}：{1}（不可采纳）</source>
+        <translation>{0}: {1} (not actionable)</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>建议：{0} → {1}</source>
+        <translation type="unfinished">Suggestion: {0} → {1}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>建议：新增记录 {0}（许可类别 {1}）</source>
+        <translation>Suggestion: add record {0} (license category {1})</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>类型：{0} ｜ 置信度：{1} ｜ 依据：{2} ｜ 方法：{3}</source>
+        <translation>Type: {0} | Confidence: {1} | Evidence: {2} | Method: {3}</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>理由：{0}</source>
+        <translation type="unfinished">Reason: {0}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>（该条目无建议值，仅展示）</source>
+        <translation>(this entry has no suggested value; display only)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>字体库更新建议</source>
+        <translation>Font database update suggestions</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>勾选 = 采纳并写入用户覆盖层（人工确认语义）；不勾 = 否决。未经确认的模型推断记录不参与自动替换。</source>
+        <translation>Check = adopt and write to the user overlay layer (human-confirmed semantics); leave unchecked = reject. Unconfirmed model-inferred records never take part in automatic replacement.</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>无待复核的更新建议。</source>
+        <translation>No update suggestions pending review.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>应用</source>
+        <translation type="unfinished">Apply</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>取消</source>
+        <translation type="unfinished">Cancel</translation>
+    </message>
+</context>
+<context>
     <name>LogViewerWidget</name>
     <message>
         <location filename="../components/log_viewer.py" line="+10"/>
@@ -866,7 +959,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+253"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+254"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -881,7 +974,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+66"/>
+        <location line="+72"/>
         <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -986,7 +1079,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+32"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1001,7 +1094,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+73"/>
+        <location line="+81"/>
         <source>Translation cancelled; keeping remaining original subtitles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1031,7 +1124,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-130"/>
+        <location line="-133"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1076,7 +1169,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+261"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+277"/>
         <source>Font compliance gate failed; keeping original header: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1091,7 +1184,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
+        <source>Font identification capture failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Font identification closure failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>Font update suggestions export failed (export not blocked): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2399,12 +2507,12 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+97"/>
+        <location filename="../core/pipeline_worker.py" line="+100"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+312"/>
+        <location line="+321"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2430,7 +2538,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+67"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2460,12 +2568,12 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+41"/>
         <source>Step 4/4: Starting ASS subtitle file generation...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+77"/>
+        <location line="+79"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation type="unfinished"></translation>
     </message>

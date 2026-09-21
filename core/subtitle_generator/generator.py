@@ -2,7 +2,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -202,6 +202,7 @@ class OCRToASSOptimizer(
         motion_roi_ids: Optional[set] = None,
         analysis_frame_mode: str = "single",
         font_compliance: Optional["FontComplianceConfig"] = None,
+        font_identifications: Optional[Any] = None,
         translation_config: Optional["TranslationConfig"] = None,
         roi_ocr_langs: Optional[Dict[str, str]] = None,
     ):
@@ -261,6 +262,12 @@ class OCRToASSOptimizer(
         self.font_compliance = font_compliance
         self._compliance_decisions: List[dict] = []
         self._compliance_report_written = False
+        # 字体识别侧表（T3.3 产出，T3.4 事件级落名消费）：None = 完全
+        # 关闭，捕获/闭环/建议包路径全部零操作。挂到事件上的识别快照
+        # 走私有键，绝不进入 ASS 输出。
+        self.font_identifications = font_identifications
+        self._font_update_suggestions: List[dict] = []
+        self._font_suggestions_written = False
         # 翻译阶段（T2.3，主进程阶段 4：润色之后、事件写出之前）。
         # None = 完全关闭：不调用 _translate_subtitle_events，从而不导入
         # font_intel.translation，所有既有路径与输出逐字节不变。
@@ -812,6 +819,10 @@ class OCRToASSOptimizer(
                         )
                     )
 
+            # T3.4：润色/翻译改写 body 之前，按 OCR 原文把识别侧表挂到
+            # 事件（合规关闭时只是轻量匹配、不改任何事件字段）。
+            self._capture_event_font_idents(subtitle_events)
+
             if (
                 subtitle_events
                 and self.subtitle_polisher is not None
@@ -860,6 +871,11 @@ class OCRToASSOptimizer(
                     cancel_check=polish_cancel_check,
                 )
 
+            # T3.4：识别 → 合规决策 → 逐事件 \fn 落名（翻译联动映射链在
+            # 闭包内感知 translation_config；§5.3 顺序：翻译 → 字体映射 →
+            # 同一合规闸门 → ASS 生成）。合规关闭时零操作。
+            self._apply_event_font_closure(subtitle_events)
+
             self._write_final_file(subtitle_events)
 
             logger.info(_tr("OCRToASSOptimizer", "--- Conversion successful ---"))
@@ -875,6 +891,9 @@ class OCRToASSOptimizer(
             # 合规收尾(所有写出路径的统一终点,含空数据/空事件早退):
             # 有决策时写报告;合规关闭时零新文件;幂等,报告只写一次。
             self._write_compliance_report_if_needed()
+            # T3.4 收尾:有缺口建议时写 <stem>_font_update_suggestions.json
+            # (worker 不弹 GUI,包落盘即可;无建议零新文件)。
+            self._write_font_update_suggestions_if_needed()
 
     def _translate_subtitle_events(
         self,

@@ -947,6 +947,99 @@
     </message>
 </context>
 <context>
+    <name>FontUpdateReviewDialog</name>
+    <message>
+        <location filename="../components/font_update_review_dialog.py" line="+42"/>
+        <source>新增字体记录</source>
+        <translation>フォントレコードを追加</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>映射修正</source>
+        <translation>マッピング修正</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>新增映射</source>
+        <translation>マッピングを追加</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>模型推断（未经人工确认）</source>
+        <translation>モデル推論（人手未確認）</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字形重排证据</source>
+        <translation>グリフ再ランキング証拠</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>{0}：{1} → {2}</source>
+        <translation>{0}：{1} → {2}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>{0}：{1}</source>
+        <translation>{0}：{1}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>{0}：{1}（不可采纳）</source>
+        <translation>{0}：{1}（採用不可）</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>建议：{0} → {1}</source>
+        <translation type="unfinished">提案：{0} → {1}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>建议：新增记录 {0}（许可类别 {1}）</source>
+        <translation>提案：レコード {0} を追加（ライセンス区分 {1}）</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>类型：{0} ｜ 置信度：{1} ｜ 依据：{2} ｜ 方法：{3}</source>
+        <translation>種別：{0} ｜ 信頼度：{1} ｜ 根拠：{2} ｜ 方法：{3}</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>理由：{0}</source>
+        <translation type="unfinished">理由：{0}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>（该条目无建议值，仅展示）</source>
+        <translation>（この項目は提案値がなく、表示のみ）</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>字体库更新建议</source>
+        <translation>フォントデータベース更新提案</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>勾选 = 采纳并写入用户覆盖层（人工确认语义）；不勾 = 否决。未经确认的模型推断记录不参与自动替换。</source>
+        <translation>チェック = 採用してユーザーオーバーレイ層に書き込む（人手確認意味論）。未チェック = 却下。未確認のモデル推論レコードは自動置換に参加しません。</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>无待复核的更新建议。</source>
+        <translation>レビュー待ちの更新提案はありません。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>应用</source>
+        <translation type="unfinished">適用</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>取消</source>
+        <translation type="unfinished">キャンセル</translation>
+    </message>
+</context>
+<context>
     <name>LogViewerWidget</name>
     <message>
         <source>Logs and Progress</source>
@@ -986,7 +1079,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+253"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+254"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1001,7 +1094,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+66"/>
+        <location line="+72"/>
         <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1106,7 +1199,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+32"/>
         <source>Step 4/4: DeepSeek polishing subtitles ({}/{} batches)...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1121,7 +1214,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+73"/>
+        <location line="+81"/>
         <source>Translation cancelled; keeping remaining original subtitles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1151,7 +1244,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-130"/>
+        <location line="-133"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1196,7 +1289,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+261"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+277"/>
         <source>Font compliance gate failed; keeping original header: {}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1211,7 +1304,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
+        <source>Font identification capture failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Font identification closure failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>Font update suggestions export failed (export not blocked): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2715,7 +2823,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+547"/>
+        <location filename="../core/pipeline_worker.py" line="+610"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中間ファイルは以下に保存されます: {}</translation>
     </message>
@@ -2866,12 +2974,12 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="-461"/>
+        <location filename="../core/pipeline_worker.py" line="-521"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+312"/>
+        <location line="+321"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2897,7 +3005,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+90"/>
         <source>Step 1-3/4: Processing chunks in parallel...</source>
         <translation>ステップ 1-3/4: チャンクを並列処理中...</translation>
     </message>
@@ -2907,12 +3015,12 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>チャンク並列OCR: {} ワーカー、{} ウィンドウ。</translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+41"/>
         <source>Step 4/4: Starting ASS subtitle file generation...</source>
         <translation>ステップ4/4: ASS字幕ファイル生成を開始中...</translation>
     </message>
     <message>
-        <location line="+77"/>
+        <location line="+79"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation>ステップ4/4: ASS字幕生成完了。</translation>
     </message>

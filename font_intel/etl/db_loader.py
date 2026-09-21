@@ -32,14 +32,19 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "MAP_SOURCE_TAG",
+    "FONT_UPDATE_SOURCE_TAG",
     "VALID_METHODS",
     "mapping_seed_records",
     "load_seed_records",
     "apply_review_decisions",
+    "apply_font_update_decisions",
 ]
 
 # 方案 §5.1 S6：逐条映射统一标注的数据来源与许可（MIT）。
 MAP_SOURCE_TAG = "Seekladoom/Japanese-Chinese-Fonts-adaptation (MIT)"
+
+# T3.4 更新建议包采纳入库的来源标注（缺口回写，§5.4）。
+FONT_UPDATE_SOURCE_TAG = "video_subtitle_ocr font update suggestions"
 
 # 溯源 method 枚举（方案 §5.1：rule/llm/vlm/human）。
 VALID_METHODS = frozenset({"rule", "llm", "vlm", "human"})
@@ -186,3 +191,81 @@ def apply_review_decisions(
                     item.get("source_file"), item.get("line_no"),
                     str(item.get("line") or "")[:60])
     return {"adopted_items": len(adopted), "written": written, "rejected": rejected}
+
+
+def apply_font_update_decisions(
+    db: FontsDB, decisions: dict, *, source: str = FONT_UPDATE_SOURCE_TAG
+) -> dict:
+    """T3.4 §5.4：把「更新建议包」的人工采纳决策写入覆盖层。
+
+    ``decisions`` 形如 ``{"adopted": [建议条目...], "rejected": [...]}``
+    （``FontUpdateReviewDialog.get_result()`` / 建议包导入后的选择同构）。
+    采纳条目的 ``suggestion.kind`` 决定写法：
+
+    - ``font``：``upsert_overlay_font`` 写覆盖层字体记录（fonts 表无
+      method 列，人工确认语义经 ``source`` 标注传递）；
+    - ``mapping``：一行覆盖层正映射，``method='human'``、
+      ``confidence=1.0``（与 S5 复核采纳一致的人工确认语义）；
+    - ``negative_mapping``：逐个别名一行覆盖层负映射。
+
+    否决条目不写库，仅打留痕日志。**未经人工确认的 ``llm_inferred``
+    建议绝不经本函数入库**（只有对话框/导入后显式采纳的条目进入
+    ``adopted``；运行时 ``compliance.decide`` 另有防御拦截漏网记录）。
+
+    Returns:
+        ``{"adopted_items": 采纳条目数, "written": 落库行数,
+        "rejected": 否决条目列表}``。
+    """
+    decisions = decisions or {}
+    adopted = list(decisions.get("adopted") or [])
+    rejected = list(decisions.get("rejected") or [])
+    written = 0
+    for item in adopted:
+        if not isinstance(item, dict):
+            raise ValueError(f"update suggestion must be a dict: {item!r}")
+        suggestion = item.get("suggestion") or {}
+        kind = suggestion.get("kind")
+        if kind == "font":
+            name = str(suggestion.get("canonical_name") or "").strip()
+            if not name:
+                raise ValueError("font suggestion requires canonical_name")
+            db.upsert_overlay_font(
+                name,
+                vendor=suggestion.get("vendor"),
+                category=suggestion.get("category"),
+                languages=suggestion.get("languages"),
+                license_category=str(
+                    suggestion.get("license_category") or "unknown"),
+                source=source,
+            )
+            written += 1
+        elif kind == "mapping":
+            jp = str(suggestion.get("jp_name")
+                     or item.get("font_name") or "").strip()
+            if not jp:
+                raise ValueError("mapping suggestion requires jp_name")
+            db.add_overlay_mapping(
+                jp, suggestion.get("cn_name"), kind="mapping",
+                method="human", confidence=1.0,
+                source_file=str(item.get("source_file") or ""),
+                source=source)
+            written += 1
+        elif kind == "negative_mapping":
+            names = [str(n).strip() for n in (item.get("names") or [])
+                     if str(n).strip()]
+            if not names:
+                names = [str(suggestion.get("jp_name")
+                             or item.get("font_name") or "").strip()]
+            for name in names:
+                db.add_overlay_mapping(name, None, kind="negative_mapping",
+                                       method="human", confidence=1.0,
+                                       source_file=str(item.get("source_file") or ""),
+                                       source=source)
+                written += 1
+        else:
+            raise ValueError(f"unsupported suggestion kind: {kind!r}")
+    for item in rejected:
+        logger.info("更新建议否决，丢弃不写库: %s %s",
+                    item.get("type"), item.get("font_name"))
+    return {"adopted_items": len(adopted), "written": written,
+            "rejected": rejected}

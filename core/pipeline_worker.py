@@ -581,6 +581,24 @@ class PipelineWorker(QThread):
         self.font_identifications = result
         return result
 
+    def _build_font_compliance_config(self):
+        """T3.4：识别开启且产出侧表时构造合规闸门配置（事件级 \fn 落名
+        的决策入口）。识别关闭/无结果 → None（缺省路径零行为变化）；
+        font_intel 缺失等异常降级为 None 并记 warning，绝不中断出片。"""
+        if self.font_identifications is None:
+            return None
+        try:
+            from font_intel.integration import FontComplianceConfig
+
+            db_path = getattr(self.font_identify_config, "db_path", None)
+            return FontComplianceConfig(
+                enabled=True, db_path=db_path, interactive=False)
+        except Exception as exc:
+            logger.warning(
+                "font compliance config unavailable; font closure disabled: %s",
+                exc)
+            return None
+
     def run(self):
         try:
             t0_total = time.perf_counter()
@@ -677,6 +695,11 @@ class PipelineWorker(QThread):
             self.font_identifications = self._identify_fonts(restored_results)
             if self.is_cancelled: return
 
+            # T3.4 落名联动：识别开启且产出侧表时随附合规闸门配置（识别
+            # 结果要过闸才写 \fn）；识别关闭/无结果 → None，生成器行为与
+            # 旧版本逐字节一致。
+            font_compliance_cfg = self._build_font_compliance_config()
+
             self.progress_updated.emit(90, QCoreApplication.translate("pipeline_worker", "Step 4/4: Starting ASS subtitle file generation..."))
             if self.is_cancelled: return
 
@@ -734,6 +757,8 @@ class PipelineWorker(QThread):
                 template_path=self.template_path,
                 subtitle_polisher=polisher_cfg,
                 translation_config=translation_cfg,
+                font_compliance=font_compliance_cfg,
+                font_identifications=self.font_identifications,
                 roi_ocr_langs=collect_roi_ocr_langs(self.roi_data) or None,
                 source_filter_config=self.source_filter_config,
                 roi_pose_tags=roi_pose_tags or None,

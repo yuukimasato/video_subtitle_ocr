@@ -441,4 +441,22 @@ DICT = {
     "类型：{0} ｜ 置信度：{1} ｜ 来源：{2} ｜ 文件：{3}": "Type: {0} | Confidence: {1} | Source: {2} | File: {3}",
     "理由：{0}": "Reason: {0}",
     "（该条目不写库；如需修正请在源表修订后重跑导入）": "(this entry is not written to the database; to fix it, revise the source table and rerun the import)",
+
+
+    # ── T3.4 FontUpdateReviewDialog（更新建议包人工确认）──
+    "新增字体记录": "New font record",
+    "映射修正": "Mapping correction",
+    "新增映射": "New mapping",
+    "模型推断（未经人工确认）": "Model-inferred (not human-confirmed)",
+    "字形重排证据": "Glyph-rerank evidence",
+    "{0}：{1} → {2}": "{0}: {1} → {2}",
+    "{0}：{1}": "{0}: {1}",
+    "{0}：{1}（不可采纳）": "{0}: {1} (not actionable)",
+    "建议：新增记录 {0}（许可类别 {1}）": "Suggestion: add record {0} (license category {1})",
+    "类型：{0} ｜ 置信度：{1} ｜ 依据：{2} ｜ 方法：{3}": "Type: {0} | Confidence: {1} | Evidence: {2} | Method: {3}",
+    "（该条目无建议值，仅展示）": "(this entry has no suggested value; display only)",
+    "字体库更新建议": "Font database update suggestions",
+    "勾选 = 采纳并写入用户覆盖层（人工确认语义）；不勾 = 否决。未经确认的模型推断记录不参与自动替换。":
+        "Check = adopt and write to the user overlay layer (human-confirmed semantics); leave unchecked = reject. Unconfirmed model-inferred records never take part in automatic replacement.",
+    "无待复核的更新建议。": "No update suggestions pending review.",
 }
