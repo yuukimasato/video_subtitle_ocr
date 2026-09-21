@@ -20,8 +20,11 @@ from utils.time_utils import parse_time
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    # 仅类型标注：translation_config 默认 None（翻译整体关闭），缺省路径
-    # 不导入 font_intel.translation（红线：翻译只挂主进程阶段 4）。
+    # 仅类型标注：translation_config / font_identify_config 默认 None
+    # （翻译与字体识别整体关闭），缺省路径不导入 font_intel 模块
+    # （红线：翻译只挂主进程阶段 4；font_identify 是主进程后置阶段，
+    # 字块图像不跨阶段携带、不进 chunk worker 参数包）。
+    from font_intel.identify_stage import FontIdentifyConfig
     from font_intel.translation import TranslationConfig
 
 # 轨迹接管覆盖门限:轨迹事件去重时长 / ROI 时长低于该值时不接管,该 ROI
@@ -309,6 +312,7 @@ class PipelineWorker(QThread):
                  merge_rois: bool = False,
                  subtitle_polisher: Optional[SubtitlePolisherConfig] = None,
                  translation_config: Optional["TranslationConfig"] = None,
+                 font_identify_config: Optional["FontIdentifyConfig"] = None,
                  save_intermediate_json: Optional[bool] = None,
                  color_presence_gate_spec: Optional[Dict[str, Any]] = None,
                  ocr_engine_id: str = "",
@@ -338,6 +342,14 @@ class PipelineWorker(QThread):
         # None = 完全关闭，零行为变化；绝不进入 _stage_ctx()（阶段 1-3
         # 的 picklable 参数包）——chunk worker 子进程禁止服务端调用。
         self.translation_config = translation_config
+        # font_identify 后置阶段配置（T3.3，主进程：阶段 3 之后、构造
+        # 优化器之前）。None = 完全关闭，零开销（不打开视频、不 import
+        # torch 相关模块）；同样绝不进入 _stage_ctx()——字体识别是本地
+        # 计算，只在主进程跑，字块图像不跨阶段携带（随机访问取帧重裁）。
+        self.font_identify_config = font_identify_config
+        # T3.3 产出：字体候选侧表（FontIdentifyResult），不改
+        # restored_results 结构；T3.4（落名联动）在此之上消费。
+        self.font_identifications: Optional[Any] = None
         # Default behavior: keep intermediate JSON only when debugging.
         self.save_intermediate_json = bool(debug_mode) if save_intermediate_json is None else bool(save_intermediate_json)
         self.color_presence_gate_spec = color_presence_gate_spec
@@ -536,6 +548,39 @@ class PipelineWorker(QThread):
                 )
         return events_all, taken_over
 
+    def _identify_fonts(self, restored_results: List[tuple]) -> Optional[Any]:
+        """font_identify 后置阶段（T3.3）：阶段 3 之后、构造优化器之前，
+        本地主进程执行（无服务端调用；字块图像按 (roi, 稳定文本) 随机
+        访问取帧重裁，不跨阶段携带）。
+
+        配置 None/关闭 → 零开销直通返回 None；阶段任何异常降级为
+        "无识别结果"（记 warning），绝不中断出片。结果存
+        ``self.font_identifications``（侧表）并返回，供 T3.4 落名联动。
+        """
+        cfg = self.font_identify_config
+        if cfg is None or not getattr(cfg, "enabled", False):
+            return None
+        try:
+            # 延迟导入：关闭路径永不加载 font_intel.identify_stage（其
+            # 自身零 torch 依赖，torch 相关模块由识别器链再延迟导入）。
+            from font_intel.identify_stage import run_font_identify_stage
+
+            result = run_font_identify_stage(
+                list(restored_results), self.video_path, self.fps, cfg,
+                roi_data=self.roi_data,
+                video_width=self.video_width,
+                video_height=self.video_height,
+                cancel_check=lambda: self.is_cancelled,
+            )
+        except Exception as exc:
+            logger.warning(
+                "font_identify stage failed; degrading to no identifications: %s",
+                exc, exc_info=True,
+            )
+            return None
+        self.font_identifications = result
+        return result
+
     def run(self):
         try:
             t0_total = time.perf_counter()
@@ -619,6 +664,17 @@ class PipelineWorker(QThread):
                 restored_results = pipeline_stages.restore_stage(
                     ctx, ocr_results, progress_cb=_progress, cancel_check=cancel_check)
 
+            if self.is_cancelled: return
+
+            # font_identify 后置阶段（T3.3）：本地计算、主进程执行——
+            # 阶段 3 之后、构造优化器之前；关闭时零开销。产出字体候选
+            # 侧表（不改 restored_results 结构），字体名落 ASS 由 T3.4 消费。
+            if (
+                self.font_identify_config is not None
+                and getattr(self.font_identify_config, "enabled", False)
+            ):
+                restored_results = list(restored_results)
+            self.font_identifications = self._identify_fonts(restored_results)
             if self.is_cancelled: return
 
             self.progress_updated.emit(90, QCoreApplication.translate("pipeline_worker", "Step 4/4: Starting ASS subtitle file generation..."))
