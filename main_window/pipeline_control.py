@@ -1,12 +1,17 @@
+import logging
 import os
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QUrl, QCoreApplication
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QProgressDialog
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    # 仅类型标注：font_intel.translation 在 build_translation_config 内惰性导入。
+    # 仅类型标注：font_intel.translation / font_intel.identify_stage 在
+    # build_*_config 内惰性导入。
+    from font_intel.identify_stage import FontIdentifyConfig
     from font_intel.translation import TranslationConfig
 
 
@@ -83,6 +88,63 @@ def build_translation_config(options: dict) -> Tuple[Optional["TranslationConfig
         cfg.max_line_chars = int(options.get("translation_max_line_chars", 42))
     except (TypeError, ValueError):
         cfg.max_line_chars = 42
+    return cfg, ""
+
+
+def build_font_identify_config(options: dict) -> Tuple[Optional["FontIdentifyConfig"], str]:
+    """控制面板选项 → ``(FontIdentifyConfig | None, 错误消息)``。
+
+    与 :func:`build_translation_config` 同构（T3.5）：``font_identify_enabled``
+    关闭 → ``(None, "")``：与未启用识别的既有运行零行为差异（零开销直通，
+    不打开视频、不 import torch 相关模块）。识别是本地计算，无凭据可配，
+    仅校验：
+    - Top-N（非法/＜1 → 回退默认 5）；
+    - 置信度阈值（非法/负数 → 0.0 = 不标记）；
+    - 字体库目录（填写但不存在 → 用户可读错误，由调用方弹窗中止本轮，
+      避免静默扫空）；
+    - fonts.db 路径（留空 → ``db_path=None``，运行时落
+      ``font_intel.fonts_db.default_db_path()``）。
+    """
+    if not options.get("font_identify_enabled"):
+        return None, ""
+    try:
+        from font_intel.identify_stage import FontIdentifyConfig
+    except Exception as exc:  # font_intel 附加依赖缺失
+        return None, QCoreApplication.translate(
+            "SubtitleOCRGUI",
+            "已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖"
+            "（requirements-fontintel.txt），或取消勾选「字体识别」后重试。",
+        ).format(exc)
+
+    try:
+        top_n = int(str(options.get("font_identify_top_n", 5)).strip())
+    except (TypeError, ValueError):
+        top_n = 5
+    if top_n < 1:
+        top_n = 5
+    try:
+        threshold = float(str(options.get("font_identify_confidence_threshold", 0.0)).strip())
+    except (TypeError, ValueError):
+        threshold = 0.0
+    if threshold < 0.0:
+        threshold = 0.0
+
+    font_dir = str(options.get("font_identify_font_dir") or "").strip()
+    if font_dir and not os.path.isdir(font_dir):
+        return None, QCoreApplication.translate(
+            "SubtitleOCRGUI",
+            "已启用字体识别，但字体库目录不存在：{0}。请检查路径，或清空后仅使用"
+            "系统字体目录。",
+        ).format(font_dir)
+    db_path = str(options.get("font_identify_db_path") or "").strip()
+
+    cfg = FontIdentifyConfig(
+        enabled=True,
+        top_n=top_n,
+        confidence_threshold=threshold,
+        extra_font_dirs=[font_dir] if font_dir else [],
+        db_path=db_path or None,
+    )
     return cfg, ""
 
 
@@ -173,6 +235,22 @@ class PipelineControlMixin:
             )
             return
 
+        # 字体识别（T3.5）：开关关闭 → (None, "")，零开销直通；本地计算，
+        # 无凭据可配，仅校验字体库目录存在性。
+        font_identify_config, font_identify_error = build_font_identify_config(options)
+        if font_identify_error:
+            QMessageBox.warning(
+                self,
+                QCoreApplication.translate("SubtitleOCRGUI", "警告"),
+                font_identify_error,
+            )
+            return
+        # 复核流（_maybe_review_font_suggestions）按同一数据库写覆盖层，
+        # 保证"识别查询的库 = 建议采纳的库"。
+        self._pipeline_font_db_path = (
+            font_identify_config.db_path if font_identify_config is not None else ""
+        )
+
         video_dir = os.path.dirname(self.video_path)
         video_filename = os.path.splitext(os.path.basename(self.video_path))[0]
         output_ass_path = os.path.join(video_dir, f"{video_filename}.ass")
@@ -243,6 +321,7 @@ class PipelineControlMixin:
             motion_auto_detect=bool(options.get("motion_auto_detect", False)),
             subtitle_polisher=subtitle_polisher,
             translation_config=translation_config,
+            font_identify_config=font_identify_config,
             color_presence_gate_spec=gate_spec,
             ocr_engine_id=options.get("ocr_engine_id", ""),
             source_filter_config=options.get("source_filter_config"),
@@ -340,12 +419,93 @@ class PipelineControlMixin:
         QMessageBox.information(self,
                                 QCoreApplication.translate("SubtitleOCRGUI", "完成"),
                                 QCoreApplication.translate("SubtitleOCRGUI", "字幕文件已生成：{}").format(output_path))
+        # 字体识别（T3.5）：输出目录存在更新建议包（有建议才弹）时弹复核
+        # 对话框——QDialog 交互必须在主线程，本槽是 pipeline_finished 信号
+        # 的主线程接收侧；worker 内只落盘、绝不碰 GUI。
+        self._maybe_review_font_suggestions(output_path)
         reply = QMessageBox.question(self,
                                      QCoreApplication.translate("SubtitleOCRGUI", "打开目录"),
                                      QCoreApplication.translate("SubtitleOCRGUI", "是否打开包含该文件的文件夹？"),
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(output_path)))
+
+    def _maybe_review_font_suggestions(self, output_ass_path: str) -> None:
+        """字体更新建议复核（T3.4 §5.4 / T3.5 GUI 接线）。
+
+        主流水线正常结束后，若输出目录存在 ``<stem>_font_update_suggestions.json``
+        （worker 端 T3.4 闭环落盘，worker 内绝不碰 GUI）且条目非空，弹
+        :class:`~components.font_update_review_dialog.FontUpdateReviewDialog`
+        由用户逐条勾选：勾选 = 采纳（经 ``db_loader.apply_font_update_decisions``
+        以 ``method=human`` 确认语义写覆盖层），取消/不勾 = 否决。包缺失、
+        条目为空、schema 不符、写库失败一律静默降级或警告，绝不影响本轮
+        出片成果。数据库取 ``_pipeline_font_db_path``（识别配置的同一库，
+        由 run_ocr_pipeline 记录；空 = 默认 XDG 路径）。
+        """
+        try:
+            from font_intel.closure import (
+                read_update_suggestions_package,
+                suggestions_path_for,
+            )
+
+            path = suggestions_path_for(output_ass_path)
+            if not os.path.isfile(path):
+                return
+            package = read_update_suggestions_package(path)
+        except Exception as exc:
+            logger.warning("读取字体更新建议包失败（跳过复核）: %s", exc)
+            QMessageBox.warning(
+                self,
+                QCoreApplication.translate("SubtitleOCRGUI", "警告"),
+                QCoreApplication.translate(
+                    "SubtitleOCRGUI",
+                    "字体更新建议读取失败，本轮复核已跳过：\n{0}",
+                ).format(exc),
+            )
+            return
+        items: List[Any] = [
+            i for i in (package.get("items") or []) if isinstance(i, dict)
+        ]
+        if not items:
+            return
+
+        from components.font_update_review_dialog import FontUpdateReviewDialog
+
+        dialog = FontUpdateReviewDialog(items, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        decisions = dialog.get_result()
+        if not decisions.get("adopted"):
+            return
+
+        db_path = str(getattr(self, "_pipeline_font_db_path", "") or "")
+        try:
+            from font_intel.etl.db_loader import apply_font_update_decisions
+            from font_intel.fonts_db import FontsDB
+
+            db = FontsDB(db_path or None)
+            try:
+                stats = apply_font_update_decisions(db, decisions)
+            finally:
+                db.close()
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                QCoreApplication.translate("SubtitleOCRGUI", "警告"),
+                QCoreApplication.translate(
+                    "SubtitleOCRGUI",
+                    "字体更新建议写入失败：\n{0}",
+                ).format(exc),
+            )
+            return
+        QMessageBox.information(
+            self,
+            QCoreApplication.translate("SubtitleOCRGUI", "完成"),
+            QCoreApplication.translate(
+                "SubtitleOCRGUI",
+                "已把 {0} 条字体更新建议写入用户覆盖层。",
+            ).format(stats.get("written", 0)),
+        )
 
     def _on_pipeline_error(self, error_message: str):
         # 同 _on_pipeline_finished：先销毁进度对话框再弹模态错误框。

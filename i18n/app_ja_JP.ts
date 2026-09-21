@@ -106,7 +106,7 @@
         <translation type="vanished">インメモリモード（実験的）</translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="+137"/>
+        <location filename="../components/control_panel.py" line="+139"/>
         <source>识别语言：</source>
         <translation>認識言語：</translation>
     </message>
@@ -132,11 +132,13 @@
     <message>
         <location line="+1"/>
         <location line="+554"/>
+        <location line="+104"/>
+        <location line="+25"/>
         <source>浏览…</source>
         <translation>参照…</translation>
     </message>
     <message>
-        <location line="-538"/>
+        <location line="-667"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
         <translation type="unfinished">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語およびラテン系言語は PP-OCRv6 モデルを使用し、韓国語/ロシア語/アラビア語などは自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
     </message>
@@ -473,12 +475,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+777"/>
+        <location line="+995"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
-        <location line="-775"/>
+        <location line="-993"/>
         <source>清除已存密钥</source>
         <translation>保存済みキーを削除</translation>
     </message>
@@ -563,7 +565,67 @@
         <translation>最大行長：</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+23"/>
+        <source>字体识别（可选）</source>
+        <translation>フォント識別（任意）</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>对识别出的字幕行做字体识别（本地计算），输出 Top-N 候选并查询许可类别；识别完成后可在复核对话框中逐条确认字体库更新建议。</source>
+        <translation>認識した字幕行のフォントを識別（ローカル計算）し、Top-N 候補とライセンス区分を照会します。識別完了後、レビューダイアログでフォントデータベース更新提案を 1 件ずつ確認できます。</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Top-N 候选数：</source>
+        <translation>Top-N 候補数：</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>每组字幕字块输出的候选字体数量。</source>
+        <translation>グループごとに出力する候補フォントの数。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>置信度阈值：</source>
+        <translation>信頼度しきい値：</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>低于阈值的候选只展示、不参与自动替换；0 = 不标记。</source>
+        <translation>しきい値未満の候補は表示のみで自動置換されません。0 = マークしない。</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>字体库目录：</source>
+        <translation>フォントディレクトリ：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 仅系统字体目录</source>
+        <translation>空欄 = システムフォントディレクトリのみ</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>额外扫描的字体文件目录（可选）；留空 = 仅扫描系统字体目录。</source>
+        <translation>追加でスキャンするフォントファイルのディレクトリ（任意）。空欄 = システムフォントディレクトリのみスキャン。</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>fonts.db 路径：</source>
+        <translation>fonts.db パス：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 默认字体库路径</source>
+        <translation>空欄 = 既定のフォントデータベースパス</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字体许可/映射查询库；留空使用默认 XDG 数据目录下的 fonts.db。</source>
+        <translation>フォントライセンス／マッピング照会用データベース。空欄 = 既定の XDG データディレクトリの fonts.db。</translation>
+    </message>
+    <message>
+        <location line="+43"/>
         <source>完整设置</source>
         <translation>詳細設定</translation>
     </message>
@@ -583,7 +645,7 @@
         <translation>ワンクリックのシンプル表示に戻り、詳細設定を隠します。すべての選択肢は変わりません。</translation>
     </message>
     <message>
-        <location line="+206"/>
+        <location line="+223"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
@@ -618,7 +680,22 @@
         <translation>用語集 JSON (*.json)</translation>
     </message>
     <message>
-        <location line="+175"/>
+        <location line="+84"/>
+        <source>选择字体库目录</source>
+        <translation>フォントディレクトリを選択</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>选择 fonts.db 文件</source>
+        <translation>fonts.db ファイルを選択</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>SQLite 字体库 (*.db)</source>
+        <translation>SQLite フォントデータベース (*.db)</translation>
+    </message>
+    <message>
+        <location line="+186"/>
         <source>（无可用引擎）</source>
         <translation>（利用可能なエンジンなし）</translation>
     </message>
@@ -710,7 +787,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-1094"/>
+        <location line="-1323"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -991,7 +1068,7 @@
     <message>
         <location line="+9"/>
         <source>建议：{0} → {1}</source>
-        <translation type="unfinished">提案：{0} → {1}</translation>
+        <translation>提案：{0} → {1}</translation>
     </message>
     <message>
         <location line="+5"/>
@@ -1006,7 +1083,7 @@
     <message>
         <location line="+6"/>
         <source>理由：{0}</source>
-        <translation type="unfinished">理由：{0}</translation>
+        <translation>理由：{0}</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -1031,12 +1108,12 @@
     <message>
         <location line="+12"/>
         <source>应用</source>
-        <translation type="unfinished">適用</translation>
+        <translation>適用</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>取消</source>
-        <translation type="unfinished">キャンセル</translation>
+        <translation>キャンセル</translation>
     </message>
 </context>
 <context>
@@ -1534,7 +1611,7 @@
     <message>
         <location line="+1"/>
         <source>中文繁體</source>
-        <translation type="unfinished"></translation>
+        <translation>繁体字中国語</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1594,7 +1671,7 @@
     <message>
         <location line="+10"/>
         <source>识别语言：</source>
-        <translation type="unfinished">認識言語：</translation>
+        <translation>認識言語：</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -2149,7 +2226,7 @@
     <message>
         <location line="+40"/>
         <source>当前未选中任何 ROI：该开关只会写入之后「添加新 ROI」的条目；如需应用到已有 ROI，请先在列表中选中它再勾选。</source>
-        <translation type="unfinished">ROI が選択されていません:このスイッチは今後「新規 ROI 追加」で作成する項目にのみ反映されます。既存の ROI に適用するには、先にリストで対象を選択してから切り替えてください。</translation>
+        <translation>ROI が選択されていません:このスイッチは今後「新規 ROI 追加」で作成する項目にのみ反映されます。既存の ROI に適用するには、先にリストで対象を選択してから切り替えてください。</translation>
     </message>
     <message>
         <location line="+29"/>
@@ -2201,11 +2278,14 @@
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+112"/>
+        <location filename="../main_window/pipeline_control.py" line="+174"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
         <location line="+24"/>
+        <location line="+11"/>
+        <location line="+215"/>
+        <location line="+35"/>
         <location filename="../main_window/roi_config_io.py" line="-1"/>
         <location filename="../main_window/roi_editing.py" line="-163"/>
         <location filename="../main_window/source_config.py" line="+17"/>
@@ -2302,7 +2382,7 @@
         <translation>ASS 字幕ファイル (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="-58"/>
+        <location filename="../main_window/pipeline_control.py" line="-319"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
         <translation>まず動画を読み込み、ROI を 1 つ以上定義してください。</translation>
@@ -2328,7 +2408,7 @@
         <translation>カラーゲートを確認しました。次回の「字幕 OCR 認識」のステージ 1 で有効になります。</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="-78"/>
+        <location filename="../main_window/pipeline_control.py" line="-135"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>AI 翻訳が有効ですが、翻訳モジュールを利用できません（{0}）。先に font_intel の依存関係（requirements-fontintel.txt）をインストールするか、「AI 翻訳」のチェックを外して再試行してください。</translation>
     </message>
@@ -2343,7 +2423,17 @@
         <translation>AI 翻訳（ローカル Sakura）が有効ですが、Base URL が未入力です。ローカル Sakura サーバーの OpenAI 互換エンドポイントアドレス（例: http://127.0.0.1:8080/v1）を入力してください。</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+46"/>
+        <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
+        <translation>フォント識別が有効ですが、フォント識別モジュールを利用できません（{0}）。font_intel の依存パッケージ（requirements-fontintel.txt）をインストールするか、「フォント識別」のチェックを外して再試行してください。</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>已启用字体识别，但字体库目录不存在：{0}。请检查路径，或清空后仅使用系统字体目录。</source>
+        <translation>フォント識別が有効ですが、フォントディレクトリが存在しません：{0}。パスを確認するか、空欄にしてシステムフォントディレクトリのみを使用してください。</translation>
+    </message>
+    <message>
+        <location line="+47"/>
         <source>已有 OCR 任务在运行中，请等待其完成或先取消。</source>
         <translation>OCR タスクが実行中です。完了を待つか、先にキャンセルしてください。</translation>
     </message>
@@ -2358,7 +2448,7 @@
         <translation>DeepSeek 機能（ポリッシュ／断片マージ／戦略レビュー）が有効ですが、API Key が未入力です。API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+50"/>
         <source>保存字幕文件</source>
         <translation>字幕ファイルを保存</translation>
     </message>
@@ -2403,7 +2493,7 @@
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+52"/>
         <source>正在识别…</source>
         <translation>認識中…</translation>
     </message>
@@ -2419,16 +2509,17 @@
     </message>
     <message>
         <location line="+5"/>
+        <location line="+83"/>
         <source>完成</source>
         <translation>完了</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-82"/>
         <source>字幕文件已生成：{}</source>
         <translation>字幕ファイルを生成しました：{}</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+6"/>
         <source>打开目录</source>
         <translation>フォルダーを開く</translation>
     </message>
@@ -2438,7 +2529,26 @@
         <translation>このファイルを含むフォルダーを開きますか？</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+32"/>
+        <source>字体更新建议读取失败，本轮复核已跳过：
+{0}</source>
+        <translation>フォント更新提案の読み取りに失敗したため、今回のレビューをスキップしました：
+{0}</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>字体更新建议写入失败：
+{0}</source>
+        <translation>フォント更新提案の書き込みに失敗しました：
+{0}</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>已把 {0} 条字体更新建议写入用户覆盖层。</source>
+        <translation>{0} 件のフォント更新提案をユーザーオーバーレイ層に書き込みました。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
         <translation>[LLM] 中止またはエラー——ダイアログの表示をご確認ください。</translation>
     </message>

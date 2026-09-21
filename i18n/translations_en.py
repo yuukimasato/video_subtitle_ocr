@@ -459,4 +459,30 @@ DICT = {
     "勾选 = 采纳并写入用户覆盖层（人工确认语义）；不勾 = 否决。未经确认的模型推断记录不参与自动替换。":
         "Check = adopt and write to the user overlay layer (human-confirmed semantics); leave unchecked = reject. Unconfirmed model-inferred records never take part in automatic replacement.",
     "无待复核的更新建议。": "No update suggestions pending review.",
+
+
+# ── T3.5 字体识别选项组 + 复核接线（ControlPanelWidget / SubtitleOCRGUI）──
+"字体识别（可选）": "Font recognition (optional)",
+"对识别出的字幕行做字体识别（本地计算），输出 Top-N 候选并查询许可类别；识别完成后可在复核对话框中逐条确认字体库更新建议。":
+    "Recognize the fonts in detected subtitle lines (local computation) and output Top-N candidates with license categories; after recognition, confirm font database update suggestions one by one in the review dialog.",
+"Top-N 候选数：": "Top-N candidates:",
+"每组字幕字块输出的候选字体数量。": "Number of candidate fonts output per subtitle text group.",
+"置信度阈值：": "Confidence threshold:",
+"低于阈值的候选只展示、不参与自动替换；0 = 不标记。": "Candidates below the threshold are display-only and never auto-replaced; 0 = no marking.",
+"字体库目录：": "Font directory:",
+"留空 = 仅系统字体目录": "Empty = system font directories only",
+"额外扫描的字体文件目录（可选）；留空 = 仅扫描系统字体目录。": "Extra font file directories to scan (optional); empty = scan system font directories only.",
+"fonts.db 路径：": "fonts.db path:",
+"留空 = 默认字体库路径": "Empty = default font database path",
+"字体许可/映射查询库；留空使用默认 XDG 数据目录下的 fonts.db。": "Font license/mapping lookup database; empty = fonts.db in the default XDG data directory.",
+"选择字体库目录": "Select font directory",
+"选择 fonts.db 文件": "Select fonts.db file",
+"SQLite 字体库 (*.db)": "SQLite font database (*.db)",
+"已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。":
+    "Font recognition is enabled, but the font recognition module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or uncheck \"Font recognition\" and retry.",
+"已启用字体识别，但字体库目录不存在：{0}。请检查路径，或清空后仅使用系统字体目录。":
+    "Font recognition is enabled, but the font directory does not exist: {0}. Check the path, or clear it to use system font directories only.",
+"字体更新建议写入失败：\n{0}": "Failed to write font update suggestions:\n{0}",
+"字体更新建议读取失败，本轮复核已跳过：\n{0}": "Failed to read font update suggestions; review skipped for this run:\n{0}",
+"已把 {0} 条字体更新建议写入用户覆盖层。": "Wrote {0} font update suggestion(s) to the user overlay.",
 }

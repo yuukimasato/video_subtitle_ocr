@@ -62,7 +62,7 @@
 <context>
     <name>ControlPanelWidget</name>
     <message>
-        <location filename="../components/control_panel.py" line="+118"/>
+        <location filename="../components/control_panel.py" line="+120"/>
         <source>样式模板（可选）</source>
         <translation>樣式範本（可選）</translation>
     </message>
@@ -74,11 +74,13 @@
     <message>
         <location line="+1"/>
         <location line="+554"/>
+        <location line="+104"/>
+        <location line="+25"/>
         <source>浏览…</source>
         <translation>瀏覽…</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-676"/>
         <source>识别设置</source>
         <translation>辨識設定</translation>
     </message>
@@ -439,12 +441,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+777"/>
+        <location line="+995"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>使用 API Key 和 Base URL 拉取 /v1/models。</translation>
     </message>
     <message>
-        <location line="-775"/>
+        <location line="-993"/>
         <source>清除已存密钥</source>
         <translation>清除已存金鑰</translation>
     </message>
@@ -529,7 +531,67 @@
         <translation>最大行長：</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+23"/>
+        <source>字体识别（可选）</source>
+        <translation>字型辨識（可選）</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>对识别出的字幕行做字体识别（本地计算），输出 Top-N 候选并查询许可类别；识别完成后可在复核对话框中逐条确认字体库更新建议。</source>
+        <translation>對辨識出的字幕行做字型辨識（本機運算），輸出 Top-N 候選並查詢授權類別；辨識完成後可在複核對話框中逐條確認字型庫更新建議。</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Top-N 候选数：</source>
+        <translation>Top-N 候選數：</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>每组字幕字块输出的候选字体数量。</source>
+        <translation>每組字幕字塊輸出的候選字型數量。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>置信度阈值：</source>
+        <translation>信賴度閾值：</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>低于阈值的候选只展示、不参与自动替换；0 = 不标记。</source>
+        <translation>低於閾值的候選僅顯示、不參與自動替換；0 = 不標記。</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>字体库目录：</source>
+        <translation>字型庫目錄：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 仅系统字体目录</source>
+        <translation>留空 = 僅系統字型目錄</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>额外扫描的字体文件目录（可选）；留空 = 仅扫描系统字体目录。</source>
+        <translation>額外掃描的字型檔目錄（可選）；留空 = 僅掃描系統字型目錄。</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>fonts.db 路径：</source>
+        <translation>fonts.db 路徑：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 默认字体库路径</source>
+        <translation>留空 = 預設字型庫路徑</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字体许可/映射查询库；留空使用默认 XDG 数据目录下的 fonts.db。</source>
+        <translation>字型授權／對應查詢資料庫；留空使用預設 XDG 資料目錄下的 fonts.db。</translation>
+    </message>
+    <message>
+        <location line="+43"/>
         <source>完整设置</source>
         <translation>完整設定</translation>
     </message>
@@ -549,7 +611,7 @@
         <translation>返回一鍵簡潔檢視，隱藏進階設定。所有選項保持不變。</translation>
     </message>
     <message>
-        <location line="+206"/>
+        <location line="+223"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 文字來源過濾已關閉，將保留所有辨識到的文字。</translation>
     </message>
@@ -584,7 +646,22 @@
         <translation>術語表 JSON (*.json)</translation>
     </message>
     <message>
-        <location line="+168"/>
+        <location line="+84"/>
+        <source>选择字体库目录</source>
+        <translation>選擇字型庫目錄</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>选择 fonts.db 文件</source>
+        <translation>選擇 fonts.db 檔案</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>SQLite 字体库 (*.db)</source>
+        <translation>SQLite 字型庫 (*.db)</translation>
+    </message>
+    <message>
+        <location line="+179"/>
         <source>自动(Auto)</source>
         <translation>自動(Auto)</translation>
     </message>
@@ -875,7 +952,7 @@
     <message>
         <location line="+9"/>
         <source>建议：{0} → {1}</source>
-        <translation type="unfinished">建議：{0} → {1}</translation>
+        <translation>建議：{0} → {1}</translation>
     </message>
     <message>
         <location line="+5"/>
@@ -890,7 +967,7 @@
     <message>
         <location line="+6"/>
         <source>理由：{0}</source>
-        <translation type="unfinished">理由：{0}</translation>
+        <translation>理由：{0}</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -915,12 +992,12 @@
     <message>
         <location line="+12"/>
         <source>应用</source>
-        <translation type="unfinished">套用</translation>
+        <translation>套用</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>取消</source>
-        <translation type="unfinished">取消</translation>
+        <translation>取消</translation>
     </message>
 </context>
 <context>
@@ -1380,7 +1457,7 @@
     <message>
         <location line="+1"/>
         <source>日本語</source>
-        <translation type="unfinished">日本語</translation>
+        <translation>日本語</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1430,7 +1507,7 @@
     <message>
         <location line="+10"/>
         <source>识别语言：</source>
-        <translation type="unfinished">辨識語言：</translation>
+        <translation>辨識語言：</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -1661,7 +1738,7 @@
     <message>
         <location line="+1"/>
         <source>取消</source>
-        <translation type="unfinished">取消</translation>
+        <translation>取消</translation>
     </message>
 </context>
 <context>
@@ -1687,7 +1764,7 @@
         <translation>自動分析失敗，請手動選擇場景類型</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+35"/>
+        <location filename="../main_window/pipeline_control.py" line="+40"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>已啟用 AI 翻譯，但翻譯模組不可用（{0}）。請先安裝 font_intel 相依套件（requirements-fontintel.txt），或取消勾選「AI 翻譯」後重試。</translation>
     </message>
@@ -1702,11 +1779,24 @@
         <translation>已啟用 AI 翻譯（本機 Sakura），但未填寫 Base URL。請填寫本機 Sakura 伺服器的 OpenAI 相容端點位址（如 http://127.0.0.1:8080/v1）。</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+46"/>
+        <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
+        <translation>已啟用字型辨識，但字型辨識模組不可用（{0}）。請先安裝 font_intel 相依套件（requirements-fontintel.txt），或取消勾選「字型辨識」後重試。</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>已启用字体识别，但字体库目录不存在：{0}。请检查路径，或清空后仅使用系统字体目录。</source>
+        <translation>已啟用字型辨識，但字型庫目錄不存在：{0}。請檢查路徑，或清空後僅使用系統字型目錄。</translation>
+    </message>
+    <message>
+        <location line="+40"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
         <location line="+24"/>
+        <location line="+11"/>
+        <location line="+215"/>
+        <location line="+35"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
         <location filename="../main_window/roi_editing.py" line="+325"/>
         <location filename="../main_window/source_config.py" line="+17"/>
@@ -1715,7 +1805,7 @@
         <translation>警告</translation>
     </message>
     <message>
-        <location line="-58"/>
+        <location line="-319"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
         <translation>請先載入影片並至少定義一個 ROI。</translation>
@@ -1736,7 +1826,7 @@
         <translation>已啟用 DeepSeek 功能（潤飾／碎片合併／策略複核），但未填寫 API Key。請填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+50"/>
         <source>保存字幕文件</source>
         <translation>儲存字幕檔案</translation>
     </message>
@@ -1781,7 +1871,7 @@
         <translation>取消</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+52"/>
         <source>正在识别…</source>
         <translation>正在辨識…</translation>
     </message>
@@ -1797,16 +1887,17 @@
     </message>
     <message>
         <location line="+5"/>
+        <location line="+83"/>
         <source>完成</source>
         <translation>完成</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-82"/>
         <source>字幕文件已生成：{}</source>
         <translation>字幕檔案已產生：{}</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+6"/>
         <source>打开目录</source>
         <translation>開啟資料夾</translation>
     </message>
@@ -1816,7 +1907,26 @@
         <translation>是否開啟包含該檔案的資料夾？</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+32"/>
+        <source>字体更新建议读取失败，本轮复核已跳过：
+{0}</source>
+        <translation>字型更新建議讀取失敗，本輪複核已跳過：
+{0}</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>字体更新建议写入失败：
+{0}</source>
+        <translation>字型更新建議寫入失敗：
+{0}</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>已把 {0} 条字体更新建议写入用户覆盖层。</source>
+        <translation>已將 {0} 條字型更新建議寫入使用者覆蓋層。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
         <translation>[LLM] 已中止或發生錯誤 —— 請查看彈出視窗提示。</translation>
     </message>

@@ -110,6 +110,8 @@ class ControlPanelWidget(QWidget):
         self._active_translation_provider: str = "cloud"
         self._translation_endpoint_values: Dict[str, Dict[str, str]] = {}
         self._load_translation_endpoint_values()
+        # 字体识别（T3.5）：加载期间不回写设置（同翻译组策略）。
+        self._loading_font_identify_settings: bool = False
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -710,6 +712,111 @@ class ControlPanelWidget(QWidget):
         translation_grid.setColumnStretch(4, 1)
         translation_content.addLayout(translation_grid)
 
+        # ── 字体识别（T3.5；可折叠，默认收起 = 关闭）。选项经
+        # get_pipeline_options() 交 pipeline_control 组装 FontIdentifyConfig，
+        # 关闭时识别配置为 None（零开销直通：不打开视频、不 import torch
+        # 相关模块）。
+        self.font_identify_group, _font_identify_content, font_identify_content = (
+            self._make_collapsible_group(
+                QCoreApplication.translate("ControlPanelWidget", "字体识别（可选）")
+            )
+        )
+        self.font_identify_group.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "对识别出的字幕行做字体识别（本地计算），输出 Top-N 候选并查询许可类别；"
+                "识别完成后可在复核对话框中逐条确认字体库更新建议。",
+            )
+        )
+        font_identify_grid = QGridLayout()
+        font_identify_grid.setHorizontalSpacing(12)
+        font_identify_grid.setVerticalSpacing(6)
+
+        self.font_identify_top_n_label = QLabel(
+            QCoreApplication.translate("ControlPanelWidget", "Top-N 候选数：")
+        )
+        self.font_identify_top_n_edit = QLineEdit()
+        self.font_identify_top_n_edit.setFixedWidth(60)
+        self.font_identify_top_n_edit.setText("5")
+        self.font_identify_top_n_edit.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "每组字幕字块输出的候选字体数量。",
+            )
+        )
+        self.font_identify_threshold_label = QLabel(
+            QCoreApplication.translate("ControlPanelWidget", "置信度阈值：")
+        )
+        self.font_identify_threshold_edit = QLineEdit()
+        self.font_identify_threshold_edit.setFixedWidth(60)
+        self.font_identify_threshold_edit.setText("0")
+        self.font_identify_threshold_edit.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "低于阈值的候选只展示、不参与自动替换；0 = 不标记。",
+            )
+        )
+        topn_row = QHBoxLayout()
+        topn_row.setSpacing(8)
+        topn_row.addWidget(self.font_identify_top_n_label)
+        topn_row.addWidget(self.font_identify_top_n_edit)
+        topn_row.addSpacing(12)
+        topn_row.addWidget(self.font_identify_threshold_label)
+        topn_row.addWidget(self.font_identify_threshold_edit)
+        topn_row.addStretch(1)
+        font_identify_grid.addLayout(topn_row, 0, 0, 1, 3)
+
+        # 字体库目录（额外扫描；留空 = 仅系统字体目录）。
+        self.font_identify_font_dir_label = QLabel(
+            QCoreApplication.translate("ControlPanelWidget", "字体库目录：")
+        )
+        self.font_identify_font_dir_edit = QLineEdit()
+        self.font_identify_font_dir_edit.setPlaceholderText(
+            QCoreApplication.translate("ControlPanelWidget", "留空 = 仅系统字体目录")
+        )
+        self.font_identify_font_dir_edit.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "额外扫描的字体文件目录（可选）；留空 = 仅扫描系统字体目录。",
+            )
+        )
+        self.font_identify_font_dir_btn = QPushButton(
+            QCoreApplication.translate("ControlPanelWidget", "浏览…")
+        )
+        self.font_identify_font_dir_btn.setMinimumHeight(30)
+        font_dir_row = QHBoxLayout()
+        font_dir_row.setSpacing(8)
+        font_dir_row.addWidget(self.font_identify_font_dir_label)
+        font_dir_row.addWidget(self.font_identify_font_dir_edit, 1)
+        font_dir_row.addWidget(self.font_identify_font_dir_btn)
+        font_identify_grid.addLayout(font_dir_row, 1, 0, 1, 3)
+
+        # fonts.db 路径（许可/映射查询；留空 = 默认 XDG 路径）。
+        self.font_identify_db_label = QLabel(
+            QCoreApplication.translate("ControlPanelWidget", "fonts.db 路径：")
+        )
+        self.font_identify_db_edit = QLineEdit()
+        self.font_identify_db_edit.setPlaceholderText(
+            QCoreApplication.translate("ControlPanelWidget", "留空 = 默认字体库路径")
+        )
+        self.font_identify_db_edit.setToolTip(
+            QCoreApplication.translate(
+                "ControlPanelWidget",
+                "字体许可/映射查询库；留空使用默认 XDG 数据目录下的 fonts.db。",
+            )
+        )
+        self.font_identify_db_btn = QPushButton(
+            QCoreApplication.translate("ControlPanelWidget", "浏览…")
+        )
+        self.font_identify_db_btn.setMinimumHeight(30)
+        font_db_row = QHBoxLayout()
+        font_db_row.setSpacing(8)
+        font_db_row.addWidget(self.font_identify_db_label)
+        font_db_row.addWidget(self.font_identify_db_edit, 1)
+        font_db_row.addWidget(self.font_identify_db_btn)
+        font_identify_grid.addLayout(font_db_row, 2, 0, 1, 3)
+        font_identify_content.addLayout(font_identify_grid)
+
         # 「检测可用引擎」移入高级区，不再占据引擎详情首行。
         engine_detect_row = QHBoxLayout()
         engine_detect_row.setSpacing(8)
@@ -732,6 +839,7 @@ class ControlPanelWidget(QWidget):
         extract_layout.addWidget(self.source_status_label)
         extract_layout.addWidget(self.llm_group)
         extract_layout.addWidget(self.translation_group)
+        extract_layout.addWidget(self.font_identify_group)
         extract_layout.addWidget(self.advanced_group)
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
@@ -811,8 +919,18 @@ class ControlPanelWidget(QWidget):
         self.translation_max_chars_edit.textChanged.connect(self._save_translation_settings)
         self.translation_glossary_btn.clicked.connect(self._on_browse_glossary)
 
+        # 字体识别：任何改动立即持久化（与 AI 翻译组同策略）。
+        self.font_identify_group.toggled.connect(self._save_font_identify_settings)
+        self.font_identify_top_n_edit.textChanged.connect(self._save_font_identify_settings)
+        self.font_identify_threshold_edit.textChanged.connect(self._save_font_identify_settings)
+        self.font_identify_font_dir_edit.textChanged.connect(self._save_font_identify_settings)
+        self.font_identify_db_edit.textChanged.connect(self._save_font_identify_settings)
+        self.font_identify_font_dir_btn.clicked.connect(self._on_browse_font_dir)
+        self.font_identify_db_btn.clicked.connect(self._on_browse_font_db)
+
         self._load_llm_from_settings()
         self._load_translation_from_settings()
+        self._load_font_identify_from_settings()
         self._populate_engine_combo()
         self._populate_preset_combo()
 
@@ -893,6 +1011,13 @@ class ControlPanelWidget(QWidget):
             self.translation_glossary_btn,
             self.translation_context_edit,
             self.translation_max_chars_edit,
+            self.font_identify_group,
+            self.font_identify_top_n_edit,
+            self.font_identify_threshold_edit,
+            self.font_identify_font_dir_edit,
+            self.font_identify_font_dir_btn,
+            self.font_identify_db_edit,
+            self.font_identify_db_btn,
         ]
 
     def set_pipeline_running(self, running: bool, stage: str = "") -> None:
@@ -1302,6 +1427,101 @@ class ControlPanelWidget(QWidget):
         if path:
             self.translation_glossary_edit.setText(path)
 
+    # ── 字体识别（T3.5）──────────────────────────────────────
+
+    @staticmethod
+    def _parse_font_identify_int(value: object, default: int) -> int:
+        """行内数字输入的安全解析：非法/＜1 回退默认。"""
+        try:
+            parsed = int(str(value).strip())
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed >= 1 else default
+
+    @staticmethod
+    def _parse_font_identify_float(value: object, default: float) -> float:
+        """行内浮点输入的安全解析：非法/负数回退默认（阈值 0 = 不标记）。"""
+        try:
+            parsed = float(str(value).strip())
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed >= 0 else default
+
+    def _load_font_identify_from_settings(self) -> None:
+        """恢复上次会话的字体识别选项（控件信号已接好，期间抑制回写）。"""
+        self._loading_font_identify_settings = True
+        try:
+            settings = QSettings()
+            self.font_identify_group.setChecked(
+                settings.value("font_identify/enabled", False, type=bool)
+            )
+            self.font_identify_top_n_edit.setText(
+                str(
+                    self._parse_font_identify_int(
+                        settings.value("font_identify/top_n", 5), 5
+                    )
+                )
+            )
+            self.font_identify_threshold_edit.setText(
+                # %g：0.0 显示为 "0"、0.4 保持 "0.4"（输入框不出现多余小数位）。
+                format(
+                    self._parse_font_identify_float(
+                        settings.value("font_identify/confidence_threshold", 0.0), 0.0
+                    ),
+                    "g",
+                )
+            )
+            self.font_identify_font_dir_edit.setText(
+                str(settings.value("font_identify/font_dir", "") or "")
+            )
+            self.font_identify_db_edit.setText(
+                str(settings.value("font_identify/db_path", "") or "")
+            )
+        finally:
+            self._loading_font_identify_settings = False
+
+    def _save_font_identify_settings(self) -> None:
+        if self._loading_font_identify_settings:
+            return
+        settings = QSettings()
+        settings.setValue("font_identify/enabled", self.font_identify_group.isChecked())
+        settings.setValue(
+            "font_identify/top_n",
+            self._parse_font_identify_int(self.font_identify_top_n_edit.text(), 5),
+        )
+        settings.setValue(
+            "font_identify/confidence_threshold",
+            self._parse_font_identify_float(
+                self.font_identify_threshold_edit.text(), 0.0
+            ),
+        )
+        settings.setValue(
+            "font_identify/font_dir",
+            self.font_identify_font_dir_edit.text().strip(),
+        )
+        settings.setValue(
+            "font_identify/db_path", self.font_identify_db_edit.text().strip()
+        )
+
+    def _on_browse_font_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            QCoreApplication.translate("ControlPanelWidget", "选择字体库目录"),
+            self.font_identify_font_dir_edit.text().strip(),
+        )
+        if path:
+            self.font_identify_font_dir_edit.setText(path)
+
+    def _on_browse_font_db(self) -> None:
+        path, _flt = QFileDialog.getOpenFileName(
+            self,
+            QCoreApplication.translate("ControlPanelWidget", "选择 fonts.db 文件"),
+            self.font_identify_db_edit.text().strip(),
+            QCoreApplication.translate("ControlPanelWidget", "SQLite 字体库 (*.db)"),
+        )
+        if path:
+            self.font_identify_db_edit.setText(path)
+
     def _on_llm_provider_changed(self, _index: int) -> None:
         preset = self.llm_provider_combo.currentData()
         if preset:
@@ -1457,6 +1677,17 @@ class ControlPanelWidget(QWidget):
             "translation_max_line_chars": self._parse_translation_int(
                 self.translation_max_chars_edit.text(), 42
             ),
+            # 字体识别（T3.5）：pipeline_control 依据 font_identify_enabled
+            # 决定是否组装 FontIdentifyConfig；关闭时其余字段不消费。
+            "font_identify_enabled": self.font_identify_group.isChecked(),
+            "font_identify_top_n": self._parse_font_identify_int(
+                self.font_identify_top_n_edit.text(), 5
+            ),
+            "font_identify_confidence_threshold": self._parse_font_identify_float(
+                self.font_identify_threshold_edit.text(), 0.0
+            ),
+            "font_identify_font_dir": self.font_identify_font_dir_edit.text().strip(),
+            "font_identify_db_path": self.font_identify_db_edit.text().strip(),
         }
 
     # ── OCR Engine ComboBox ─────────────────────────────────

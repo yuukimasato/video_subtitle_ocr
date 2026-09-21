@@ -62,7 +62,7 @@
 <context>
     <name>ControlPanelWidget</name>
     <message>
-        <location filename="../components/control_panel.py" line="+118"/>
+        <location filename="../components/control_panel.py" line="+120"/>
         <source>样式模板（可选）</source>
         <translation>Style template (optional)</translation>
     </message>
@@ -74,11 +74,13 @@
     <message>
         <location line="+1"/>
         <location line="+554"/>
+        <location line="+104"/>
+        <location line="+25"/>
         <source>浏览…</source>
         <translation>Browse…</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-676"/>
         <source>识别设置</source>
         <translation>Recognition settings</translation>
     </message>
@@ -439,12 +441,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+777"/>
+        <location line="+995"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>Fetch /v1/models using the API Key and Base URL.</translation>
     </message>
     <message>
-        <location line="-775"/>
+        <location line="-993"/>
         <source>清除已存密钥</source>
         <translation>Clear saved key</translation>
     </message>
@@ -529,7 +531,67 @@
         <translation>Max line length:</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+23"/>
+        <source>字体识别（可选）</source>
+        <translation>Font recognition (optional)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>对识别出的字幕行做字体识别（本地计算），输出 Top-N 候选并查询许可类别；识别完成后可在复核对话框中逐条确认字体库更新建议。</source>
+        <translation>Recognize the fonts in detected subtitle lines (local computation) and output Top-N candidates with license categories; after recognition, confirm font database update suggestions one by one in the review dialog.</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Top-N 候选数：</source>
+        <translation>Top-N candidates:</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>每组字幕字块输出的候选字体数量。</source>
+        <translation>Number of candidate fonts output per subtitle text group.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>置信度阈值：</source>
+        <translation>Confidence threshold:</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>低于阈值的候选只展示、不参与自动替换；0 = 不标记。</source>
+        <translation>Candidates below the threshold are display-only and never auto-replaced; 0 = no marking.</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>字体库目录：</source>
+        <translation>Font directory:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 仅系统字体目录</source>
+        <translation>Empty = system font directories only</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>额外扫描的字体文件目录（可选）；留空 = 仅扫描系统字体目录。</source>
+        <translation>Extra font file directories to scan (optional); empty = scan system font directories only.</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>fonts.db 路径：</source>
+        <translation>fonts.db path:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>留空 = 默认字体库路径</source>
+        <translation>Empty = default font database path</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字体许可/映射查询库；留空使用默认 XDG 数据目录下的 fonts.db。</source>
+        <translation>Font license/mapping lookup database; empty = fonts.db in the default XDG data directory.</translation>
+    </message>
+    <message>
+        <location line="+43"/>
         <source>完整设置</source>
         <translation>Full settings</translation>
     </message>
@@ -549,7 +611,7 @@
         <translation>Return to the one-click simple view and hide advanced settings. All options are preserved.</translation>
     </message>
     <message>
-        <location line="+206"/>
+        <location line="+223"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 Text source filter is off; all recognized text will be kept.</translation>
     </message>
@@ -584,7 +646,22 @@
         <translation>Glossary JSON (*.json)</translation>
     </message>
     <message>
-        <location line="+168"/>
+        <location line="+84"/>
+        <source>选择字体库目录</source>
+        <translation>Select font directory</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>选择 fonts.db 文件</source>
+        <translation>Select fonts.db file</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>SQLite 字体库 (*.db)</source>
+        <translation>SQLite font database (*.db)</translation>
+    </message>
+    <message>
+        <location line="+179"/>
         <source>自动(Auto)</source>
         <translation>Auto</translation>
     </message>
@@ -875,7 +952,7 @@
     <message>
         <location line="+9"/>
         <source>建议：{0} → {1}</source>
-        <translation type="unfinished">Suggestion: {0} → {1}</translation>
+        <translation>Suggestion: {0} → {1}</translation>
     </message>
     <message>
         <location line="+5"/>
@@ -890,7 +967,7 @@
     <message>
         <location line="+6"/>
         <source>理由：{0}</source>
-        <translation type="unfinished">Reason: {0}</translation>
+        <translation>Reason: {0}</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -915,12 +992,12 @@
     <message>
         <location line="+12"/>
         <source>应用</source>
-        <translation type="unfinished">Apply</translation>
+        <translation>Apply</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>取消</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -1380,7 +1457,7 @@
     <message>
         <location line="+1"/>
         <source>日本語</source>
-        <translation type="unfinished">日本語</translation>
+        <translation>日本語</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1430,7 +1507,7 @@
     <message>
         <location line="+10"/>
         <source>识别语言：</source>
-        <translation type="unfinished">Recognition language:</translation>
+        <translation>Recognition language:</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -1661,7 +1738,7 @@
     <message>
         <location line="+1"/>
         <source>取消</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -1687,7 +1764,7 @@
         <translation>Auto analysis failed; choose the scene type manually</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+35"/>
+        <location filename="../main_window/pipeline_control.py" line="+40"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>AI translation is enabled, but the translation module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or untick &quot;AI translation&quot; and try again.</translation>
     </message>
@@ -1702,11 +1779,24 @@
         <translation>AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+46"/>
+        <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
+        <translation>Font recognition is enabled, but the font recognition module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or uncheck "Font recognition" and retry.</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>已启用字体识别，但字体库目录不存在：{0}。请检查路径，或清空后仅使用系统字体目录。</source>
+        <translation>Font recognition is enabled, but the font directory does not exist: {0}. Check the path, or clear it to use system font directories only.</translation>
+    </message>
+    <message>
+        <location line="+40"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
         <location line="+24"/>
+        <location line="+11"/>
+        <location line="+215"/>
+        <location line="+35"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
         <location filename="../main_window/roi_editing.py" line="+325"/>
         <location filename="../main_window/source_config.py" line="+17"/>
@@ -1715,7 +1805,7 @@
         <translation>Warning</translation>
     </message>
     <message>
-        <location line="-58"/>
+        <location line="-319"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
         <translation>Load a video and define at least one ROI first.</translation>
@@ -1736,7 +1826,7 @@
         <translation>DeepSeek features (polish/fragment merge/strategy review) are enabled but no API Key is set. Enter an API Key or set the DEEPSEEK_API_KEY environment variable.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+50"/>
         <source>保存字幕文件</source>
         <translation>Save subtitle file</translation>
     </message>
@@ -1781,7 +1871,7 @@
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+52"/>
         <source>正在识别…</source>
         <translation>Recognizing…</translation>
     </message>
@@ -1797,16 +1887,17 @@
     </message>
     <message>
         <location line="+5"/>
+        <location line="+83"/>
         <source>完成</source>
         <translation>Done</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-82"/>
         <source>字幕文件已生成：{}</source>
         <translation>Subtitle file created: {}</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+6"/>
         <source>打开目录</source>
         <translation>Open folder</translation>
     </message>
@@ -1816,7 +1907,26 @@
         <translation>Open the folder containing this file?</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+32"/>
+        <source>字体更新建议读取失败，本轮复核已跳过：
+{0}</source>
+        <translation>Failed to read font update suggestions; review skipped for this run:
+{0}</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>字体更新建议写入失败：
+{0}</source>
+        <translation>Failed to write font update suggestions:
+{0}</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>已把 {0} 条字体更新建议写入用户覆盖层。</source>
+        <translation>Wrote {0} font update suggestion(s) to the user overlay.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>[LLM] 已中止或出错 —— 请查看弹窗提示。</source>
         <translation>[LLM] Aborted or failed — see the dialog for details.</translation>
     </message>

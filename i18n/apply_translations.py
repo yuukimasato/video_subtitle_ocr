@@ -6,8 +6,11 @@ Usage:
     python i18n/apply_translations.py i18n/app_en.ts [i18n/app_zh_TW.ts ...]
 
 The dict module is picked by filename: app_en.ts -> i18n/translations_en.py.
-Entries are keyed by exact source text; only unfinished (empty) entries are
-filled, existing translations are left untouched. After filling, any
+Entries are keyed by exact source text; unfinished (empty) entries are
+filled, and unfinished entries whose existing text matches the dict are
+confirmed (unfinished flag removed — lupdate borrows identical source
+strings across contexts but re-flags them). Existing translations that
+differ from the dict are left untouched. After filling, any
 Chinese-source message that is still untranslated is reported (language
 names kept in their native script are expected to remain untranslated).
 """
@@ -66,21 +69,47 @@ def fill(ts_path: Path) -> int:
     table = _load_dict(ts_path)
     text = ts_path.read_text(encoding="utf-8")
     filled = 0
+    confirmed = 0
     for src, translation in table.items():
         for candidate in dict.fromkeys((src, _xml_escape(src))):
+            # 空白未译条目 → 直接回填；lupdate 从其他上下文"借用"译文的
+            # 非空未译条目（译文与词表一致）→ 去掉 unfinished 标记视为
+            # 已确认（T3.5：FontUpdateReviewDialog 复用 FontMapReviewDialog
+            # 的「应用/取消」等源文案时，lupdate 会复制译文但标记 unfinished）。
             pattern = re.compile(
-                r"(<source>" + re.escape(candidate) + r"</source>)" + _UNFINISHED_RE
+                r"(<source>" + re.escape(candidate) + r"</source>)"
+                + r"\s*<translation type=\"unfinished\">(.*?)</translation>",
+                re.S,
             )
-            text, n = pattern.subn(
-                lambda m_: m_.group(1)
-                + "\n        <translation>"
-                + _escape_text(translation)
-                + "</translation>",
-                text,
-            )
-            filled += n
+
+            def _sub(m_: "re.Match[str]") -> str:
+                nonlocal filled, confirmed
+                body = m_.group(2)
+                if not body.strip():
+                    filled += 1
+                    return (
+                        m_.group(1)
+                        + "\n        <translation>"
+                        + _escape_text(translation)
+                        + "</translation>"
+                    )
+                if _xml_unescape(body) == translation:
+                    confirmed += 1
+                    return (
+                        m_.group(1)
+                        + "\n        <translation>"
+                        + body
+                        + "</translation>"
+                    )
+                # 既有译文与词表不一致：保留原样（人工译文优先）。
+                return m_.group(0)
+
+            text = pattern.sub(_sub, text)
     ts_path.write_text(text, encoding="utf-8")
-    print(f"{ts_path.name}: filled {filled} entries (dict has {len(table)})")
+    print(
+        f"{ts_path.name}: filled {filled} entries, confirmed {confirmed} "
+        f"(dict has {len(table)})"
+    )
 
     missing = set()
     for m in _MESSAGE_RE.finditer(text):
