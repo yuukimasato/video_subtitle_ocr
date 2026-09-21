@@ -162,10 +162,23 @@
 
 ---
 
-## 附录：T0.3 决策记录（待填）
+## 附录：T0.3 决策记录（已回填，2026-09-21 实测）
 
 > spike 完成后回填：venv 形态（同 venv 可选依赖 / 独立 venv 子进程）、双框架同进程内存峰值、numpy 版本约束结论。
 
-- 决策：＿＿＿
-- 内存峰值：＿＿＿
-- 备注：＿＿＿
+- **决策**：**同 venv 可选依赖**（不拆独立 venv / 子进程）。实测双框架同进程安装、import、基础运算全部兼容，无 numpy/ABI 冲突；主流水线保持保守隔离——**永不 import torch**（T3.1 延迟导入 + `is_available()` `find_spec` 零副作用探测，测试锁定 `sys.modules` 断言），torch 仅作为 `requirements-fontintel.txt` 注释段的可选增强（CPU 版安装指引：`pip install torch --index-url https://download.pytorch.org/whl/cpu`）。
+- **内存峰值**（同 venv、同进程顺序 import，`ru_maxrss` 峰值 / `/proc` VmRSS 常驻）：
+
+  | 阶段 | 常驻 RSS | 峰值 RSS |
+  |---|---|---|
+  | 基线（numpy 2.3.5 已导入） | 26.1 MB | 24.5 MB |
+  | import paddlepaddle 3.2.1 后 | 291.4 MB | 289.1 MB |
+  | 再 import torch 2.14.0+cpu 后 | 530.6 MB | 528.2 MB |
+  | 双框架各跑一次张量求和后 | 539.8 MB | 537.3 MB |
+
+  双框架常驻合计约 **0.53 GB**，远低于风险表"2GB+ 需隔离"的红线。
+- **备注**：
+  - 实测环境：Python 3.12.3 venv、numpy 2.3.5、paddlepaddle 3.2.1、`torch 2.14.0+cpu`（`pip install torch --index-url https://download.pytorch.org/whl/cpu`，5 分钟超时窗口内安装成功）；双框架同进程 `sum` 运算结果一致，torch CPU 线程 16、CUDA 不可用。
+  - numpy 版本约束结论：numpy 2.x 下双框架共存无冲突（paddlepaddle 3.2.1 与 torch 2.14 同用 numpy 2.3.5），无需 pin numpy <2。
+  - 测量后已将本机开发 venv **还原为无 torch 状态**（`pip uninstall torch`）：T3.1 的"无 torch 优雅降级"测试（no_recognizer 跳过、`vso-font identify` 可恢复报错）以无 torch 为默认环境锁定；开发/发布机若按上述 CPU 指引装入 torch，识别链自动启用 yuzu 候选（权重首次使用时有界下载，`HF_ENDPOINT` 镜像可用），其余功能零影响。
+  - 复现命令：`python -c` 脚本顺序 `import paddle` → `import torch`，每步读 `resource.getrusage(RUSAGE_SELF).ru_maxrss` 与 `/proc/self/status` VmRSS。

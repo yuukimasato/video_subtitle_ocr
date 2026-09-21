@@ -1,11 +1,38 @@
 # video-subtitle-ocr font_intel optional requirements
-# Optional dependencies for font_intel.fontlib_index (T1.2 local font library
-# indexing). See docs/development_plan_font_translation_compliance.md.
-# font_intel degrades gracefully when these are missing (optional-import mode):
-# only the local font indexing / glyph rendering feature is disabled.
+# Optional dependencies for the font intelligence extension (font_intel):
+# local font library indexing (T1.2), glyph rendering/matching, and the
+# yuzu deep recognizer (T3.1). See
+# docs/development_plan_font_translation_compliance.md.
+#
+# ── 可选增强，缺失时功能优雅降级 ─────────────────────────────────────
+# font_intel does NOT hard-require anything here: every consumer probes
+# via is_available()/optional-import and degrades gracefully (feature
+# disabled, candidates keep model order, license reported as unknown).
 #   pip install -r requirements-fontintel.txt
+#
 # fontTools: parse name/OS-2 tables (family, vendor, license, weight) of
-# local .ttf/.otf/.ttc/.otc files for metadata indexing.
+# local .ttf/.otf/.ttc/.otc files for metadata indexing (`vso-font index`,
+# glyph-rerank candidate resolution).
 fontTools>=4.4
-# Pillow: render reference glyphs for glyph-level font matching/caching.
+# Pillow: render reference glyphs for glyph-level font matching/caching
+# (`vso-font identify --text`, glyph rerank reference rendering).
 Pillow>=10
+# huggingface_hub: preferred yuzu weight download client (HF_ENDPOINT
+# mirror aware, bounded retry wrapper on top). Optional — uncomment to
+# use; when missing the download path falls back to a direct urllib GET
+# on {HF_ENDPOINT}, degrade = recoverable "weights unavailable" message.
+# huggingface_hub
+
+# ── torch（深度识别，可选增强）────────────────────────────────────
+# torch powers the YuzuMarker deep font recognizer (Top-N candidate
+# generation). It is intentionally NOT pinned above: it is heavy (CPU
+# build 200MB+), optional, and its co-existence with paddlepaddle in one
+# venv was evaluated in T0.3 (see the decision record in
+# docs/development_plan_font_translation_compliance.md appendix).
+# The main pipeline NEVER imports torch (locked by tests); without torch
+# `vso-font identify` degrades to glyph-rerank-only (--text) or exits
+# with a recoverable error.
+#
+# CPU-only build (recommended, much smaller than the CUDA default wheel):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# torch>=2.0

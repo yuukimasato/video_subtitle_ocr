@@ -74,6 +74,11 @@
 - **识别质量增强（可选）**：
   - **难帧 VLM 兜底**：投票不一致或低置信度的"难帧"可交给 OpenAI 兼容视觉大模型裁决（环境变量 `VLM_REFINE_BASE_URL` / `VLM_REFINE_API_KEY` / `VLM_REFINE_MODEL` 配置），失败时自动保留原 OCR 结果。
   - **LLM 字幕润色**：可选调用 OpenAI 兼容接口（如 DeepSeek）对识别文本批量校对，自动重试与自验证。
+- **字体智能与 AI 翻译（font_intel，全部可选、缺失即优雅降级）**：
+  - **AI 翻译**：润色之后、写出之前的新流水线阶段——云端 API / 本地 Sakura / VLM 三级提供方按序降级，术语表强制一致、行长约束自动断行；429 限流走有界退避，全部失败保留原文继续出片。
+  - **中日字体映射与合规闸门**：Seekladoom 中日字体映射 + 免费商用清单入库（SQLite `fonts.db`，种子层/覆盖层双层），合规规则（许可类别×使用场景→放行/询问/自动替换/仅报告）随 ASS 输出 `*_compliance_report.md/.json`；识别出的字体名落 Style 行或逐事件 `\fn`，未确认的模型推断绝不参与自动替换。
+  - **字体识别**：视频字块 → Top-N 候选（YuzuMarker 深度模型，torch 可选；无 torch 时 `--text` 字形重排降级路径）→ 许可类别查询 → 字体库更新建议包，GUI 复核对话框逐条确认入覆盖层。
+  - **独立 CLI `vso-font`**：`identify`（图片 / 视频+ROI 采样识别）、`index`（本机字体库建索引）、`review import`（复核/建议包导入），与主 CLI 互相独立；可选依赖见 `requirements-fontintel.txt`。
 - **异步处理与进度反馈**：
   - 核心处理流程在独立的 `QThread` 中运行，避免UI冻结。
   - 提供实时的进度条和日志反馈，用户可随时了解处理阶段和状态。
@@ -97,9 +102,11 @@
 video_subtitle_ocr/
 ├── main.py                   # 应用程序入口
 ├── cli.py                    # 命令行入口（headless 流水线，无 GUI）
+├── font_cli.py               # vso-font 独立入口（字体识别/索引/复核包导入，T3.5）
 ├── preload_models.py         # OCR 模型预下载脚本
 ├── requirements.txt          # 运行必需依赖（CPU 版）
 ├── requirements-gpu.txt      # GPU 版依赖（paddlepaddle-gpu）
+├── requirements-fontintel.txt # 字体智能可选依赖（fontTools/Pillow；torch 注释段）
 ├── requirements-dev.txt      # 开发依赖（pytest、ruff）
 ├── requirements-a.txt        # 历史/环境快照（可选，含较多可选项）
 ├── requirements-full-pinned.txt  # 全量钉版环境快照（可选）
@@ -176,6 +183,17 @@ core/                         # 核心业务逻辑模块
 ├── aligner.py                # 字幕时间轴对齐辅助
 ├── vlm_refine.py             # 难帧视觉大模型兜底（OpenAI兼容，可选）
 ├── subtitle_llm_polish.py    # LLM字幕润色（可选）
+
+font_intel/                   # 字体智能扩展包（全部可选，缺失即优雅降级）
+├── fonts_db.py               # SQLite 字体库（种子层/覆盖层双层、schema 迁移）
+├── fontlib_index.py          # 本机字体库索引（fontTools 元数据 + 参考字形缓存）
+├── etl/                      # Seekladoom 映射表 ETL（规则→LLM 结构化→人工复核→入库）
+├── compliance.py             # 合规决策引擎（类别×场景→动作，硬红线代码化）
+├── matching.py               # 中日字体三级链查询（对位/开源替代/同风格兜底）
+├── translation.py            # AI 翻译（三级提供方降级链 + 字幕特化）
+├── recognizer/               # 字体识别（yuzu 深度候选 + 字形重排裁决，torch 可选）
+├── identify_stage.py         # font_identify 主进程后置阶段（随机访问取帧采样）
+├── integration.py / closure.py  # 合规闸门配置 / 识别→决策→落名→建议包闭环
 ├── llm_client.py             # OpenAI兼容LLM客户端（有界退避）
 ├── llm_prompts.py / prompts/ # LLM 提示词模板（fragment_merge / subtitle / text_classify 等）
 ├── scene_presets.py          # 场景预设（film_tv / anime 等）
@@ -442,6 +460,31 @@ ASS 生成（含 LLM 润色，保持单点调用）。分片与单进程输出�
 约占 600MB 内存）。两者可叠加，但服务端默认只在核数/内存充足且视频 ≥10 分钟时
 自动启用进程分片；GPU 环境与短视频自动走单进程。实测提速依素材而定
 （静态帧多、精修占比高的素材收益更大），详见 `docs/testing.md` v2.5.0 记录。
+
+### 字体智能独立入口（vso-font）
+
+字体智能的命令行走**独立入口** `font_cli.py`（主 CLI 单命令形态保持不动），
+打包后为 `/usr/bin/vso-font`：
+
+```bash
+# 图片识别（--text 已知文本启用字形重排——无 torch 也可用）
+vso-font identify 截图.png --text "テスト" --font-dir ~/fonts --top-n 5 --json out.json
+
+# 视频 + ROI 等间隔采样识别（--roi 省略或 auto = 全帧）
+vso-font identify 片头.mp4 --roi 100,80,500,60 --text "OP" --samples 5
+
+# 本机字体库建/更新索引（幂等，可重复执行）
+vso-font index --dir ~/fonts --db ~/.local/share/video_subtitle_ocr/fonts.db
+
+# 导入 ETL 复核包 / 流水线字体更新建议包（采纳语义与 GUI 复核对话框一致）
+vso-font review import 视频字体更新建议_font_update_suggestions.json
+```
+
+深度识别（YuzuMarker）需要 torch（可选，CPU 版：
+`pip install torch --index-url https://download.pytorch.org/whl/cpu`）；
+未安装时自动降级为「仅字形重排（需 `--text`）」，两者皆不可用时以可恢复
+错误提示安装 `requirements-fontintel.txt`。输出只含字体名/分数/许可类别/
+来源与库内官方链接，绝不提供任何破解渠道字体。
 
 ## 测试与回归基准
 

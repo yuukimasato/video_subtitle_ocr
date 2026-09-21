@@ -30,7 +30,8 @@ video-subtitle-ocr/            # deb 打包树（由 build_deb.sh 维护）
 └── usr/
     ├── bin/
     │   ├── video-subtitle-ocr       # GUI 启动器
-    │   └── video-subtitle-ocr-cli   # CLI 启动器
+    │   ├── video-subtitle-ocr-cli   # CLI 启动器
+    │   └── vso-font                 # 字体智能 CLI 启动器（T3.5，bash，与 video-subtitle-ocr-cli 同模式）
     └── share/
         ├── applications/video_subtitle_ocr.desktop
         ├── doc/video-subtitle-ocr/copyright
@@ -38,14 +39,21 @@ video-subtitle-ocr/            # deb 打包树（由 build_deb.sh 维护）
         └── man/man1/*.1             # man 手册页（构建时 gzip）
 ```
 
+> **维护脚本位置（如实说明）**：本节描述的打包树由仓库**外层工作区**的
+> `build_deb.sh`（`video_subtitle_ocr/` 源码目录的上一级）维护，该脚本不进
+> 本源码仓库。T3.5 起 `/usr/bin/vso-font` 启动器与 `font_cli.py` 属目标
+> 文件清单；脚本侧的启动器校验清单（当前仍为 GUI + CLI 两项）与
+> `/usr/bin/vso-font` 落盘属发布前打包任务（见文末"版本发布检查清单"）。
+
 ## 包内容布局
 
 | 安装路径 | 内容 |
 | --- | --- |
-| `/opt/apps/video_subtitle_ocr/` | 全部应用源码（`main.py`、`cli.py`、`core/`、`components/`、`utils/`、`i18n/`、`resources/`、`docs/`、`benchmarks/` 等） |
+| `/opt/apps/video_subtitle_ocr/` | 全部应用源码（`main.py`、`cli.py`、`font_cli.py`（`vso-font` 独立入口，T3.5）、`core/`、`components/`、`font_intel/`、`utils/`、`i18n/`、`resources/`、`docs/`、`benchmarks/`、`requirements*.txt` 等） |
 | `/opt/apps/video_subtitle_ocr/.venv/` | postinst 创建的 Python 虚拟环境（非包内文件） |
 | `/usr/bin/video-subtitle-ocr` | GUI 启动器（bash） |
 | `/usr/bin/video-subtitle-ocr-cli` | CLI 启动器（bash） |
+| `/usr/bin/vso-font` | 字体智能 CLI 启动器（bash，与 `video-subtitle-ocr-cli` 同模式：`exec "$APP_DIR/.venv/bin/python" "$APP_DIR/font_cli.py" "$@"`，支持 `VSO_APP_DIR` 覆盖；未装 font_intel 依赖时功能优雅缺席——`identify`/`index` 以退出码 3 给出可恢复提示） |
 | `/usr/share/applications/video_subtitle_ocr.desktop` | 应用菜单入口 |
 | `/usr/share/icons/hicolor/256x256/apps/video-subtitle-ocr.png` | 应用图标 |
 | `/usr/share/man/man1/video-subtitle-ocr.1.gz` | GUI man 手册 |
@@ -121,10 +129,14 @@ purge:   rm -rf /opt/apps/video_subtitle_ocr，尝试 rmdir /opt/apps
 1. **环境检测**：OS/内核/架构，校验 `dpkg-deb` 等构建工具。
 2. **源码同步**：`rsync -a --delete --delete-excluded` 将
    `video_subtitle_ocr/` 同步到 `video-subtitle-ocr/opt/apps/video_subtitle_ocr/`
-   （排除清单见上）；无 rsync 时回退到 tar 管道方案。
+   （排除清单见上）；无 rsync 时回退到 tar 管道方案。新增顶层文件
+   （如 T3.5 的 `font_cli.py`、`requirements-fontintel.txt`）默认随 rsync
+   进包，无需改排除清单。
 3. **文件校验**：control、postinst/prerm/postrm、两个启动器、`main.py`、
    `cli.py`、两份 requirements、`preload_models.py` 必须存在；校验
-   requirements-gpu.txt 含 `paddlepaddle-gpu`。
+   requirements-gpu.txt 含 `paddlepaddle-gpu`。（T3.5 目标清单另含
+   `vso-font` 启动器与 `font_cli.py`——脚本侧校验项待发布前补充，
+   见上文"维护脚本位置"说明。）
 4. **元数据读取**：从 control 提取包名/版本/架构，校验与构建机架构兼容（`all` 直接放行）。
 5. **清理**：删除 `__pycache__`、`*.pyc`、编辑器临时文件、残留 `.venv`/`.gpu_mode`/`.paddleocr`。
 6. **权限**：DEBIAN 脚本 0755、control 0644、启动器 0755、`*.py` 0644。
@@ -157,6 +169,9 @@ dpkg --root=/tmp/instroot --force-not-root --force-script-chrootless \
 export VSO_APP_DIR=/tmp/instroot/opt/apps/video_subtitle_ocr
 /tmp/instroot/usr/bin/video-subtitle-ocr-cli --version
 /tmp/instroot/usr/bin/video-subtitle-ocr-cli 某视频.mp4 -o /tmp/out.ass
+# 字体智能 CLI 冒烟（T3.5；未装 fontintel 依赖时以退出码 3 给出可恢复提示）
+/tmp/instroot/usr/bin/vso-font --help
+/tmp/instroot/usr/bin/vso-font index --dir /usr/share/fonts --db /tmp/fonts.db
 
 # GUI 冒烟（虚拟显示）
 xvfb-run -a env QT_QPA_PLATFORM=offscreen "$VSO_APP_DIR/.venv/bin/python" -c "
@@ -190,12 +205,17 @@ dpkg --root=/tmp/instroot --force-not-root --force-script-chrootless -P video-su
    # 刷新 .ts（-tr-function-alias 使 components/scan_review_dialog.py 的
    # _tr() 包装也能被识别；勿省略，否则对应条目会被误标为 vanished）
    .venv/bin/pyside6-lupdate -tr-function-alias translate+=_tr \
-       main.py cli.py preload_models.py main_window/*.py components/*.py \
-       core/*.py core/subtitle_generator/*.py utils/*.py i18n/translator.py \
-       -ts i18n/app_ja_JP.ts i18n/app_zh_CN.ts
-   # 补译后编译
+       main.py cli.py font_cli.py preload_models.py main_window/*.py \
+       components/*.py core/*.py core/subtitle_generator/*.py utils/*.py \
+       i18n/translator.py \
+       -ts i18n/app_ja_JP.ts i18n/app_zh_CN.ts i18n/app_en.ts i18n/app_zh_TW.ts
+   # 词表回填（i18n/apply_translations.py）后编译
+   .venv/bin/python i18n/apply_translations.py i18n/app_en.ts \
+       i18n/app_zh_TW.ts i18n/app_ja_JP.ts
    .venv/bin/pyside6-lrelease i18n/app_ja_JP.ts i18n/app_ja_JP.qm
    .venv/bin/pyside6-lrelease i18n/app_zh_CN.ts i18n/app_zh_CN.qm
+   .venv/bin/pyside6-lrelease i18n/app_en.ts i18n/app_en.qm
+   .venv/bin/pyside6-lrelease i18n/app_zh_TW.ts i18n/app_zh_TW.qm
    ```
 
 4. 如有新文件/目录，确认 rsync 排除清单仍然正确。

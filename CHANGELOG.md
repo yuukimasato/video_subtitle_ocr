@@ -4,6 +4,73 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
+## 未发布（Unreleased）
+
+> 本分支 `feature/font-intel-p1` 汇总：字体智能（font_intel）与 AI 翻译扩展。
+> 全部新能力均为**可选增强**：依赖缺失时优雅降级，全部关闭时输出与 2.7.3 基线一致。
+
+### 新增
+
+- **本地字体数据库（T1.1）**：SQLite 单文件库 `fonts.db`（XDG 数据目录，
+  与 `utils/secret_store.py` 约定一致），schema 版本化迁移；种子层（只读）
+  + 用户覆盖层（可重置）双层查询，覆盖层优先。
+- **本机字体库索引（T1.2）**：扫描系统/用户字体目录，fontTools 提取
+  规范名/中日英别名/厂商/许可字段入库，Pillow 渲染常用字参考字形缓存；
+  fontTools/Pillow 缺失时优雅降级（`requirements-fontintel.txt`）。
+- **映射表 ETL 管线（T1.3–T1.5）**：Seekladoom/Japanese-Chinese-Fonts-adaptation
+  清洗入库——S0 编码/全半角归一 → S1 六类句式规则解析（映射/改名/字重/
+  搭配/负映射/坑名）→ S2 LLM 辅助结构化（只做分类切分不做知识推断，
+  429 有界退避）→ S3 词表校验防幻觉 → S5 人工复核对话框（低置信逐条
+  采纳/否决）→ S6 溯源入库（`source_file/line_no/method/confidence`，
+  采纳行 `method=human`）。
+- **合规决策引擎（T1.6–T1.8）**：许可类别 × 使用场景 → 动作规则表
+  （allow / prompt / replace_auto / report_only）；硬红线代码化——绝不
+  提供/链接/缓存破解渠道字体，`commercial_paid` 只出官方链接，`unknown`
+  默认从严；styling 集成（Style 行字体名过闸 + 逐事件 `\fn` 覆盖通道，
+  用户模板只报告不重写）；随 ASS 输出 `*_compliance_report.md/.json`
+  （字体→置信度→类别→决策→依据→官方链接 + 免责声明）。
+- **AI 翻译阶段（T2.1–T2.5）**：润色之后、写出之前的新阶段 4——云端
+  OpenAI 兼容 API / 本地 Sakura / VLM 兜底三级提供方按序降级；429 限流
+  复用 `llm_client` 有界退避（重试耗尽保留原文继续出片，绝不中断任务链）；
+  前后文窗口、术语表强制一致、行长约束（缩译/`\N` 断行）；双语按 ROI
+  `ocr_lang` 各自翻译；GUI「AI 翻译」选项组 + CLI `--translate-*` 全链贯通。
+- **中日字体三级链查询（T2.4）**：翻译联动字体映射——日文字体 → 中文
+  对位 → 开源替代 → 同风格类别兜底；全链无候选 `unresolved` 三态，保留
+  原字体名引用 + 报告标注，绝不强行替换。
+- **字体识别链（T3.1–T3.3）**：YuzuMarker.FontDetection 深度候选生成
+  （torch 完全可选：延迟导入 + `is_available()` 探测，主流水线永不
+  import torch；HF 权重延迟下载，`HF_ENDPOINT` 镜像 + 有界重试，失败
+  可恢复不阻塞出片）；字形重排裁决（按已知文本渲染候选字体参考字形，
+  SSIM/pHash/HoG 三路融合，T3.2 标定达标）；`font_identify` 主进程后置
+  阶段——随机访问取帧采样字块（同 (roi, 稳定文本) 组只取 1 帧），关闭
+  时零开销。
+- **识别→合规→落名端到端闭环（T3.4）**：识别 Top-1 → matching → 合规
+  决策 → 逐事件 `\fn` 落名（翻译开启时改走三级映射链）；缺口（unknown
+  字体/低置信映射/同类形兜底）自动生成 `*_font_update_suggestions.json`
+  更新建议包，GUI「字体库更新建议」复核对话框逐条确认（勾选 = 采纳写
+  覆盖层，`llm_inferred` 推断永不免审生效）。
+- **`vso-font` 独立 CLI（T3.5）**：`font_cli.py` 独立入口（现有 `cli.py`
+  单命令形态保持不动，打包为 `/usr/bin/vso-font` 启动器）——
+  `identify`（图片 / 视频+ROI 等间隔采样；无 torch 降级「仅字形重排
+  （需 `--text`）」或可恢复报错）、`index`（本机字体库建/更新索引）、
+  `review import`（T1.5 复核包 / T3.4 建议包导入，采纳语义与 GUI 一致）。
+- **GUI「字体识别（可选）」选项组（T3.5）**：Top-N、置信度阈值、可选
+  字体库目录与 fonts.db 路径，QSettings 持久化 + 运行锁；流水线结束后
+  输出目录存在建议包时自动弹出复核对话框（主线程信号接收侧，worker 内
+  绝不碰 GUI），采纳项经 `db_loader` 写覆盖层。
+- **i18n**：新增文案 zh_CN / zh_TW / en / ja_JP 四语言词表与 `.ts`/`.qm`
+  全量补齐（含 ETL 复核、翻译、字体识别、更新建议四组对话框与选项组）。
+
+### 变更
+
+- **依赖**：新增可选 `requirements-fontintel.txt`（fontTools / Pillow 必列，
+  huggingface_hub 与 torch 为注释段可选增强——torch CPU 版安装指引见该
+  文件；主 `requirements.txt` 不变，全部可选依赖缺失时功能优雅缺席）。
+- **文档**：T0.3 torch + paddlepaddle 同 venv spike 决策记录回填
+  （实测双框架同进程兼容、常驻约 0.53 GB，决策 = 同 venv 可选依赖 +
+  主流水线永不 import torch 保守隔离）；README / docs/packaging.md /
+  本CHANGELOG 同步 font_intel / `vso-font` 说明。
+
 ## 2.7.3（2026-09-21）
 
 ### 新增
