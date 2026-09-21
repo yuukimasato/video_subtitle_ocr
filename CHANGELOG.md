@@ -4,10 +4,12 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
-## 未发布（Unreleased）
+## 2.8.0（2026-09-22）
 
-> 本分支 `feature/font-intel-p1` 汇总：字体智能（font_intel）与 AI 翻译扩展。
-> 全部新能力均为**可选增强**：依赖缺失时优雅降级，全部关闭时输出与 2.7.3 基线一致。
+> 本版本 `feature/font-intel-p1` 分支汇总：字体智能（font_intel）与 AI 翻译扩展。
+> 全部新能力均为**可选增强**：依赖缺失时优雅降级，全部关闭时输出与 2.7.3 基线
+> 逐字节一致（G4 门禁：中/日测试视频 worktree 对比，见
+> docs/superpowers/evidence/2026-09-22-font-intel-release-verification/）。
 
 ### 新增
 

@@ -27,8 +27,10 @@
   cd <project> && .venv/bin/python cli.py /tmp/g4_gate/test.mp4 -o /tmp/g4_gate/current.ass
   diff /tmp/g4_gate/baseline.ass /tmp/g4_gate/current.ass   # 应为空
   ```
-- 局限：测试视频为中文合成字幕（make_test_video.py 仅支持 `lang=zh`），
-  日文片源用例未覆盖——已知的 T0.1 遗留，随发布前冒烟补齐。
+- 局限：~~测试视频为中文合成字幕~~ **已消除**——`make_test_video.py` 新增
+  `--lang ja`（日文 5 句字幕表 + 角标水印），日文视频复跑同门禁：
+  基线与分支输出 sha256 一致（`7f7e2a28…`），154 OCR calls，日文文本
+  正确写入 ASS。工件：`g4_baseline_ja.ass` / `g4_current_branch_ja.ass`。
 
 ## 3. 三条服务端链路 429/降级专项（T4.2 补录）
 
@@ -44,8 +46,17 @@
   仅提取事实性元数据并逐条标注 source，不转载原文；
   SakuraLLM 为 GPL-3.0，本项目仅经 OpenAI 兼容 API 调用，无代码链接。
 
-## 5. 仍未完成（发布动作，需人工决策）
+## 5. 发布动作（2026-09-22 完成）
 
-- T4.3：deb 构建 + 三入口冒烟（build_deb.sh 在仓库外工作区）。
-- T4.4：版本 2.7.3 → 2.8.0、CHANGELOG 定稿（当前"未发布"段）、tag。
-- 日文测试视频基线（上述第 2 节局限）。
+- **T4.4 版本发布**：`__version__` → 2.8.0（cli.py；font_cli.py 回退版本同步
+  对齐），CHANGELOG「未发布」段定稿为 `## 2.8.0（2026-09-22）`。
+- **T4.3 deb 构建与冒烟**：`video-subtitle-ocr_2.8.0_all.deb`（6.0 MiB，
+  184 条 md5sums，xz）构建通过。打包树新增 `/usr/bin/vso-font` 启动器与
+  `vso-font.1` man 页；`build_deb.sh` 必需文件校验补 vso-font / font_cli.py /
+  requirements-fontintel.txt 三项。冒烟结果：三个入口经 deb 提取的真实
+  启动器运行——`video-subtitle-ocr-cli --version` → 2.8.0、
+  `vso-font --version` → 2.8.0、`vso-font identify --help` 正常、GUI 模块
+  offscreen 导入通过。**完整安装冒烟（postinst venv 引导，~2 GB 下载）仍需
+  真实目标机执行**。
+- **发布前全量回归**：1531 passed / 1 skipped（含 `make_test_video --lang ja`
+  新增 8 项单测）。

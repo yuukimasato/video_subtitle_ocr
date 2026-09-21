@@ -50,8 +50,9 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-#: 独立入口版本号（--version 惰性读取 cli.__version__，失败时回退本值）。
-__version__ = "1.0"
+#: 独立入口版本号（--version 惰性读取 cli.__version__，失败时回退本值；
+#: 与主包版本保持一致，随每次发布同步更新）。
+__version__ = "2.8.0"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
