@@ -32,6 +32,7 @@ SQLite 的 UNIQUE 对 NULL 视为互异，故不能只靠表约束）。
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -55,6 +56,38 @@ _SEED_TABLES = ("fonts", "aliases", "jp_cn_font_map", "license_rules")
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _alternates_to_text(value) -> Optional[str]:
+    """开源替代链字段规范化为 JSON 字符串数组文本（去空去重，首现顺序保留）。
+
+    接受 ``None``（返回 None）、``list``/``tuple``（元素转 str）或已是
+    JSON 数组的文本；其余类型拒绝（ValueError）。空列表规范化为 None
+    （NULL），查询侧按"无替代链"处理。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"alternates must be a list or a JSON array text, got {value!r}"
+            ) from exc
+    elif isinstance(value, (list, tuple)):
+        parsed = value
+    else:
+        raise ValueError(
+            f"alternates must be a list or a JSON array text, got {value!r}"
+        )
+    items: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        text = str(item).strip()
+        if text and text.lower() not in seen:
+            seen.add(text.lower())
+            items.append(text)
+    return json.dumps(items, ensure_ascii=False) if items else None
 
 
 # ── schema v1 ───────────────────────────────────────────────────
@@ -129,6 +162,10 @@ MIGRATIONS: list[tuple[int, str]] = [
     # "Seekladoom/Japanese-Chinese-Fonts-adaptation (MIT)"）——ETL S6
     # 入库要求逐条映射带来源标注；ALTER TABLE 只加可空列，旧数据不受影响。
     (2, "ALTER TABLE jp_cn_font_map ADD COLUMN source TEXT;"),
+    # v3：fonts 增加 alternates 列（开源替代链，JSON 字符串数组文本）——
+    # matching 三级链第二级"开源替代"的查库字段；ALTER TABLE 只加可空列，
+    # 旧数据不受影响。
+    (3, "ALTER TABLE fonts ADD COLUMN alternates TEXT;"),
 ]
 
 
@@ -272,6 +309,8 @@ class FontsDB:
             for key in ("vendor", "category", "languages", "license_name",
                         "official_url", "source"):
                 out[key] = _s(key)
+            # 开源替代链（schema v3）：list/JSON 数组文本 → 规范化 JSON 文本。
+            out["alternates"] = _alternates_to_text(rec.get("alternates"))
         elif table == "aliases":
             out["font"] = _s("font")
             out["alias"] = _s("alias")
@@ -321,11 +360,12 @@ class FontsDB:
             )
             conn.execute(
                 "INSERT INTO fonts (canonical_name, vendor, category, languages,"
-                " license_category, license_name, official_url, source, layer,"
-                " updated_at) VALUES (?,?,?,?,?,?,?,?,'seed',?)",
+                " license_category, license_name, official_url, source,"
+                " alternates, layer, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'seed',?)",
                 (rec["canonical_name"], rec["vendor"], rec["category"],
                  rec["languages"], rec["license_category"], rec["license_name"],
-                 rec["official_url"], rec["source"], _now_iso()),
+                 rec["official_url"], rec["source"], rec.get("alternates"),
+                 _now_iso()),
             )
         elif table == "aliases":
             row = conn.execute(
@@ -384,12 +424,15 @@ class FontsDB:
         official_url: Optional[str] = None,
         source: Optional[str] = None,
         aliases: Optional[list] = None,
+        alternates: Optional[list] = None,
         layer: str = LAYER_OVERLAY,
     ) -> None:
-        """写入/替换覆盖层字体记录（含覆盖层别名）。
+        """写入/替换覆盖层字体记录（含覆盖层别名与开源替代链）。
 
         种子层运行时只读：``layer`` 参数仅接受 'overlay'，传入 'seed'
-        直接拒绝，保证 upsert 只落覆盖层。
+        直接拒绝，保证 upsert 只落覆盖层。``alternates`` 接受字体名列表
+        （存为 JSON 数组文本）；默认 None 时该列落 NULL，查询按字段级
+        回落种子值（与其它可空字段一致）。
         """
         if layer != LAYER_OVERLAY:
             raise ValueError(
@@ -401,6 +444,7 @@ class FontsDB:
         if license_category not in _LICENSE_CATEGORIES:
             raise ValueError(f"invalid license_category: {license_category!r}")
         alias_list = [str(a).strip() for a in (aliases or []) if str(a).strip()]
+        alternates_text = _alternates_to_text(alternates)
         conn = self._conn
         with conn:
             conn.execute(
@@ -414,10 +458,11 @@ class FontsDB:
             )
             cur = conn.execute(
                 "INSERT INTO fonts (canonical_name, vendor, category, languages,"
-                " license_category, license_name, official_url, source, layer,"
-                " updated_at) VALUES (?,?,?,?,?,?,?,?,'overlay',?)",
+                " license_category, license_name, official_url, source,"
+                " alternates, layer, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'overlay',?)",
                 (name, vendor, category, languages, license_category,
-                 license_name, official_url, source, _now_iso()),
+                 license_name, official_url, source, alternates_text,
+                 _now_iso()),
             )
             font_id = int(cur.lastrowid)
             for alias in alias_list:
@@ -554,6 +599,64 @@ class FontsDB:
             if r["layer"] != LAYER_SEED
             or (r["kind"], r["cn_name"] or "") not in overlay_keys
         ]
+
+    def lookup_jp_cn_reverse(self, cn_name: str) -> list[dict]:
+        """中文名反向查询：映射到该中文名的 jp_name 行列表（matching 的
+        中→日链路用）。
+
+        只返回正映射（负映射 ``cn_name`` 为 NULL，天然不会按名命中）。
+        同键 (jp_name, kind, cn_name) 的 overlay 行优先：被其覆盖的 seed
+        行不再返回（行本身仍保留在库中）——语义与 ``lookup_jp_cn`` 镜像。
+        """
+        key = (cn_name or "").strip()
+        if not key:
+            return []
+        rows = [dict(r) for r in self._conn.execute(
+            "SELECT * FROM jp_cn_font_map WHERE cn_name=? ORDER BY id", (key,))]
+        overlay_keys = {
+            (r["kind"], r["jp_name"] or "")
+            for r in rows if r["layer"] == LAYER_OVERLAY
+        }
+        return [
+            r for r in rows
+            if r["layer"] != LAYER_SEED
+            or (r["kind"], r["jp_name"] or "") not in overlay_keys
+        ]
+
+    def list_fonts(self) -> list[dict]:
+        """列出全部字体（只读）：同名 seed/overlay 行合并为一行，overlay
+        优先、NULL 字段回落 seed——合并语义与 ``lookup_font`` 一致；结果按
+        canonical_name 排序保证确定。供 matching 同风格类别兜底等批量检索
+        使用（库量级为数百~数千行，全量取回后内存过滤即可，无需额外索引）。
+        """
+        rows = [dict(r) for r in self._conn.execute(
+            "SELECT * FROM fonts ORDER BY canonical_name,"
+            " CASE layer WHEN 'overlay' THEN 0 ELSE 1 END, id")]
+        merged_by_name: dict[str, dict] = {}
+        order: list[str] = []
+        for row in rows:
+            name = row["canonical_name"]
+            if name not in merged_by_name:
+                merged_by_name[name] = row
+                order.append(name)
+                continue
+            top = merged_by_name[name]
+            for field, val in row.items():
+                if field != "id" and top.get(field) is None and val is not None:
+                    top[field] = val
+        out: list[dict] = []
+        for name in order:
+            merged = dict(merged_by_name[name])
+            font_id = int(merged.pop("id"))
+            merged["font_id"] = font_id
+            merged["aliases"] = [
+                r[0] for r in self._conn.execute(
+                    "SELECT alias FROM aliases WHERE font_id=? ORDER BY id",
+                    (font_id,),
+                )
+            ]
+            out.append(merged)
+        return out
 
     def lookup_license_rule(
         self, license_category: str, usage_scene: str

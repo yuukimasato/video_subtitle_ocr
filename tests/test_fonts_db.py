@@ -121,8 +121,9 @@ def test_file_db_persists_across_reopen(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# schema migrations (latest version tracked via MIGRATIONS, currently v2:
-# jp_cn_font_map.source provenance column)
+# schema migrations (latest version tracked via MIGRATIONS, currently v3:
+# fonts.alternates open-source-alternate-chain column; v2 added
+# jp_cn_font_map.source provenance)
 # ---------------------------------------------------------------------------
 
 def test_empty_db_creates_schema_at_latest_version(tmp_path):
