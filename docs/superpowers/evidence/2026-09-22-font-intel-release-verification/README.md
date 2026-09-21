@@ -56,7 +56,13 @@
   requirements-fontintel.txt 三项。冒烟结果：三个入口经 deb 提取的真实
   启动器运行——`video-subtitle-ocr-cli --version` → 2.8.0、
   `vso-font --version` → 2.8.0、`vso-font identify --help` 正常、GUI 模块
-  offscreen 导入通过。**完整安装冒烟（postinst venv 引导，~2 GB 下载）仍需
-  真实目标机执行**。
+  offscreen 导入通过。
+- **无 root 安装/卸载测试（packaging.md 第 7 项）**：staging 根完整流程
+  实测——**全新 venv + 全量 pip 联网安装路径**（非软链加速；postinst 自动
+  补装 rapidocr 3.9.2）→ CLI `--version` / 真实视频 OCR（staging 输出与
+  开发机逐字节一致）→ `vso-font` 在无 fontTools 时可恢复降级（提示安装
+  指令、无副作用），补装后 `index` 全功能（1395 扫描 / 1390 导入）→
+  GUI 离屏冒烟（`GUI OK: 视频字幕 OCR 工具`）→ remove（启动器删除、
+  venv 保留）→ purge（目录与数据库记录全清）。
 - **发布前全量回归**：1531 passed / 1 skipped（含 `make_test_video --lang ja`
   新增 8 项单测）。
