@@ -233,6 +233,58 @@ def _engine_options_from_args(args: argparse.Namespace) -> dict:
     return {"lang": args.lang, "model_tier": model_tier}
 
 
+def _translation_config_from_args(args: argparse.Namespace):
+    """``--translate-*`` 参数 → ``TranslationConfig``；``--translate`` 关闭
+    时返回 None（翻译整体关闭，零行为变化）。
+
+    提供方映射（三级降级链只配置所选级，其余级留空即自动跳过）：
+    - cloud：``--translate-base-url/--translate-model`` 覆盖云端端点/模型
+      （缺省用翻译模块的 DeepSeek 常量）；api_key 复用既有 LLM key 途径
+      ——OPENAI_API_KEY 环境变量（``core.llm_client`` 的缺省来源，与
+      润色/VLM 同一环境变量面），不新增密钥机制；
+    - sakura：``--translate-base-url/--translate-model`` 指向本地 OpenAI
+      兼容端点（llama.cpp / Ollama 均可）；
+    - vlm：零配置，复用 core/vlm_refine 的 ``VLM_REFINE_*`` 环境变量。
+    """
+    if not getattr(args, "translate", False):
+        return None
+    try:
+        from font_intel.translation import TranslationConfig
+    except Exception as exc:
+        # font_intel 附加依赖缺失：优雅降级为不翻译，不阻断出片。
+        _info(
+            f"Warning: translation module unavailable ({exc}); "
+            "continuing without translation.",
+            args.quiet,
+        )
+        return None
+    provider = (getattr(args, "translate_provider", "") or "cloud").strip().lower()
+    values: dict = {}
+    base_url = (getattr(args, "translate_base_url", "") or "").strip()
+    model = (getattr(args, "translate_model", "") or "").strip()
+    if provider == "cloud":
+        values["cloud_api_key"] = (
+            os.getenv("OPENAI_API_KEY", "") or ""
+        ).strip()
+        if base_url:
+            values["cloud_base_url"] = base_url
+        if model:
+            values["cloud_model"] = model
+    elif provider == "sakura":
+        values["sakura_base_url"] = base_url
+        if model:
+            values["sakura_model"] = model
+    # provider == "vlm"：无额外配置面（VLM_REFINE_* 环境变量）。
+    values["context_window_lines"] = args.translate_context_lines
+    values["max_line_chars"] = args.translate_max_chars
+    values["glossary_path"] = (getattr(args, "translate_glossary", "") or "").strip()
+    cfg = TranslationConfig(**values)
+    target = (getattr(args, "translate_target", "") or "").strip()
+    if target:
+        cfg.target_language = target
+    return cfg
+
+
 def _run_chunk_stages(args: argparse.Namespace, video_path: str,
                       roi_entries: list, info: dict, work_dir: str, plan):
     """Stages 1-3 through chunk-parallel workers; returns (records, elapsed).
@@ -692,6 +744,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
             f"roi_{i}": str(entry.get("text_filter_policy") or "keep_all")
             for i, entry in enumerate(roi_entries)
         }
+        # Per-ROI OCR language for translation source routing (T2.3): same
+        # collection rule as the GUI worker; empty = auto-detect.
+        from core.pipeline_worker import collect_roi_ocr_langs
+        roi_ocr_langs = collect_roi_ocr_langs(roi_entries)
         # Per-ROI scene-text display policy (overlap/mask/external/whitespace):
         # an explicit (non-overlap) --scene-text-policy overrides the ROI
         # JSON policies; the overlap default leaves them untouched.
@@ -723,6 +779,13 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 "llm_assist_enabled": False,
                 "llm_config": None,
             }
+        translation_config = _translation_config_from_args(args)
+        if translation_config is not None:
+            _info(
+                f"      translation: → {translation_config.target_language} "
+                f"(provider: {args.translate_provider})",
+                args.quiet,
+            )
         converter = subtitle_generator.OCRToASSOptimizer(
             video_path=video_path,
             output_path=out_path,
@@ -731,6 +794,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             height=info["height"],
             template_path=args.template,
             subtitle_polisher=None,
+            translation_config=translation_config,
+            roi_ocr_langs=roi_ocr_langs or None,
             source_filter_config=source_filter_config,
             roi_text_filter_policies=roi_policies or None,
             roi_scene_text_policies=roi_scene_policies or None,
@@ -878,6 +943,56 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--motion-auto-threshold", type=float, default=24.0, metavar="PX",
         help="line-centre displacement that counts as moving for "
              "--motion-auto (default: 24)",
+    )
+    parser.add_argument(
+        "--translate", action="store_true",
+        help="translate subtitle lines to --translate-target in stage 4 "
+             "(after polish, before the ASS is written; default: off — "
+             "output is byte-identical to a run without this flag)",
+    )
+    parser.add_argument(
+        "--translate-target", default="简体中文", metavar="LANG",
+        help="target language for --translate (default: 简体中文)",
+    )
+    parser.add_argument(
+        "--translate-provider", default="cloud",
+        choices=["cloud", "sakura", "vlm"],
+        help="translation provider for --translate: 'cloud' = OpenAI-"
+             "compatible endpoint (key from the OPENAI_API_KEY environment "
+             "variable), 'sakura' = local Sakura-13B/14B OpenAI-compatible "
+             "server, 'vlm' = the VLM_REFINE_* fallback channel "
+             "(default: cloud; failed/unconfigured levels fall back "
+             "down the chain, exhausted chains keep the original text)",
+    )
+    parser.add_argument(
+        "--translate-model", default="", metavar="ID",
+        help="model id for --translate-provider cloud/sakura (default: the "
+             "translation module's provider default)",
+    )
+    parser.add_argument(
+        "--translate-base-url", default="", metavar="URL",
+        help="OpenAI-compatible base URL for --translate-provider "
+             "cloud/sakura, e.g. http://127.0.0.1:8080/v1 for a local "
+             "Sakura server (default: the translation module's provider "
+             "default)",
+    )
+    parser.add_argument(
+        "--translate-glossary", default="", metavar="JSON",
+        help='glossary json {"term": "translation"} enforced consistently '
+             "in every --translate output (default: none)",
+    )
+    parser.add_argument(
+        "--translate-context-lines", type=_non_negative_int, default=2,
+        metavar="N",
+        help="neighbouring lines per side passed to --translate as "
+             "reference-only context (default: 2)",
+    )
+    parser.add_argument(
+        "--translate-max-chars", type=_non_negative_int, default=42,
+        metavar="N",
+        help="max rendered chars per translated line (longest \\N segment); "
+             "overlong lines trigger one shorten pass; 0 disables the "
+             "limit (default: 42)",
     )
     parser.add_argument("--keep-temp", action="store_true", help="keep temp work dir")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")

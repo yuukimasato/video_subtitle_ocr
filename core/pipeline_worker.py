@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from PySide6.QtCore import QThread, Signal, QCoreApplication
 
-from typing import Callable, List, Dict, Optional, Any
+from typing import TYPE_CHECKING, Callable, List, Dict, Optional, Any
 
 from core import subtitle_generator
 from core import chunk_planner, chunk_parallel_runner
@@ -18,6 +18,11 @@ from core.subtitle_llm_polish import SubtitlePolisherConfig
 from utils.time_utils import parse_time
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    # 仅类型标注：translation_config 默认 None（翻译整体关闭），缺省路径
+    # 不导入 font_intel.translation（红线：翻译只挂主进程阶段 4）。
+    from font_intel.translation import TranslationConfig
 
 # 轨迹接管覆盖门限:轨迹事件去重时长 / ROI 时长低于该值时不接管,该 ROI
 # 整体回退静态路径(与跟踪失败同路径)。依据见 trajectory_takeover_ok。
@@ -104,6 +109,20 @@ def collect_roi_scene_text_options(
             rects = {}
         policies = {"roi_merged": distinct[0]}
     return policies, rects
+
+
+def collect_roi_ocr_langs(roi_data: Optional[List[Dict]]) -> Dict[str, str]:
+    """收集 roi_id → ocr_lang（GUI/CLI 通用的双语路由规则，T2.3）。
+
+    翻译阶段按行所属 ROI 的识别语言路由源语言；未配置 ``ocr_lang`` 的
+    ROI/非 dict 条目映射为空串 = 翻译侧回退自动检测。
+    """
+    langs: Dict[str, str] = {}
+    for idx, roi in enumerate(roi_data or []):
+        if not isinstance(roi, dict):
+            continue
+        langs[f"roi_{idx}"] = str(roi.get("ocr_lang") or "")
+    return langs
 
 
 def apply_cli_scene_text_policy(entries: Optional[List[Dict]],
@@ -289,6 +308,7 @@ class PipelineWorker(QThread):
                  time_slice_enabled: bool = False, time_slice_seconds: float = 10.0,
                  merge_rois: bool = False,
                  subtitle_polisher: Optional[SubtitlePolisherConfig] = None,
+                 translation_config: Optional["TranslationConfig"] = None,
                  save_intermediate_json: Optional[bool] = None,
                  color_presence_gate_spec: Optional[Dict[str, Any]] = None,
                  ocr_engine_id: str = "",
@@ -314,6 +334,10 @@ class PipelineWorker(QThread):
         self.time_slice_seconds = max(0.1, float(time_slice_seconds or 10.0))
         self.merge_rois = bool(merge_rois)
         self.subtitle_polisher = subtitle_polisher
+        # 翻译阶段配置（T2.3，主进程阶段 4：润色之后、ASS 写出之前）。
+        # None = 完全关闭，零行为变化；绝不进入 _stage_ctx()（阶段 1-3
+        # 的 picklable 参数包）——chunk worker 子进程禁止服务端调用。
+        self.translation_config = translation_config
         # Default behavior: keep intermediate JSON only when debugging.
         self.save_intermediate_json = bool(debug_mode) if save_intermediate_json is None else bool(save_intermediate_json)
         self.color_presence_gate_spec = color_presence_gate_spec
@@ -607,6 +631,13 @@ class PipelineWorker(QThread):
                     polisher_cfg,
                     log_line=lambda s: self.llm_detail.emit(s),
                 )
+            # 翻译的逐批日志走同一 LLM 详情面板（与润色同侧的阶段 4 通道）。
+            translation_cfg = self.translation_config
+            if translation_cfg is not None:
+                translation_cfg = replace(
+                    translation_cfg,
+                    log_line=lambda s: self.llm_detail.emit(s),
+                )
             # Per-ROI placement metadata for ROIs with "write pose tags" on.
             roi_pose_tags: Dict[str, Dict[str, Any]] = {}
             # Per-ROI text-filter policy ("keep_all" for manual ROIs — scene
@@ -646,6 +677,8 @@ class PipelineWorker(QThread):
                 height=self.video_height,
                 template_path=self.template_path,
                 subtitle_polisher=polisher_cfg,
+                translation_config=translation_cfg,
+                roi_ocr_langs=collect_roi_ocr_langs(self.roi_data) or None,
                 source_filter_config=self.source_filter_config,
                 roi_pose_tags=roi_pose_tags or None,
                 roi_text_filter_policies=roi_text_filter_policies or None,

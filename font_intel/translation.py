@@ -176,6 +176,10 @@ class TranslationConfig:
 
     # 目标语言（默认简体中文；源语言路由与逐 ROI 切分是 T2.3 的事）。
     target_language: str = DEFAULT_TARGET_LANGUAGE
+    # 源语言提示（T2.3 双语路由：流水线按所属 ROI 的 ``ocr_lang`` 分组传入
+    # 人类可读语言名，如"日语"；空 = 不提示，由模型自动识别源语言——
+    # 即既有行为，缺省不变）。
+    source_language: str = ""
 
     # 字幕特化：前后 N 行上下文窗口。
     context_window_lines: int = DEFAULT_CONTEXT_LINES
@@ -441,7 +445,13 @@ def _build_instruction(
     glossary: Dict[str, str],
     cfg: TranslationConfig,
 ) -> str:
-    parts: List[str] = [f"目标语言：{cfg.target_language}"]
+    parts: List[str] = []
+    # 源语言提示（T2.3 双语路由）：仅当流水线按 ROI ocr_lang 显式给出时
+    # 注入，缺省留空 = 模型自行识别（既有 prompt，逐字节不变）。
+    source = str(getattr(cfg, "source_language", "") or "").strip()
+    if source:
+        parts.append(f"源语言：{source}（目标行均为该语言，直接翻译，无需检测）")
+    parts.append(f"目标语言：{cfg.target_language}")
     if glossary:
         parts.append(
             "[术语表]（以下词条的译名必须严格一致，全文不得改写）：\n"
