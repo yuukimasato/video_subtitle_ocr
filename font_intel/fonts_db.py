@@ -125,6 +125,10 @@ CREATE TABLE user_overrides (
 
 MIGRATIONS: list[tuple[int, str]] = [
     (1, _V1_SQL),
+    # v2：jp_cn_font_map 增加 source 溯源列（数据来源与许可标注，如
+    # "Seekladoom/Japanese-Chinese-Fonts-adaptation (MIT)"）——ETL S6
+    # 入库要求逐条映射带来源标注；ALTER TABLE 只加可空列，旧数据不受影响。
+    (2, "ALTER TABLE jp_cn_font_map ADD COLUMN source TEXT;"),
 ]
 
 
@@ -289,7 +293,7 @@ class FontsDB:
             out["confidence"] = float(conf) if conf is not None else None
             line_no = rec.get("line_no")
             out["line_no"] = int(line_no) if line_no is not None else None
-            for key in ("method", "source_file"):
+            for key in ("method", "source_file", "source"):
                 out[key] = _s(key)
         else:  # license_rules
             for key, allowed in (("license_category", _LICENSE_CATEGORIES),
@@ -348,10 +352,11 @@ class FontsDB:
             )
             conn.execute(
                 "INSERT INTO jp_cn_font_map (jp_name, cn_name, kind, method,"
-                " confidence, source_file, line_no, layer)"
-                " VALUES (?,?,?,?,?,?,?,'seed')",
+                " confidence, source_file, line_no, source, layer)"
+                " VALUES (?,?,?,?,?,?,?,?,'seed')",
                 (rec["jp_name"], rec["cn_name"], rec["kind"], rec["method"],
-                 rec["confidence"], rec["source_file"], rec["line_no"]),
+                 rec["confidence"], rec["source_file"], rec["line_no"],
+                 rec["source"]),
             )
         else:  # license_rules
             conn.execute(
@@ -432,9 +437,14 @@ class FontsDB:
         confidence: Optional[float] = None,
         source_file: Optional[str] = None,
         line_no: Optional[int] = None,
+        source: Optional[str] = None,
         layer: str = LAYER_OVERLAY,
     ) -> None:
-        """写入/替换覆盖层日→中映射（正/负映射；同键替换，不产生重复行）。"""
+        """写入/替换覆盖层日→中映射（正/负映射；同键替换，不产生重复行）。
+
+        ``source`` 为数据来源与许可标注（如 ETL S5 人工确认记录沿用的
+        "Seekladoom/Japanese-Chinese-Fonts-adaptation (MIT)"），仅作元数据。
+        """
         if layer != LAYER_OVERLAY:
             raise ValueError(
                 f"overlay writers only accept layer='overlay', got {layer!r}"
@@ -456,9 +466,10 @@ class FontsDB:
             )
             conn.execute(
                 "INSERT INTO jp_cn_font_map (jp_name, cn_name, kind, method,"
-                " confidence, source_file, line_no, layer)"
-                " VALUES (?,?,?,?,?,?,?,'overlay')",
-                (jp, cn, kind, method, confidence, source_file, line_no),
+                " confidence, source_file, line_no, source, layer)"
+                " VALUES (?,?,?,?,?,?,?,?,'overlay')",
+                (jp, cn, kind, method, confidence, source_file, line_no,
+                 source),
             )
 
     def reset_overlay(self) -> None:

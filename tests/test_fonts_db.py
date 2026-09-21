@@ -94,7 +94,7 @@ def test_explicit_path_creates_parent_dirs(tmp_path):
     db = FontsDB(path=str(db_path))
     try:
         assert db_path.exists()
-        assert db.get_schema_version() == 1
+        assert db.get_schema_version() == MIGRATIONS[-1][0]
     finally:
         db.close()
 
@@ -121,13 +121,14 @@ def test_file_db_persists_across_reopen(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# schema v1 / migration framework
+# schema migrations (latest version tracked via MIGRATIONS, currently v2:
+# jp_cn_font_map.source provenance column)
 # ---------------------------------------------------------------------------
 
-def test_empty_db_creates_schema_v1(tmp_path):
+def test_empty_db_creates_schema_at_latest_version(tmp_path):
     db = FontsDB(path=str(tmp_path / "fonts.db"))
     try:
-        assert db.get_schema_version() == 1
+        assert db.get_schema_version() == MIGRATIONS[-1][0]
         assert _table_names(db) == EXPECTED_TABLES
     finally:
         db.close()
@@ -137,18 +138,19 @@ def test_reopen_at_latest_version_does_not_rerun_migrations(tmp_path):
     db_path = str(tmp_path / "fonts.db")
     db = FontsDB(path=db_path)
     db.import_seed([_font_record()])
-    applied_at_v1 = db._conn.execute(
-        "SELECT applied_at FROM schema_version WHERE version=1").fetchone()[0]
+    applied = db._conn.execute(
+        "SELECT version, applied_at FROM schema_version ORDER BY version"
+    ).fetchall()
     db.close()
 
-    # If v1 were re-executed, CREATE TABLE would raise and the sentinel row
-    # below would be lost -- success here proves migrations did not re-run.
+    # If any migration were re-executed, DDL would raise and the applied_at
+    # rows would change -- success here proves migrations did not re-run.
     db2 = FontsDB(path=db_path)
     try:
-        assert db2.get_schema_version() == 1
+        assert db2.get_schema_version() == MIGRATIONS[-1][0]
         rows = db2._conn.execute(
             "SELECT version, applied_at FROM schema_version ORDER BY version").fetchall()
-        assert [tuple(r) for r in rows] == [(1, applied_at_v1)]
+        assert [tuple(r) for r in rows] == [tuple(r) for r in applied]
         assert db2.lookup_font("MS Gothic") is not None
     finally:
         db2.close()
@@ -160,13 +162,15 @@ def test_upgrade_from_older_version_applies_pending_migration(tmp_path):
     db.close()
 
     real = fonts_db_mod.MIGRATIONS
+    pending_version = real[-1][0] + 1
     fonts_db_mod.MIGRATIONS = real + [
-        (2, "CREATE TABLE t11_marker (id INTEGER PRIMARY KEY, note TEXT)"),
+        (pending_version,
+         "CREATE TABLE t11_marker (id INTEGER PRIMARY KEY, note TEXT)"),
     ]
     try:
         db2 = FontsDB(path=db_path)
         try:
-            assert db2.get_schema_version() == 2
+            assert db2.get_schema_version() == pending_version
             assert "t11_marker" in _table_names(db2)
             # v1 objects must survive the upgrade untouched.
             assert "fonts" in _table_names(db2)
@@ -179,18 +183,18 @@ def test_upgrade_from_older_version_applies_pending_migration(tmp_path):
 def test_downgrade_open_refused(tmp_path):
     db_path = str(tmp_path / "fonts.db")
     real = fonts_db_mod.MIGRATIONS
-    fonts_db_mod.MIGRATIONS = real + [
-        (2, "CREATE TABLE t11_marker (id INTEGER PRIMARY KEY)"),
-    ]
+    db = FontsDB(path=db_path)  # DB created at the latest real version
+    db.close()
+
+    # Pretend the code only knows one version less (drop the last migration):
+    # DB is at the newest version, code claims older -> refuse to open rather
+    # than silently degrade.
+    fonts_db_mod.MIGRATIONS = real[:-1]
     try:
-        db = FontsDB(path=db_path)
-        db.close()
+        with pytest.raises(RuntimeError, match="schema"):
+            FontsDB(path=db_path)
     finally:
         fonts_db_mod.MIGRATIONS = real
-
-    # DB is at v2, code only knows v1 -> refuse to open rather than degrade.
-    with pytest.raises(RuntimeError, match="schema"):
-        FontsDB(path=db_path)
 
 
 def test_migrations_versions_are_monotonic_from_1():
