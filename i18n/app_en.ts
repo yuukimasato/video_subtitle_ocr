@@ -62,7 +62,7 @@
 <context>
     <name>ControlPanelWidget</name>
     <message>
-        <location filename="../components/control_panel.py" line="+103"/>
+        <location filename="../components/control_panel.py" line="+118"/>
         <source>样式模板（可选）</source>
         <translation>Style template (optional)</translation>
     </message>
@@ -73,11 +73,12 @@
     </message>
     <message>
         <location line="+1"/>
+        <location line="+554"/>
         <source>浏览…</source>
         <translation>Browse…</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-547"/>
         <source>识别设置</source>
         <translation>Recognition settings</translation>
     </message>
@@ -438,12 +439,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+461"/>
+        <location line="+777"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>Fetch /v1/models using the API Key and Base URL.</translation>
     </message>
     <message>
-        <location line="-459"/>
+        <location line="-775"/>
         <source>清除已存密钥</source>
         <translation>Clear saved key</translation>
     </message>
@@ -458,7 +459,77 @@
         <translation>DeepSeek merge strategy review (re-merge with better-suited thresholds)</translation>
     </message>
     <message>
-        <location line="+55"/>
+        <location line="+36"/>
+        <source>AI 翻译（可选）</source>
+        <translation>AI translation (optional)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <translation>Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). The cloud provider reuses the API key saved in the LLM polish section; an unconfigured or failed level automatically falls back to the next one, and a fully exhausted chain keeps the original text.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>目标语言：</source>
+        <translation>Target language:</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>翻译提供方：</source>
+        <translation>Translation provider:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
+        <translation>Cloud API: OpenAI-compatible endpoint (DeepSeek by default). Local Sakura: a locally deployed Sakura JP-ZH translation model (OpenAI-compatible /v1 endpoint). VLM fallback: reuses the VLM_REFINE_* environment variables, zero configuration.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>云端 API</source>
+        <translation>Cloud API</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>本地 Sakura</source>
+        <translation>Local Sakura</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>VLM 兜底</source>
+        <translation>VLM fallback</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>API Base URL（云端 / Sakura 共用）</source>
+        <translation>API base URL (shared by cloud / Sakura)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>模型名（如 deepseek-chat / sakura-14b）</source>
+        <translation>Model name (e.g. deepseek-chat / sakura-14b)</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>术语表 JSON：</source>
+        <translation>Glossary JSON:</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>可选。JSON 文件（{&quot;术语&quot;: &quot;译名&quot;}），译文中术语强制一致；文件缺失或格式错误时自动忽略。</source>
+        <translation>Optional. A JSON file ({&quot;term&quot;: &quot;translation&quot;}) enforcing consistent terminology in every translation; missing or malformed files are ignored automatically.</translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>上下文行数：</source>
+        <translation>Context lines:</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>最大行长：</source>
+        <translation>Max line length:</translation>
+    </message>
+    <message>
+        <location line="+42"/>
         <source>完整设置</source>
         <translation>Full settings</translation>
     </message>
@@ -478,7 +549,7 @@
         <translation>Return to the one-click simple view and hide advanced settings. All options are preserved.</translation>
     </message>
     <message>
-        <location line="+180"/>
+        <location line="+206"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 Text source filter is off; all recognized text will be kept.</translation>
     </message>
@@ -503,7 +574,17 @@
         <translation>Color gate: confirmed; it will apply in stage one of the next &quot;subtitle OCR&quot; run.</translation>
     </message>
     <message>
-        <location line="+242"/>
+        <location line="+257"/>
+        <source>选择术语表 JSON 文件</source>
+        <translation>Select glossary JSON file</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>术语表 JSON (*.json)</source>
+        <translation>Glossary JSON (*.json)</translation>
+    </message>
+    <message>
+        <location line="+168"/>
         <source>自动(Auto)</source>
         <translation>Auto</translation>
     </message>
@@ -637,6 +718,119 @@
     </message>
 </context>
 <context>
+    <name>FontMapReviewDialog</name>
+    <message>
+        <location filename="../components/font_map_review_dialog.py" line="+41"/>
+        <source>低置信度，建议人工确认</source>
+        <translation>Low confidence; manual review recommended</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>规则未能解析该行</source>
+        <translation>The rule pass could not parse this line</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>疑似幻觉字体名（归一化后不是原文行子串）</source>
+        <translation>Suspected hallucinated font name (not a substring of the source line after normalization)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字体名未命中本地词表</source>
+        <translation>Font name not found in the local lexicon</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>LLM 调用失败（有界退避耗尽），本行未结构化</source>
+        <translation>LLM call failed (bounded backoff exhausted); this line was not structured</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>LLM 输出不符合约定格式，本行未结构化</source>
+        <translation>LLM output did not match the agreed format; this line was not structured</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>未配置 API Key，本行未结构化</source>
+        <translation>No API key configured; this line was not structured</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>空行</source>
+        <translation>Empty line</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>注释行</source>
+        <translation>Comment line</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>第 {0} 行：{1} → {2}</source>
+        <translation>Line {0}: {1} → {2}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>第 {0} 行：{1} →（负映射）</source>
+        <translation>Line {0}: {1} → (negative mapping)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>第 {0} 行：{1}</source>
+        <translation>Line {0}: {1}</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>原文：{0}</source>
+        <translation>Original: {0}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>建议：{0} → {1}</source>
+        <translation>Suggestion: {0} → {1}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>建议：{0} 无日文本家对应</source>
+        <translation>Suggestion: {0} has no Japanese official counterpart</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>类型：{0} ｜ 置信度：{1} ｜ 来源：{2} ｜ 文件：{3}</source>
+        <translation>Type: {0} | Confidence: {1} | Source: {2} | File: {3}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>理由：{0}</source>
+        <translation>Reason: {0}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>（该条目不写库；如需修正请在源表修订后重跑导入）</source>
+        <translation>(this entry is not written to the database; to fix it, revise the source table and rerun the import)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>字体映射复核</source>
+        <translation>Font mapping review</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>无待复核记录。</source>
+        <translation>No entries pending review.</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>应用</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+</context>
+<context>
     <name>LogViewerWidget</name>
     <message>
         <location filename="../components/log_viewer.py" line="+10"/>
@@ -672,7 +866,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+225"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+253"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -687,7 +881,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+53"/>
+        <location line="+66"/>
         <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -807,12 +1001,37 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+37"/>
+        <location line="+73"/>
+        <source>Translation cancelled; keeping remaining original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Step 4/4: Translating subtitles ({}/{} batches)...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Translation output length mismatch, keeping original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Translation ({0}): {1}/{2} batches ok, {3} degraded, providers {4}, shortened {5} lines.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Translation stage failed; keeping original subtitles: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+27"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-33"/>
+        <location line="-130"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -857,12 +1076,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+239"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+261"/>
+        <source>Font compliance gate failed; keeping original header: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Font compliance decision collection failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>Compliance report generation failed (export not blocked): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+12"/>
         <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1345,10 +1579,26 @@
         <translation>Auto analysis failed; choose the scene type manually</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+31"/>
+        <location filename="../main_window/pipeline_control.py" line="+35"/>
+        <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
+        <translation>AI translation is enabled, but the translation module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or untick &quot;AI translation&quot; and try again.</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <translation>AI translation (cloud API) is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
+        <translation>AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).</translation>
+    </message>
+    <message>
+        <location line="+50"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
+        <location line="+24"/>
         <location filename="../main_window/roi_config_io.py" line="+84"/>
         <location filename="../main_window/roi_editing.py" line="+325"/>
         <location filename="../main_window/source_config.py" line="+17"/>
@@ -1357,7 +1607,7 @@
         <translation>Warning</translation>
     </message>
     <message>
-        <location line="-34"/>
+        <location line="-58"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
         <translation>Load a video and define at least one ROI first.</translation>
@@ -1378,7 +1628,7 @@
         <translation>DeepSeek features (polish/fragment merge/strategy review) are enabled but no API Key is set. Enter an API Key or set the DEEPSEEK_API_KEY environment variable.</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+34"/>
         <source>保存字幕文件</source>
         <translation>Save subtitle file</translation>
     </message>
@@ -1393,9 +1643,14 @@
         <translation>Save cancelled by user; OCR task aborted.</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
         <translation>[LLM] DeepSeek enabled — step 4 LLM progress is shown below.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。</source>
+        <translation>[LLM] AI translation enabled — translation progress appears below.</translation>
     </message>
     <message>
         <location line="+6"/>
@@ -1418,7 +1673,7 @@
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+51"/>
         <source>正在识别…</source>
         <translation>Recognizing…</translation>
     </message>
@@ -2144,17 +2399,17 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+92"/>
+        <location filename="../core/pipeline_worker.py" line="+97"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+293"/>
+        <location line="+312"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+58"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2210,7 +2465,7 @@ Cancel: abort this detection.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+68"/>
+        <location line="+77"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation type="unfinished"></translation>
     </message>

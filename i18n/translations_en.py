@@ -390,4 +390,55 @@ DICT = {
     '该 ROI 单独使用的 OCR 识别语言；默认「自动」跟随控制面板的全局「识别语言」。双语字幕请给每种语言各画一个 ROI 并分别指定语言（如繁中行设「中文繁體」、日语行设「日本語」），各 ROI 用各自的识别模型，避免单一模型漏认另一种文字。注意：每个不同语言会多加载一份识别模型，内存占用相应增加；RapidOCR 引擎不区分语言，此设置仅对 PaddleOCR 生效。': 'OCR language used only by this ROI; the default "Auto" follows the global "Recognition language" in the control panel. For bilingual subtitles, draw one ROI per language and assign each its own language (e.g. the Traditional-Chinese line as 中文繁體, the Japanese line as 日本語), so each ROI runs its own recognition model instead of one model missing the other script. Note: every distinct language loads an extra recognition model and memory use grows accordingly; the RapidOCR engine uses a single multilingual model and ignores this setting — it applies to PaddleOCR only.',
     'ROI {} 识别语言已设为 {}': 'ROI {}: recognition language set to {}',
     'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.': 'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; using static pose tags instead.',
+
+    # ── T2.5 AI 翻译选项组（ControlPanelWidget / SubtitleOCRGUI）──
+    "AI 翻译（可选）": "AI translation (optional)",
+    "目标语言：": "Target language:",
+    "翻译提供方：": "Translation provider:",
+    "云端 API": "Cloud API",
+    "本地 Sakura": "Local Sakura",
+    "VLM 兜底": "VLM fallback",
+    "API Base URL（云端 / Sakura 共用）": "API base URL (shared by cloud / Sakura)",
+    "模型名（如 deepseek-chat / sakura-14b）": "Model name (e.g. deepseek-chat / sakura-14b)",
+    "术语表 JSON：": "Glossary JSON:",
+    "选择术语表 JSON 文件": "Select glossary JSON file",
+    "术语表 JSON (*.json)": "Glossary JSON (*.json)",
+    "上下文行数：": "Context lines:",
+    "最大行长：": "Max line length:",
+    "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。":
+        "Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). The cloud provider reuses the API key saved in the LLM polish section; an unconfigured or failed level automatically falls back to the next one, and a fully exhausted chain keeps the original text.",
+    "云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。":
+        "Cloud API: OpenAI-compatible endpoint (DeepSeek by default). Local Sakura: a locally deployed Sakura JP-ZH translation model (OpenAI-compatible /v1 endpoint). VLM fallback: reuses the VLM_REFINE_* environment variables, zero configuration.",
+    "可选。JSON 文件（{\"术语\": \"译名\"}），译文中术语强制一致；文件缺失或格式错误时自动忽略。":
+        'Optional. A JSON file ({"term": "translation"}) enforcing consistent terminology in every translation; missing or malformed files are ignored automatically.',
+    "已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。":
+        "AI translation (cloud API) is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.",
+    "已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。":
+        "AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).",
+    "已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。":
+        "AI translation is enabled, but the translation module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or untick \"AI translation\" and try again.",
+    "[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。":
+        "[LLM] AI translation enabled — translation progress appears below.",
+
+    # ── T2.5 FontMapReviewDialog（T1.5 新增文案的 i18n 欠账补齐）──
+    "字体映射复核": "Font mapping review",
+    "无待复核记录。": "No entries pending review.",
+    "低置信度，建议人工确认": "Low confidence; manual review recommended",
+    "规则未能解析该行": "The rule pass could not parse this line",
+    "疑似幻觉字体名（归一化后不是原文行子串）": "Suspected hallucinated font name (not a substring of the source line after normalization)",
+    "字体名未命中本地词表": "Font name not found in the local lexicon",
+    "LLM 调用失败（有界退避耗尽），本行未结构化": "LLM call failed (bounded backoff exhausted); this line was not structured",
+    "LLM 输出不符合约定格式，本行未结构化": "LLM output did not match the agreed format; this line was not structured",
+    "未配置 API Key，本行未结构化": "No API key configured; this line was not structured",
+    "空行": "Empty line",
+    "注释行": "Comment line",
+    "第 {0} 行：{1} → {2}": "Line {0}: {1} → {2}",
+    "第 {0} 行：{1} →（负映射）": "Line {0}: {1} → (negative mapping)",
+    "第 {0} 行：{1}": "Line {0}: {1}",
+    "原文：{0}": "Original: {0}",
+    "建议：{0} → {1}": "Suggestion: {0} → {1}",
+    "建议：{0} 无日文本家对应": "Suggestion: {0} has no Japanese official counterpart",
+    "类型：{0} ｜ 置信度：{1} ｜ 来源：{2} ｜ 文件：{3}": "Type: {0} | Confidence: {1} | Source: {2} | File: {3}",
+    "理由：{0}": "Reason: {0}",
+    "（该条目不写库；如需修正请在源表修订后重跑导入）": "(this entry is not written to the database; to fix it, revise the source table and rerun the import)",
 }

@@ -1,8 +1,89 @@
 import os
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from PySide6.QtCore import Qt, QUrl, QCoreApplication
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+
+if TYPE_CHECKING:
+    # 仅类型标注：font_intel.translation 在 build_translation_config 内惰性导入。
+    from font_intel.translation import TranslationConfig
+
+
+def build_translation_config(options: dict) -> Tuple[Optional["TranslationConfig"], str]:
+    """控制面板选项 → ``(TranslationConfig | None, 错误消息)``。
+
+    与 CLI ``_translation_config_from_args``（T2.3）同构：
+    - ``translation_enabled`` 关闭 → ``(None, "")``：与未启用翻译的既有
+      运行零行为差异；
+    - 提供方映射（三级降级链只配置所选级，其余级留空即自动跳过，失败沿
+      云端 → Sakura → VLM 降级，全部失败保留原文）：
+      * cloud：复用「大模型润色」已保存的 API Key（secret_store 途径），
+        缺失时回退 ``DEEPSEEK_API_KEY`` 环境变量；端点/模型留空用翻译
+        模块的 DeepSeek 常量；
+      * sakura：本地 OpenAI 兼容端点（Base URL 必填，无鉴权时 key 留空，
+        模块内部用占位 key）；模型留空用模块默认；
+      * vlm：零配置，复用 core/vlm_refine 的 ``VLM_REFINE_*`` 环境变量；
+    - 开启但配置不完整（无 API Key / 无 Base URL / 模块不可用）→
+      ``(None, 用户可读错误)``，由调用方弹窗中止本轮（避免静默丢翻译）。
+    """
+    if not options.get("translation_enabled"):
+        return None, ""
+    try:
+        from font_intel.translation import TranslationConfig
+    except Exception as exc:  # font_intel 附加依赖缺失
+        return None, QCoreApplication.translate(
+            "SubtitleOCRGUI",
+            "已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖"
+            "（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。",
+        ).format(exc)
+
+    provider = str(options.get("translation_provider") or "cloud").strip().lower()
+    base_url = str(options.get("translation_base_url") or "").strip()
+    model = str(options.get("translation_model") or "").strip()
+    values: dict = {}
+    if provider == "cloud":
+        api_key = str(options.get("deepseek_api_key") or "").strip() or (
+            os.environ.get("DEEPSEEK_API_KEY") or ""
+        ).strip()
+        if not api_key:
+            return None, QCoreApplication.translate(
+                "SubtitleOCRGUI",
+                "已启用 AI 翻译（云端 API），但未填写 API Key。"
+                "请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。",
+            )
+        values["cloud_api_key"] = api_key
+        if base_url:
+            values["cloud_base_url"] = base_url
+        if model:
+            values["cloud_model"] = model
+    elif provider == "sakura":
+        if not base_url:
+            return None, QCoreApplication.translate(
+                "SubtitleOCRGUI",
+                "已启用 AI 翻译（本地 Sakura），但未填写 Base URL。"
+                "请填写本地 Sakura 服务器的 OpenAI 兼容端点地址"
+                "（如 http://127.0.0.1:8080/v1）。",
+            )
+        values["sakura_base_url"] = base_url
+        if model:
+            values["sakura_model"] = model
+    # provider == "vlm"：零配置（VLM_REFINE_* 环境变量）。
+
+    cfg = TranslationConfig(**values)
+    target = str(options.get("translation_target_language") or "").strip()
+    if target:
+        cfg.target_language = target
+    cfg.glossary_path = str(options.get("translation_glossary_path") or "").strip()
+    try:
+        cfg.context_window_lines = int(options.get("translation_context_lines", 2))
+    except (TypeError, ValueError):
+        cfg.context_window_lines = 2
+    try:
+        cfg.max_line_chars = int(options.get("translation_max_line_chars", 42))
+    except (TypeError, ValueError):
+        cfg.max_line_chars = 42
+    return cfg, ""
 
 
 class PipelineControlMixin:
@@ -82,6 +163,16 @@ class PipelineControlMixin:
                 strategy_review_enabled=bool(options.get("deepseek_strategy_review")),
             )
         
+        # AI 翻译（T2.5）：开关关闭 → (None, "")，与既有运行零行为差异。
+        translation_config, translation_error = build_translation_config(options)
+        if translation_error:
+            QMessageBox.warning(
+                self,
+                QCoreApplication.translate("SubtitleOCRGUI", "警告"),
+                translation_error,
+            )
+            return
+
         video_dir = os.path.dirname(self.video_path)
         video_filename = os.path.splitext(os.path.basename(self.video_path))[0]
         output_ass_path = os.path.join(video_dir, f"{video_filename}.ass")
@@ -101,13 +192,20 @@ class PipelineControlMixin:
         self._sync_selected_roi_panel_flags()
         self._autosave_roi_config_before_pipeline()
 
-        self._pipeline_llm_active = subtitle_polisher is not None
+        self._pipeline_llm_active = (
+            subtitle_polisher is not None or translation_config is not None
+        )
         if self._pipeline_llm_active:
             self.deepseek_progress_panel.clear()
             self.deepseek_progress_panel.set_panel_visible(True)
-            self.deepseek_progress_panel.append_line(
-                QCoreApplication.translate("SubtitleOCRGUI", "[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。")
-            )
+            if subtitle_polisher is not None:
+                self.deepseek_progress_panel.append_line(
+                    QCoreApplication.translate("SubtitleOCRGUI", "[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。")
+                )
+            if translation_config is not None:
+                self.deepseek_progress_panel.append_line(
+                    QCoreApplication.translate("SubtitleOCRGUI", "[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。")
+                )
         else:
             self.deepseek_progress_panel.set_panel_visible(False)
 
@@ -144,6 +242,7 @@ class PipelineControlMixin:
             chunk_workers=int(options.get("chunk_workers", 0) or 0),
             motion_auto_detect=bool(options.get("motion_auto_detect", False)),
             subtitle_polisher=subtitle_polisher,
+            translation_config=translation_config,
             color_presence_gate_spec=gate_spec,
             ocr_engine_id=options.get("ocr_engine_id", ""),
             source_filter_config=options.get("source_filter_config"),

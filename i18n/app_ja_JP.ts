@@ -106,7 +106,7 @@
         <translation type="vanished">インメモリモード（実験的）</translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="+122"/>
+        <location filename="../components/control_panel.py" line="+137"/>
         <source>识别语言：</source>
         <translation>認識言語：</translation>
     </message>
@@ -131,11 +131,12 @@
     </message>
     <message>
         <location line="+1"/>
+        <location line="+554"/>
         <source>浏览…</source>
         <translation>参照…</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-538"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
         <translation type="unfinished">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語およびラテン系言語は PP-OCRv6 モデルを使用し、韓国語/ロシア語/アラビア語などは自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
     </message>
@@ -472,12 +473,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+461"/>
+        <location line="+777"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
-        <location line="-459"/>
+        <location line="-775"/>
         <source>清除已存密钥</source>
         <translation>保存済みキーを削除</translation>
     </message>
@@ -492,7 +493,77 @@
         <translation>DeepSeek マージ戦略レビュー（より適切なしきい値で再マージ）</translation>
     </message>
     <message>
-        <location line="+55"/>
+        <location line="+36"/>
+        <source>AI 翻译（可选）</source>
+        <translation>AI 翻訳（任意）</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <translation>認識した字幕行を大規模言語モデルで目標言語へ翻訳します（ポリッシュの後、書き出しの前に実行）。クラウド プロバイダーは「大規模モデルによる字幕ポリッシュ」欄に保存済みの API Key を再利用します。未設定または失敗した段は自動的に次の段へフォールバックし、すべて失敗した場合は原文を保持します。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>目标语言：</source>
+        <translation>翻訳先の言語：</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>翻译提供方：</source>
+        <translation>翻訳プロバイダー：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
+        <translation>クラウド API: OpenAI 互換エンドポイント（既定は DeepSeek）。ローカル Sakura: ローカル配置の Sakura 日中翻訳モデル（OpenAI 互換 /v1 エンドポイント）。VLM フォールバック: VLM_REFINE_* 環境変数を再利用、設定不要。</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>云端 API</source>
+        <translation>クラウド API</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>本地 Sakura</source>
+        <translation>ローカル Sakura</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>VLM 兜底</source>
+        <translation>VLM フォールバック</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>API Base URL（云端 / Sakura 共用）</source>
+        <translation>API Base URL（クラウド / Sakura 共通）</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>模型名（如 deepseek-chat / sakura-14b）</source>
+        <translation>モデル名（例: deepseek-chat / sakura-14b）</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>术语表 JSON：</source>
+        <translation>用語集 JSON：</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>可选。JSON 文件（{&quot;术语&quot;: &quot;译名&quot;}），译文中术语强制一致；文件缺失或格式错误时自动忽略。</source>
+        <translation>任意。JSON ファイル（{&quot;用語&quot;: &quot;訳語&quot;}）で訳文の用語を強制的に一致させます。ファイルが欠落しているか不正な形式の場合は自動的に無視されます。</translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>上下文行数：</source>
+        <translation>コンテキスト行数：</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>最大行长：</source>
+        <translation>最大行長：</translation>
+    </message>
+    <message>
+        <location line="+42"/>
         <source>完整设置</source>
         <translation>詳細設定</translation>
     </message>
@@ -512,7 +583,7 @@
         <translation>ワンクリックのシンプル表示に戻り、詳細設定を隠します。すべての選択肢は変わりません。</translation>
     </message>
     <message>
-        <location line="+180"/>
+        <location line="+206"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
@@ -537,7 +608,17 @@
         <translation>カラーゲート：確認済み。次の「字幕 OCR 認識」のステージ 1 で使用されます。</translation>
     </message>
     <message>
-        <location line="+249"/>
+        <location line="+257"/>
+        <source>选择术语表 JSON 文件</source>
+        <translation>用語集 JSON ファイルを選択</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>术语表 JSON (*.json)</source>
+        <translation>用語集 JSON (*.json)</translation>
+    </message>
+    <message>
+        <location line="+175"/>
         <source>（无可用引擎）</source>
         <translation>（利用可能なエンジンなし）</translation>
     </message>
@@ -629,7 +710,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-760"/>
+        <location line="-1094"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -753,6 +834,119 @@
     </message>
 </context>
 <context>
+    <name>FontMapReviewDialog</name>
+    <message>
+        <location filename="../components/font_map_review_dialog.py" line="+41"/>
+        <source>低置信度，建议人工确认</source>
+        <translation>信頼度が低いため、手動確認を推奨</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>规则未能解析该行</source>
+        <translation>ルールでこの行を解析できませんでした</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>疑似幻觉字体名（归一化后不是原文行子串）</source>
+        <translation>ハルシネーション疑いのフォント名（正規化後に原文行の部分文字列ではありません）</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>字体名未命中本地词表</source>
+        <translation>フォント名がローカル語彙に見つかりません</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>LLM 调用失败（有界退避耗尽），本行未结构化</source>
+        <translation>LLM 呼び出しが失敗しました（有界バックオフを使い果たし）。この行は構造化されませんでした</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>LLM 输出不符合约定格式，本行未结构化</source>
+        <translation>LLM 出力が約定の形式に一致せず、この行は構造化されませんでした</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>未配置 API Key，本行未结构化</source>
+        <translation>API Key 未設定のため、この行は構造化されませんでした</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>空行</source>
+        <translation>空行</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>注释行</source>
+        <translation>コメント行</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>第 {0} 行：{1} → {2}</source>
+        <translation>{0} 行目：{1} → {2}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>第 {0} 行：{1} →（负映射）</source>
+        <translation>{0} 行目：{1} →（負マッピング）</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>第 {0} 行：{1}</source>
+        <translation>{0} 行目：{1}</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>原文：{0}</source>
+        <translation>原文：{0}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>建议：{0} → {1}</source>
+        <translation>提案：{0} → {1}</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>建议：{0} 无日文本家对应</source>
+        <translation>提案：{0} に日本語本家の対応なし</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>类型：{0} ｜ 置信度：{1} ｜ 来源：{2} ｜ 文件：{3}</source>
+        <translation>種別：{0} ｜ 信頼度：{1} ｜ 取得元：{2} ｜ ファイル：{3}</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>理由：{0}</source>
+        <translation>理由：{0}</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>（该条目不写库；如需修正请在源表修订后重跑导入）</source>
+        <translation>（この項目は DB に書き込まれません。修正するにはソース表を改修してからインポートを再実行してください）</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>字体映射复核</source>
+        <translation>フォントマッピングレビュー</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>无待复核记录。</source>
+        <translation>レビュー待ちのレコードはありません。</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>应用</source>
+        <translation>適用</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>取消</source>
+        <translation>キャンセル</translation>
+    </message>
+</context>
+<context>
     <name>LogViewerWidget</name>
     <message>
         <source>Logs and Progress</source>
@@ -792,7 +986,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/generator.py" line="+225"/>
+        <location filename="../core/subtitle_generator/generator.py" line="+253"/>
         <source>Subtitle generator initialized: {}x{} @ {:.2f} FPS</source>
         <translation type="unfinished"></translation>
     </message>
@@ -807,7 +1001,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+53"/>
+        <location line="+66"/>
         <source>Scene text policy: cannot open video {} for analysis frame; keeping original placement.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -927,12 +1121,37 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+37"/>
+        <location line="+73"/>
+        <source>Translation cancelled; keeping remaining original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Step 4/4: Translating subtitles ({}/{} batches)...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Translation output length mismatch, keeping original subtitles.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Translation ({0}): {1}/{2} batches ok, {3} degraded, providers {4}, shortened {5} lines.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Translation stage failed; keeping original subtitles: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+27"/>
         <source>No valid subtitle groups formed for any ROI, an empty ASS file will be generated.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-33"/>
+        <location line="-130"/>
         <source>--- Conversion successful ---</source>
         <translation type="unfinished"></translation>
     </message>
@@ -977,12 +1196,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/subtitle_generator/styling.py" line="+239"/>
+        <location filename="../core/subtitle_generator/styling.py" line="+261"/>
+        <source>Font compliance gate failed; keeping original header: {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Font compliance decision collection failed (output unaffected): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>Compliance report generation failed (export not blocked): {}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>No &apos;[Events]&apos; tag found in template file. Events will be appended at the end of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+12"/>
         <source>Failed to read template file {}: {}. Using default styles.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1859,10 +2093,11 @@
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+31"/>
+        <location filename="../main_window/pipeline_control.py" line="+112"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
+        <location line="+24"/>
         <location filename="../main_window/roi_config_io.py" line="-1"/>
         <location filename="../main_window/roi_editing.py" line="-163"/>
         <location filename="../main_window/source_config.py" line="+17"/>
@@ -1959,7 +2194,7 @@
         <translation>ASS 字幕ファイル (*.ass)</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="-34"/>
+        <location filename="../main_window/pipeline_control.py" line="-58"/>
         <location filename="../main_window/source_config.py" line="-11"/>
         <source>请先加载视频并至少定义一个 ROI。</source>
         <translation>まず動画を読み込み、ROI を 1 つ以上定義してください。</translation>
@@ -1985,7 +2220,22 @@
         <translation>カラーゲートを確認しました。次回の「字幕 OCR 認識」のステージ 1 で有効になります。</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+6"/>
+        <location filename="../main_window/pipeline_control.py" line="-78"/>
+        <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
+        <translation>AI 翻訳が有効ですが、翻訳モジュールを利用できません（{0}）。先に font_intel の依存関係（requirements-fontintel.txt）をインストールするか、「AI 翻訳」のチェックを外して再試行してください。</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <translation>AI 翻訳（クラウド API）が有効ですが、API Key が未入力です。「大規模モデルによる字幕ポリッシュ」欄に API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
+        <translation>AI 翻訳（ローカル Sakura）が有効ですが、Base URL が未入力です。ローカル Sakura サーバーの OpenAI 互換エンドポイントアドレス（例: http://127.0.0.1:8080/v1）を入力してください。</translation>
+    </message>
+    <message>
+        <location line="+57"/>
         <source>已有 OCR 任务在运行中，请等待其完成或先取消。</source>
         <translation>OCR タスクが実行中です。完了を待つか、先にキャンセルしてください。</translation>
     </message>
@@ -2000,7 +2250,7 @@
         <translation>DeepSeek 機能（ポリッシュ／断片マージ／戦略レビュー）が有効ですが、API Key が未入力です。API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+34"/>
         <source>保存字幕文件</source>
         <translation>字幕ファイルを保存</translation>
     </message>
@@ -2015,9 +2265,14 @@
         <translation>保存がキャンセルされたため、OCR タスクを中止しました。</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>[LLM] 已启用 DeepSeek —— 第 4 步的大模型进度会显示在下方。</source>
         <translation>[LLM] DeepSeek が有効になりました——ステップ 4 の LLM 進行状況は以下に表示されます。</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。</source>
+        <translation>[LLM] AI 翻訳が有効です —— 翻訳の進捗は下に表示されます。</translation>
     </message>
     <message>
         <location line="+6"/>
@@ -2040,7 +2295,7 @@
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+51"/>
         <source>正在识别…</source>
         <translation>認識中…</translation>
     </message>
@@ -2460,7 +2715,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
 <context>
     <name>pipeline_worker</name>
     <message>
-        <location filename="../core/pipeline_worker.py" line="+521"/>
+        <location filename="../core/pipeline_worker.py" line="+547"/>
         <source>Intermediate files will be saved to: {}</source>
         <translation>中間ファイルは以下に保存されます: {}</translation>
     </message>
@@ -2611,17 +2866,17 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/pipeline_worker.py" line="-440"/>
+        <location filename="../core/pipeline_worker.py" line="-461"/>
         <source>ROIs merged with differing scene text policies ({}); using the first one ({}).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+293"/>
+        <location line="+312"/>
         <source>Auto motion detection on {0} failed ({1}); skipping it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+58"/>
         <source>Step 4/4: Tracking moving-text plane(s) for trajectory subtitles...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2657,7 +2912,7 @@ core/subtitle_roi_suggester モジュールとその依存関係が正しくイ�
         <translation>ステップ4/4: ASS字幕ファイル生成を開始中...</translation>
     </message>
     <message>
-        <location line="+68"/>
+        <location line="+77"/>
         <source>Step 4/4: ASS subtitle generation complete.</source>
         <translation>ステップ4/4: ASS字幕生成完了。</translation>
     </message>
