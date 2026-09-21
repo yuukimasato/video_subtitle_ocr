@@ -1,0 +1,48 @@
+{
+  "fetched_at": "2026-09-22",
+  "fetched_via": "GitHub REST API v3（repos/{repo} 与 commits/HEAD）",
+  "purpose": "T0.2 外部数据源许可核对存档（开发计划 P0 任务，审计缺口补录）",
+  "usage_policy": "所有源仅取『名称/许可/映射』级事实元数据入库并逐条带 source 标注；不分发字体文件、样张图或上游清单原文（种子数据红线，见 feature_plan §2）",
+  "sources": [
+    {
+      "repo": "Seekladoom/Japanese-Chinese-Fonts-adaptation",
+      "license_spdx": "MIT",
+      "head_sha12": "1b535cfc356a",
+      "head_committed_at": "2020-04-05T15:58:39Z",
+      "usage": "中日字体映射 ETL（S0–S6）唯一映射事实源；记录带 source_file/line_no 溯源",
+      "note": "MIT 允许复用；rar 样张仅本机可选导入，不进打包链"
+    },
+    {
+      "repo": "wordshub/free-font",
+      "license_spdx": null,
+      "head_sha12": "8de624069342",
+      "head_committed_at": "2025-02-27T15:36:34Z",
+      "usage": "免费可商用字体清单的事实参考（字体名→许可类别种子）",
+      "note": "仓库无 LICENSE 文件（默认著作权保留）：仅提取事实性元数据（字体名/厂商/许可类别），逐条标注 source，不转载清单原文或红头文件截图"
+    },
+    {
+      "repo": "yuleshow/chinese-fonts",
+      "license_spdx": null,
+      "head_sha12": "f5ecf6b16e82",
+      "head_committed_at": "2026-03-13T21:09:16Z",
+      "usage": "免费商用中文字体分类的事实参考（同上）",
+      "note": "仓库无 LICENSE 文件：同 wordshub/free-font 的使用策略"
+    },
+    {
+      "repo": "JeffersonQin/YuzuMarker.FontDetection",
+      "license_spdx": "MIT",
+      "head_sha12": "0a94e165fe2b",
+      "head_committed_at": "2025-02-22T22:38:43Z",
+      "usage": "CJK 字体识别深度模型（候选生成器），权重延迟下载（HF，有界重试）",
+      "note": "MIT；模型权重许可以 HF 仓库页为准，运行时下载不随 deb 分发"
+    },
+    {
+      "repo": "SakuraLLM/SakuraLLM（原 SakuraUmi/Sakura-13B-Galgame，API 返回 301 迁移）",
+      "license_spdx": "GPL-3.0",
+      "head_sha12": "0ff69116222c",
+      "head_committed_at": "2026-07-23T09:18:37Z",
+      "usage": "本地翻译模型，经 llama.cpp/Ollama 等 OpenAI 兼容端点调用",
+      "note": "GPL-3.0：本项目仅经网络 API 调用独立部署实例，无代码链接，GPL 不传染本项目；用户自行部署时遵循上游许可"
+    }
+  ]
+}

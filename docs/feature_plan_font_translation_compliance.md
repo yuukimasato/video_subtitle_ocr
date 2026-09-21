@@ -91,7 +91,7 @@ OCR 识别 → LLM 润色/纠错（已有） → 翻译（新增阶段） → AS
 | 级别 | 提供方 | 说明 |
 |---|---|---|
 | 云端 API | 任意 OpenAI 兼容端点（DeepSeek 等） | 复用 `subtitle_llm_polish._post_chat`（已基于 `llm_client.call_llm`，自动获得 429 有界退避与 `LlmApiError` 归一），新增翻译 system prompt 与参数 |
-| 本地模型 | [Sakura-13B-Galgame](https://github.com/SakuraUmi/Sakura-13B-Galgame) | 日中 ACGN 特化翻译模型，契合动画字幕语域；经 llama.cpp / sglang / Ollama 部署后即为 OpenAI 兼容 API，**零代码适配**；显存不足走量化版（GGUF） |
+| 本地模型 | [SakuraLLM/SakuraLLM](https://github.com/SakuraLLM/SakuraLLM)（原 Sakura-13B-Galgame） | 日中 ACGN 特化翻译模型（GPL-3.0，仅经 OpenAI 兼容 API 调用部署实例，不链接其代码），契合动画字幕语域；经 llama.cpp / sglang / Ollama 部署后即为 OpenAI 兼容 API，**零代码适配**；显存不足走量化版（GGUF） |
 | VLM 通道 | 复用 `vlm_refine` 配置 | 场景文字/艺术字（Logo、手写体）直读图翻译，文本通道失败的兜底 |
 
 ### 4.3 字幕特化
@@ -259,5 +259,5 @@ P2/P3 相互独立，可按优先级互换；总周期与逐任务排布见 [dev
 - [Seekladoom/Japanese-Chinese-Fonts-adaptation](https://github.com/Seekladoom/Japanese-Chinese-Fonts-adaptation)（MIT，中日字体匹配表+样张）
 - [JeffersonQin/YuzuMarker.FontDetection](https://github.com/JeffersonQin/YuzuMarker.FontDetection)（MIT，CJK 字体识别+样式提取，HF 权重/数据集）
 - [twelfth-star/universal-font-recognition](https://github.com/twelfth-star/universal-font-recognition)、[Dexterp37/fontina](https://github.com/Dexterp37/fontina)（DeepFont 系复现）
-- [SakuraUmi/Sakura-13B-Galgame](https://github.com/SakuraUmi/Sakura-13B-Galgame)（日中 ACGN 翻译模型，OpenAI 兼容部署）
+- [SakuraLLM/SakuraLLM](https://github.com/SakuraLLM/SakuraLLM)（原 SakuraUmi/Sakura-13B-Galgame，GPL-3.0；日中 ACGN 翻译模型，OpenAI 兼容部署）
 - [wordshub/free-font](https://github.com/wordshub/free-font)、[yuleshow/chinese-fonts](https://github.com/yuleshow/chinese-fonts)（免费商用字体清单）

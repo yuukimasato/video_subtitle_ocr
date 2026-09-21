@@ -1,10 +1,10 @@
 # 字体智能与翻译扩展开发计划（font_intel / translation / compliance）
 
-> 文档版本：v1.0（2026-09-21）
+> 文档版本：v1.1（2026-09-22，按 T4.2 审计结论收敛权重下载措辞）
 > 方案文档：[feature_plan_font_translation_compliance.md](./feature_plan_font_translation_compliance.md) v1.1（设计与选型依据，本文档只做排期与验收）
 > 前置版本：v2.7.3（`docs/development_plan.md` Phase 1–4 已完成）
 > 人力假设：1 名开发人员全职；总周期约 5.5 周（28 个工作日，含缓冲）
-> 硬约束（全局，贯穿每个任务）：所有服务端调用（LLM 结构化、翻译、VLM、模型权重下载）必须复用 `core/llm_client.py` 的 429 有界退避封装——最大重试 10 次、单次等待 ≤60s、总等待 ≤300s、尊重 Retry-After（钳到同预算）、耗尽后以 `LlmApiError` 优雅降级，不得绕过、不得在降级路径中断任务链。
+> 硬约束（全局，贯穿每个任务）：所有服务端 **API 调用**（LLM 结构化、翻译、VLM）必须复用 `core/llm_client.py` 的 429 有界退避封装——最大重试 10 次、单次等待 ≤60s、总等待 ≤300s、尊重 Retry-After（钳到同预算）、耗尽后以 `LlmApiError` 优雅降级，不得绕过、不得在降级路径中断任务链。**模型权重等静态文件下载**不适用该封装（静态 GET 无 429/Retry-After 语义），但必须自实现同等有界重试（最大次数 / 单次超时 / 总预算、失败优雅降级不阻塞主流水线）——参照实现 `font_intel/recognizer/yuzu.py` 的 `bounded_download`，与方案 §3.2"下载调用同样走有界重试"一致。
 
 ---
 
