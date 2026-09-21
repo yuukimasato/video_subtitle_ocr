@@ -25,7 +25,6 @@ if PROJECT_ROOT not in sys.path:
 
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
-    QComboBox,
     QDialog,
     QGroupBox,
     QLineEdit,
