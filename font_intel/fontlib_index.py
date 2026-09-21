@@ -275,6 +275,15 @@ def _cmap_codepoints(path: str) -> Optional[set]:
         return None
 
 
+def cmap_codepoints(path: str) -> Optional[set]:
+    """``_cmap_codepoints`` 的公开封装（T3.2 字形重排缺字形判定用）。
+
+    返回字体 cmap 覆盖的码点集合；读取失败返回 None（表示无法判定，
+    调用方应放弃缺字形过滤而不是误判全覆盖）。
+    """
+    return _cmap_codepoints(path)
+
+
 def render_reference_glyphs(
     font_path: str, chars: str, size: int = 64
 ) -> dict[str, "Image"]:

@@ -286,6 +286,19 @@ def test_render_reference_glyphs_returns_pil_images(system_ttf):
         assert img.width > 0 and img.height > 0
 
 
+def test_cmap_codepoints_public_wrapper(system_ttf):
+    codes = fontlib_index.cmap_codepoints(system_ttf)
+    assert codes is not None
+    assert ord("A") in codes
+
+
+def test_cmap_codepoints_corrupt_file_returns_none(tmp_path):
+    bad = tmp_path / "broken.ttf"
+    bad.write_bytes(b"not a font" * 16)
+    assert fontlib_index.cmap_codepoints(str(bad)) is None
+    assert fontlib_index.cmap_codepoints("/nonexistent/x.ttf") is None
+
+
 def test_glyph_cache_hit_does_not_rerender(system_ttf):
     cache = fontlib_index.FontGlyphCache()
     first = cache.get(system_ttf, "A1")
