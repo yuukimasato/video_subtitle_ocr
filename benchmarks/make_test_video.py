@@ -47,8 +47,41 @@ SEAM_HOSTILE_SUBTITLES = [
     {"start": 146.5, "end": 149.0, "text": "片尾淡入淡出", "fade": True},
 ]
 
-def _find_cjk_font() -> str:
-    """Locate an installed CJK-capable font for ffmpeg drawtext."""
+# Japanese schedule (--lang ja): same timing structure as the zh schedule
+# (5 entries, fade in/out on the last) so boundary-refinement and voting
+# benchmarks exercise identical timelines; text carries kana + kanji to
+# exercise the JP recognition path.
+SUBTITLES_JA = [
+    {"start": 0.5, "end": 3.5, "text": "これはテスト字幕です"},
+    {"start": 4.0, "end": 7.0, "text": "動画字幕OCRシステムへようこそ"},
+    {"start": 7.5, "end": 10.5, "text": "今日はいい天気ですね"},
+    {"start": 11.0, "end": 13.0, "text": "一緒に公園を散歩しましょう"},
+    {"start": 13.5, "end": 15.5, "text": "フェードイン・フェードアウト", "fade": True},
+]
+
+# Corner watermark drawtext per language (top-left overlay).
+WATERMARKS = {"zh": "视频字幕OCR测试", "ja": "動画字幕OCRテスト"}
+
+
+def select_schedule(lang: str) -> tuple:
+    """Return (subtitles, watermark_text) for a language schedule.
+
+    Raises ValueError for languages without a schedule (argparse limits
+    --lang choices to zh/ja; this guard is for direct callers).
+    """
+    if lang == "zh":
+        return list(SUBTITLES), WATERMARKS["zh"]
+    if lang == "ja":
+        return list(SUBTITLES_JA), WATERMARKS["ja"]
+    raise ValueError(f"unsupported language: {lang!r} (expected 'zh' or 'ja')")
+
+
+def _find_cjk_font(lang: str = "zh") -> str:
+    """Locate an installed CJK-capable font for ffmpeg drawtext.
+
+    ``lang`` only steers the fc-match fallback preference (zh/ja both render
+    from the same Noto/Source Han CJK families on this project's targets).
+    """
     candidates = [
         Path.home() / ".local/share/fonts/opentype/SourceHanSansSC-Regular.otf",
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
@@ -60,7 +93,7 @@ def _find_cjk_font() -> str:
             return str(p)
     try:
         out = subprocess.run(
-            ["fc-match", "-f", "%{file}", "sans:lang=zh"],
+            ["fc-match", "-f", "%{file}", f"sans:lang={lang}"],
             capture_output=True, text=True, timeout=5,
         )
         if out.returncode == 0 and out.stdout.strip():
@@ -75,7 +108,8 @@ def _find_cjk_font() -> str:
     )
 
 
-FONT = _find_cjk_font()
+# Kept as a module alias: the historical entry point name.
+resolve_font = _find_cjk_font
 
 
 def esc(text: str) -> str:
@@ -83,27 +117,10 @@ def esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
-def main() -> None:
-    global SUBTITLES
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--video", default="test_video_subtitle.mp4")
-    ap.add_argument("--gt", default="gt.json")
-    ap.add_argument("--duration", type=int, default=16)
-    ap.add_argument("--width", type=int, default=1280)
-    ap.add_argument("--height", type=int, default=720)
-    ap.add_argument("--fps", type=int, default=30)
-    ap.add_argument(
-        "--seam-hostile", action="store_true",
-        help="emit the 150s seam-hostile schedule (subtitles straddling the "
-             "50s/100s core seams, fades inside overlap zones, rapid dialog, "
-             "identical-text repeats) for chunk-parallel equivalence tests",
-    )
-    args = ap.parse_args()
-
-    if args.seam_hostile:
-        args.duration = 150
-        SUBTITLES = SEAM_HOSTILE_SUBTITLES
-
+def build_filters(subs, font: str, watermark: str) -> list:
+    """Build the ffmpeg -filter_complex list: noise base + boxes + one
+    drawtext per subtitle (fade entries carry an alpha expression) + the
+    corner watermark drawtext."""
     filters = [
         # Animated noise so consecutive frames are not bit-identical.
         "geq=r='r(X,Y)+30*sin(X/200+T*2)':g='g(X,Y)+20*cos(Y/150+T*1.5)'"
@@ -112,7 +129,7 @@ def main() -> None:
         "drawbox=x=500:y=100:w=400:h=250:c=0x27ae60@0.3:t=fill",
         "drawbox=x=800:y=300:w=350:h=280:c=0x8e44ad@0.3:t=fill",
     ]
-    for sub in SUBTITLES:
+    for sub in subs:
         alpha_expr = ""
         if sub.get("fade"):
             start, end = float(sub["start"]), float(sub["end"])
@@ -124,15 +141,49 @@ def main() -> None:
                 f"if(lt(t,{end}),({end}-t)/0.5,0))))'"
             )
         filters.append(
-            f"drawtext=fontfile={FONT}:text='{esc(sub['text'])}':fontcolor=white"
+            f"drawtext=fontfile={font}:text='{esc(sub['text'])}':fontcolor=white"
             f":fontsize=48:x=(w-text_w)/2:y=h-th-80:borderw=2:bordercolor=black@0.6"
             f"{alpha_expr}"
             f":enable='between(t,{sub['start']},{sub['end']})'"
         )
     filters.append(
-        f"drawtext=fontfile={FONT}:text='视频字幕OCR测试':fontcolor=white@0.9"
+        f"drawtext=fontfile={font}:text='{esc(watermark)}':fontcolor=white@0.9"
         ":fontsize=36:x=20:y=20:borderw=1:bordercolor=black@0.4"
     )
+    return filters
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--video", default="test_video_subtitle.mp4")
+    ap.add_argument("--gt", default="gt.json")
+    ap.add_argument("--duration", type=int, default=16)
+    ap.add_argument("--width", type=int, default=1280)
+    ap.add_argument("--height", type=int, default=720)
+    ap.add_argument("--fps", type=int, default=30)
+    ap.add_argument(
+        "--lang", choices=["zh", "ja"], default="zh",
+        help="subtitle language schedule (default: zh; ja emits the Japanese "
+             "5-entry schedule with a matching watermark)",
+    )
+    ap.add_argument(
+        "--seam-hostile", action="store_true",
+        help="emit the 150s seam-hostile schedule (subtitles straddling the "
+             "50s/100s core seams, fades inside overlap zones, rapid dialog, "
+             "identical-text repeats) for chunk-parallel equivalence tests",
+    )
+    args = ap.parse_args()
+
+    if args.seam_hostile:
+        if args.lang != "zh":
+            ap.error("--seam-hostile schedule is zh-only; drop --lang or use --lang zh")
+        args.duration = 150
+        subs, watermark = list(SEAM_HOSTILE_SUBTITLES), WATERMARKS["zh"]
+    else:
+        subs, watermark = select_schedule(args.lang)
+    font = resolve_font(args.lang)
+
+    filters = build_filters(subs, font, watermark)
 
     cmd = [
         "ffmpeg", "-y",
@@ -145,7 +196,7 @@ def main() -> None:
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     Path(args.gt).write_text(
-        json.dumps(SUBTITLES, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(subs, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(f"video: {args.video}\nground truth: {args.gt}")
 
