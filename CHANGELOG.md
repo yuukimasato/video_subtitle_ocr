@@ -4,6 +4,111 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
+## 2.7.4（2026-09-23）
+
+### 新增
+
+- **免费商用字体清单入库（G1 数据面补齐）+ 译文行开源字体回退**——修复
+  三级映射链在本机 100% unresolved 的两个数据/策略缺口。
+  - **数据缺口**：字体库此前只有 Seekladoom 映射表（5070 行）+ 本机字体
+    索引（302 行，许可字段近乎全空），免费商用清单一直未入库——映射表
+    推荐的中文对位（方正/汉仪/华康/文鼎等商用字体）在库内许可类别为
+    unknown，按"从严不放行"设计被许可闸门全部否决，链路对任何字体都
+    返回 unresolved。
+  - **新 ETL**：`font_intel/etl/license_list.py` 解析 + 
+    `scripts/import_font_license_list.py` 编排（--seed-load 幂等入库 /
+    --fetch 显式联网拉取快照）。支持 yuleshow/chinese-fonts（表格字段
+    最全：授权协议/简繁日韩覆盖/风格分类/官方链接）与 wordshub/free-font
+    （段落 + shields 徽章）两种快照格式；许可归类从严（OFL/GPL/Apache/
+    IPA/BSD/SIL → open_source；免費商用 → free_commercial；识别不了
+    不产出记录）。本机库已导入 233 条（fonts 表许可放行字体 215 → 447，
+    其中 232 条带 languages/category 标注，第三级同风格兜底可用）。
+  - **译文行回退策略**：映射链 unresolved 时译文行不再钉死原（日文）
+    字体名（对目标语言文本没有字形意义）——回退到库内已知开源/免费
+    目标语言字体（确定性偏好列表 ∩ 许可放行；zh 首选思源黑体 CN，
+    ja 首选源ノ角ゴシック/Noto Sans CJK JP）；库内无可用回退 → 不写
+    `\fn`，译文行回落样式字体。两种情况决策均保持 `unmapped=True`
+    留痕（回退解决渲染，不掩盖映射数据缺口），`mapping_basis=
+    "open_fallback"`。非翻译路径（`_decide_direct`）语义不变。
+  - 说明：Seekladoom 映射表的对位以商用字体为主（导入清单后映射直解
+    仍为 0/923，属数据现实而非缺陷）——译文行的实际字体匹配由回退
+    机制承担；"商用对位 → 开源替代"数据链（fonts.alternates）是后续
+    增强方向。
+  - 快照存档：`~/.local/share/video_subtitle_ocr/sources/license_lists/`
+    （仓库外，与 Seekladoom 数据同目录约定）；再导入命令见脚本
+    docstring。
+  - 测试：新增 `tests/test_license_list_etl.py`（两种格式解析契约、
+    许可归类、语言列位、跨源去重）；`test_font_closure.py` 更新
+    unresolved 用例为回退语义并补"无可用回退不落 \fn"用例。全量
+    1568 passed / 1 skipped。
+
+### 新增（翻译输出形态改版）
+
+- **翻译输出形态改版：原文 Comment 隐藏 + 译文 Dialogue（轨迹事件纳入翻译）**——
+  开启「AI 翻译」后，送翻行的**原文事件转 `Comment:` 行**（播放器不渲染，
+  时间/样式/遮罩/`\move` 等特效标签逐字保留，翻转 Comment → Dialogue 即可
+  无损找回），**译文以 `Dialogue:` 行写出**（其余字段与原文行逐项一致）：
+
+  ```
+  Comment: 1,0:00:00.00,0:00:03.54,Scene,motion,0,0,0,,{\an5\fs24\move(...)}受信メール一覧
+  Dialogue: 1,0:00:00.00,0:00:03.54,Scene,motion,0,0,0,,{\an5\fs24\move(...)}收件列表
+  ```
+
+  - **修复轨迹事件完全绕过翻译的阶段缺口**：移动文字轨迹事件
+    （`Name=motion`）此前在写出前才并入文件、从不送翻——日文移动字幕
+    开翻译后原样出片。现在轨迹事件与静态行同样送翻拆分；`PipelineWorker`
+    给轨迹事件挂 `roi`，按该 ROI 的「识别语言」路由源语言（CLI 手动路径
+    无 roi，走模型自动检测）；「无静态数据、纯轨迹输出」早退路径同样过翻。
+  - **字体识别 → 目标语言字体匹配**：字体识别快照只保留在译文行上，
+    翻译联动的三级映射链（日文字体 → 中文对位 → 开源替代 → 同类形兜底，
+    T2.4）把目标语言 `\fn` 只写进译文 Dialogue 行；原文 Comment 行不被
+    映射链改写。
+  - 拆分仅在译文与原文不同时发生：某批翻译失败/降级保留原文 → 该行
+    保持单条 Dialogue 原文，不出「原文 Comment + 译文重复」的冗余对。
+  - 翻译失败的兜底语义不变：全部提供方失败保留原文继续出片；429 走
+    `llm_client` 有界退避。
+  - 测试：`test_translation_pipeline.py` 新增轨迹事件翻译/纯轨迹输出/
+    worker 挂 roi 用例，替换类断言改为拆分语义；`test_font_closure.py`
+    新增「`\fn` 只落译文行、原文行逐字原样」用例。全量 1563 passed /
+    1 skipped。
+
+### 改进
+
+- **AI 翻译设置去重：翻译组不再重复配置提供方/端点**——「AI 翻译」组内的
+  「翻译提供方」下拉与「Base URL / 模型名」共用行（与「大模型润色」区的
+  提供方/API Key/Base URL/模型完全重复）整行移除，翻译直接复用「大模型
+  润色」区已保存的凭据，组内仅保留一行灰色提示（四语言均已翻译）。
+  - 只勾「AI 翻译」而不勾任何润色功能时，「大模型润色」凭据区现在会
+    自动展开（此前凭据区只在润色类功能勾选时出现，只开翻译会无处配置）。
+  - `build_translation_config` 随之收敛为云端单级：API Key 缺失回退
+    `DEEPSEEK_API_KEY` 环境变量，Base URL / 模型留空用翻译模块 DeepSeek
+    常量；云端失败仍由翻译模块内部降级 VLM 兜底（`VLM_REFINE_*` 环境
+    变量），CLI `--translate-provider`（cloud/sakura/vlm）保持不变。
+  - QSettings 不再写入 `translation/provider`、`translation/base_url_*`、
+    `translation/model_*`（旧键残留无害，读取侧已移除）；i18n 四语言
+    词表经 `lupdate → apply_translations → lrelease` 再生（提供方/端点
+    相关 10 条置 vanished，新增提示与错误文案 3 条）。
+  - 测试：`tests/test_translation_gui.py` 重写提供方相关用例为「复用
+    「大模型润色」凭据」语义，新增「只开翻译自动展开凭据区」用例；
+    全量 1558 passed / 1 skipped。
+
+### 修复
+
+- **ETL `--fetch` 编排两处缺陷（发布前 bug 审查发现）**：
+  - **快照接线 bug**：`--fetch` 拉取快照后把文件**路径**（而非**内容**）
+    传给解析器，`--fetch --seed-load` 静默导入 0 条记录且退出码 0。
+    现拉取后读入内容再解析；新增「fetch 桩 → 解析 → seed 入库」全链
+    离线回归测试锁定接线语义。
+  - **429 有界退避（工作区服务端调用规范）**：GitHub API 匿名限额
+    （60 次/时）极易触发 429 Too Many Requests，此前裸 `urlopen` 直接
+    抛栈击穿整条导入链。现在 429 按有界退避重试：最多 3 次，单次等待
+    取 max(Retry-After, 指数退避) 且被单次 30s / 总 60s 等待预算封顶；
+    重试耗尽以退出码 2 优雅退出（可恢复错误：稍后重跑或改用
+    `--input` 本地快照），绝不带空/半截解析结果继续输出或入库；
+    非 429 HTTP 错误与网络错误同样转可恢复错误信息。新增 4 项离线
+    回归测试（urlopen / time.sleep 打桩：退避后恢复、Retry-After 优先、
+    持续限流优雅退出）。全量 1572 passed / 1 skipped。
+
 ## 2.7.3（2026-09-22）
 
 > 本版本 = 2.7.3 修复线（每 ROI 识别语言、轨迹接管覆盖门限、CLI
