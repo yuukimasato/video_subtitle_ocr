@@ -37,7 +37,6 @@ from components.font_map_review_dialog import FontMapReviewDialog  # noqa: E402
 from font_intel.etl.review import (  # noqa: E402
     DECISIONS_SCHEMA,
     REVIEW_SCHEMA,
-    build_review_items,
     build_review_package,
     decisions_package,
     read_decisions_package,

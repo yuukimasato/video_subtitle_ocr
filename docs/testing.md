@@ -577,3 +577,25 @@ P
 | `vso-font` | `--version` → `vso-font 2.7.3 (video-subtitle-ocr 2.7.3)`；identify 无 torch → 可恢复降级 exit 3 + `--text` 指引（无副作用）；`--text` 字形重排降级路径 exit 0；fontTools 就绪后 Top-1 命中测试视频真实字体（Source Han Sans SC 0.936，本地化名别名入库生效）；`index` 对真实 v4 库 1017 扫描 / 1012 导入 / 5 跳过（macOS `._*` 资源叉垃圾逐条告警）；**0612bf1 上「schema version 4 is newer than supported version 3」拒绝打开真实库的问题随 schema v4 支持解决** |
 | deb 打包 | `video-subtitle-ocr_2.7.3_all.deb`（6.0 MiB，186 条 md5sums，`-Zxz` 兼容老 dpkg）；`dpkg-deb -I` Version 2.7.3 / Architecture all；包内含 cli.py / font_cli.py / font_intel ETL 模块（clean.py、xlsx_extract.py）/ `/usr/bin/vso-font` + man 页 |
 | deb rootless 冒烟 | `dpkg-deb -x` 暂装树 + `VSO_APP_DIR` 启动器（video-subtitle-ocr-cli / vso-font）→ 均报 2.7.3；安装 venv 无 fontTools 时 identify/index 可恢复降级 exit 3 + 安装指引（设计内行为，无副作用） |
+
+### 2026-09-23（第二轮）· v2.7.3 发布终验（CLI 全链路 + lint 门禁修正 + deb 重建）· Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
+
+> 独立复验轮：按用户操作路径重跑 CLI 全链路（字体识别 / 字体匹配 /
+> 字体数据库 / 润色翻译 / GUI / 文件获取），并对真实 v4 库与 429 有界
+> 退避做实测。发现并修正一处 lint 门禁回归（详见下表）。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **1561 passed, 1 skipped**（72.9 s；lint 修正前后各跑一遍全量，零翻转） |
+| `ruff check . --select F` | 初检 **14 errors**（近期提交引入的回归：yuzu torch 探测导入、translation 死变量、测试文件未用导入/变量 ×7）→ **修正后全绿**；顺带清除无效 `# noqa: WPS433` 告警源 |
+| lint 修正要点 | `yuzu.py` torch 探测导入保留并显式 `# noqa: F401`（保住 `torch_import_failed` 优雅报错路径，`ruff --fix` 的自动删除被人工回退）；`translation.py` `_build_shorten_instruction` 死变量 `over` 删除（超长行索引已在指令正文传达，无行为变化）；其余为测试文件清理（`tests/test_compliance_styling.py` / `tests/test_font_etl_db_loader.py` / `tests/test_font_map_review_dialog.py` 未用导入，`tests/test_translation.py` 未用 `calls` 赋值 ×7） |
+| CLI 入口/错误路径 | 双入口 `--version` 均报 2.7.3；不存在视频 exit 1；未知 `--preset` exit 2；非法 `--roi` exit 2；`--template` 不存在 exit 1（真实视频下复验，先于出片报错） |
+| CLI 端到端 | 8 s 测试视频全默认 → 3 条 Dialogue 逐字吻合（5.2 s）；`--roi-file`（GUI 格式 `type`/`points`）、`--template`（config.ass Style 行生效）、`--engine rapid`（本机 rapidocr v2 包，输出与 paddle 逐字一致）全部 exit 0 |
+| 字体数据库 | 真实 v4 库打开正常（fonts 302 / aliases 889 / jp_cn_font_map 5070）；`lookup_font` 别名解析命中（思源黑体 → 本地索引行）、`lookup_jp_cn` 正查 16 行、许可类别分布（open_source 215 / unknown 87）；`index` 对临时库全量重建 995 扫描 / 990 导入 / 5 跳过（macOS `._*` 资源叉逐条告警，exit 0）；`category` 现阶段仅经 ETL 复核建议包写入（真实库暂空 = 第三级同风格兜底保守降级，设计内） |
+| 字体匹配 | 三级链按「从严」语义工作：对位未收录/许可不放行 → 逐条 notes 留痕 → 开源替代层 → 同风格层；全链无果返回 `unresolved` 保留原名不强行替换；`tests/test_matching.py` 30 项全过 |
+| 字体识别 | `vso-font identify` 字形重排路径：ROI 限定 + `--text` 下 Top-1 命中测试视频真实字体（Source Han Sans SC 0.941）；主流水线 `--font-identify` 全链出片 + `*_compliance_report.md/.json` 生成（open_source→allow、unknown→prompt 非交互降级保留原名不阻断） |
+| 润色翻译 | `--translate` 无提供方 → WARNING 保留原文 exit 0；**429 有界退避实测**（本地 mock 服务器）：3 次 429 后经有界退避重试成功（等待留痕 `elapsed of 300s wait budget`，单次等待 ≤60s / 总预算 ≤300s / 至多 10 次）；耗尽路径（缩小预算模拟）→ 「降级下一通道」→ 保留原文，任务链不中断 |
+| `vso-font review import` | 真实建议包（`vso_font_update_suggestions/1`）导入临时库 → adopted 1 / written 1，落 overlay 层 `method=human`；schema 不符报错 exit 1（防错导他类文件） |
+| GUI 前端 | PySide6 离屏装配 `SubtitleOCRGUI` → `GUI OK: 视频字幕 OCR 工具`（§3 路径复验） |
+| deb 打包 | `video-subtitle-ocr_2.7.3_all.deb` 重建（6.0 MiB，186 条 md5sums，`-Zxz`）；包内已含本轮修正（translation.py / yuzu.py 内容核验通过） |
+| deb rootless 冒烟 | 暂装树 + 应用目录 venv 软链 + `VSO_APP_DIR` 指向应用目录：双启动器 2.7.3；真实视频 OCR 输出与开发机**逐字节一致**（3 条 Dialogue） |

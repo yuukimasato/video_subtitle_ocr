@@ -20,11 +20,9 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import sys
 
-import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:

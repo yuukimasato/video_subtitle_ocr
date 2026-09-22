@@ -483,7 +483,7 @@ class TestOutputValidation:
         assert res.stats.batches[0].reason == "llm_output_invalid"
 
     def test_non_string_items_invalid(self, monkeypatch):
-        calls = _install_call_llm(monkeypatch, {
+        _install_call_llm(monkeypatch, {
             "cloud": [json.dumps([1, 2])],  # 非字符串数组
             "sakura": [_arr("你好")],
         })
@@ -491,7 +491,7 @@ class TestOutputValidation:
         assert res.texts == ["你好"]
 
     def test_code_fence_is_tolerated(self, monkeypatch):
-        calls = _install_call_llm(monkeypatch, {
+        _install_call_llm(monkeypatch, {
             "cloud": ["```json\n" + _arr("你好") + "\n```"],
         })
         res = translate_subtitle_texts(["こんにちは"], _cfg(batch_size=1))
@@ -499,12 +499,12 @@ class TestOutputValidation:
 
     def test_json_repair_fallback(self, monkeypatch):
         pytest.importorskip("json_repair")
-        calls = _install_call_llm(monkeypatch, {"cloud": ['["你好",]']})  # 尾逗号可被修复
+        _install_call_llm(monkeypatch, {"cloud": ['["你好",]']})  # 尾逗号可被修复
         res = translate_subtitle_texts(["こんにちは"], _cfg(batch_size=1))
         assert res.texts == ["你好"]
 
     def test_ass_newline_normalized(self, monkeypatch):
-        calls = _install_call_llm(monkeypatch, {"cloud": [
+        _install_call_llm(monkeypatch, {"cloud": [
             _arr("第一行\\n第二行"),           # 字面量 \n
             _arr("第三行\n第四行"),            # 真实换行
         ]})
@@ -591,7 +591,7 @@ class TestBatchSkeleton:
 
     def test_single_batch_failure_does_not_affect_others(self, monkeypatch):
         err = LlmApiError("429")
-        calls = _install_call_llm(monkeypatch, {
+        _install_call_llm(monkeypatch, {
             "sakura": [_arr("你好"), err],  # 批 1 正常；批 2 本地炸且无更底层 → 保留原文
         })
         res = translate_subtitle_texts(
@@ -609,7 +609,7 @@ class TestStats:
     def test_mixed_outcome_stats(self, monkeypatch):
         _enable_vlm(monkeypatch)
         err = LlmApiError("429")
-        calls = _install_call_llm(monkeypatch, {
+        _install_call_llm(monkeypatch, {
             "cloud": [_arr("你好", "今天天气真好"), err],  # 批 1 成功；批 2 炸
             "sakura": [err],                                # 批 2 降级也炸
             "vlm": [err],                                   # 批 2 VLM 也炸
@@ -628,6 +628,6 @@ class TestStats:
 
     def test_result_texts_always_match_input_length(self, monkeypatch):
         _enable_vlm(monkeypatch)
-        calls = _install_call_llm(monkeypatch, {"vlm": [LlmApiError("x")] * 2})
+        _install_call_llm(monkeypatch, {"vlm": [LlmApiError("x")] * 2})
         res = translate_subtitle_texts(FOUR, _cfg(cloud_api_key="", sakura_base_url=""))
         assert len(res.texts) == len(FOUR)

@@ -133,7 +133,7 @@ def _torch_available() -> bool:
 def _load_hf_hub():
     """huggingface_hub 可用则返回模块（延迟导入），否则 None（不强依赖）。"""
     try:
-        import huggingface_hub  # noqa: WPS433 — 可选依赖按需导入
+        import huggingface_hub  # 可选依赖按需导入（导入即探测）
 
         return huggingface_hub
     except Exception:
@@ -388,7 +388,7 @@ class YuzuFontRecognizer(FontRecognizer):
             return False
         self._state = STATE_LOADING
         try:
-            import torch  # 延迟导入：torch 完全可选（此处必可用，已探测）
+            import torch  # noqa: F401 — 导入即探测：失败给出 torch_import_failed
         except Exception as exc:  # pragma: no cover - find_spec 已排除
             self._fail(f"torch_import_failed: {exc}")
             return False

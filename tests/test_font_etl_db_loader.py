@@ -24,7 +24,6 @@ if PROJECT_ROOT not in sys.path:
 
 import pytest  # noqa: E402
 
-from font_intel.etl import db_loader  # noqa: E402
 from font_intel.etl.db_loader import (  # noqa: E402
     MAP_SOURCE_TAG,
     VALID_METHODS,
@@ -37,7 +36,6 @@ from font_intel.etl.review import (  # noqa: E402
     DEFAULT_CONFIDENCE_THRESHOLD,
     REVIEW_SCHEMA,
     build_review_items,
-    read_decisions_package,
     read_review_package,
     write_decisions_package,
 )

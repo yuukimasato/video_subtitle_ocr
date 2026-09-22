@@ -479,7 +479,6 @@ def _build_instruction(
 def _build_shorten_instruction(
     translated: List[str], over_indices: List[int], cfg: TranslationConfig
 ) -> str:
-    over = [{"index": i, "text": translated[i]} for i in over_indices]
     return (
         "以下是刚翻译完成的字幕行 JSON 数组：\n{}\n\n"
         "其中 index {} 的行超过最大行长 {} 字符（按 \\N 断行后的最长段计）。\n"
