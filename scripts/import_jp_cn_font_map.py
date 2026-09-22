@@ -5,7 +5,9 @@
 用途
 ----
 读取（多个）自由格式的中日字体对照/勘误文本（GBK/CRLF 等，编码与换行
-内部自动归一），按规则解析为结构化记录，支持三种互可组合的去向：
+内部自动归一）以及 rar 内解包出的厂商 xlsx 对照表（按扩展名 ``.xlsx``
+自动分派给 :mod:`font_intel.etl.xlsx_extract`），按规则解析为结构化
+记录，支持三种互可组合的去向：
 
 - ``--output``：JSONL 记录文件（T1.3 既有行为，不变）；
 - ``--seed-load``（配 ``--db``）：S6 溯源入库——映射/负映射写入 fonts_db
@@ -24,7 +26,7 @@
 
 用法
 ----
-    python scripts/import_jp_cn_font_map.py --input a.txt b.txt --output out.jsonl --stats
+    python scripts/import_jp_cn_font_map.py --input a.txt b.xlsx --output out.jsonl --stats
     python scripts/import_jp_cn_font_map.py --input a.txt --db fonts.db --seed-load
     python scripts/import_jp_cn_font_map.py --input a.txt --export-review review.json
     python scripts/import_jp_cn_font_map.py --import-review decisions.json --db fonts.db
@@ -54,9 +56,19 @@ from font_intel.etl.review import (  # noqa: E402
     write_review_package,
 )
 from font_intel.etl.rule_parser import ParseResult, parse_file  # noqa: E402
+from font_intel.etl.xlsx_extract import extract_file as extract_xlsx  # noqa: E402
 from font_intel.fonts_db import FontsDB  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+_XLSX_SUFFIXES = frozenset({".xlsx", ".xlsm"})
+
+
+def _parse_one(path: str) -> ParseResult:
+    """单文件解析：xlsx 走 S0 表格提取器，其余按文本规则解析。"""
+    if Path(path).suffix.lower() in _XLSX_SUFFIXES:
+        return extract_xlsx(path)
+    return parse_file(path)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -100,7 +112,7 @@ def _parse_inputs(
     per_file: list[tuple[str, dict[str, int]]] = []
     totals: dict[str, int] = {}
     for path in inputs:
-        result: ParseResult = parse_file(path)
+        result: ParseResult = _parse_one(path)
         all_records.extend(result.records)
         all_unresolved.extend(result.unresolved)
         stats = result.stats()

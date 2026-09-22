@@ -101,6 +101,9 @@ def mapping_seed_records(
             "source_file": source_file,
             "line_no": line_no,
             "source": source,
+            # schema v4：注记（分类/台繁/开粗体/负映射原因等），清洗后
+            # 与品名分离存放。
+            "note": str(rec.get("note") or "").strip() or None,
         }
         if rtype == "mapping":
             target = str(rec.get("target") or "").strip()

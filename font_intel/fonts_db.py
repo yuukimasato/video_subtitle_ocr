@@ -166,6 +166,10 @@ MIGRATIONS: list[tuple[int, str]] = [
     # matching 三级链第二级"开源替代"的查库字段；ALTER TABLE 只加可空列，
     # 旧数据不受影响。
     (3, "ALTER TABLE fonts ADD COLUMN alternates TEXT;"),
+    # v4：jp_cn_font_map 增加 note 列——ETL S0.5 标准化清洗把笔记式注记
+    # （台繁/港繁/开粗体/表头分类/负映射原因等）从字体名剥离后单独存放，
+    # cn_name/jp_name 只留规范品名；ALTER TABLE 只加可空列，旧数据不受影响。
+    (4, "ALTER TABLE jp_cn_font_map ADD COLUMN note TEXT;"),
 ]
 
 
@@ -332,7 +336,7 @@ class FontsDB:
             out["confidence"] = float(conf) if conf is not None else None
             line_no = rec.get("line_no")
             out["line_no"] = int(line_no) if line_no is not None else None
-            for key in ("method", "source_file", "source"):
+            for key in ("method", "source_file", "source", "note"):
                 out[key] = _s(key)
         else:  # license_rules
             for key, allowed in (("license_category", _LICENSE_CATEGORIES),
@@ -392,11 +396,11 @@ class FontsDB:
             )
             conn.execute(
                 "INSERT INTO jp_cn_font_map (jp_name, cn_name, kind, method,"
-                " confidence, source_file, line_no, source, layer)"
-                " VALUES (?,?,?,?,?,?,?,?,'seed')",
+                " confidence, source_file, line_no, source, note, layer)"
+                " VALUES (?,?,?,?,?,?,?,?,?,'seed')",
                 (rec["jp_name"], rec["cn_name"], rec["kind"], rec["method"],
                  rec["confidence"], rec["source_file"], rec["line_no"],
-                 rec["source"]),
+                 rec["source"], rec.get("note")),
             )
         else:  # license_rules
             conn.execute(

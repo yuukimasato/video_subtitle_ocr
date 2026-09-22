@@ -90,6 +90,9 @@ _OFL_RE = re.compile(r"\bOFL\b", re.IGNORECASE)
 _MIT_RE = re.compile(r"\bMIT\b")
 _GPL_RE = re.compile(r"\bGPL\b")
 
+# 单字体别名上限（含本地化名；防病态 name 表撑爆 aliases 表）。
+_MAX_ALIASES = 24
+
 SOURCE = "local_index"
 
 
@@ -168,6 +171,34 @@ def _name_str(name_table, name_id: int) -> Optional[str]:
     return value or None
 
 
+def _localized_family_names(name_table, name_ids, exclude: set) -> list[str]:
+    """跨平台/语言收集 family 名（别名用）。
+
+    ``getDebugName`` 只返回首个命中记录（通常英文），而 ASS 样式、中日
+    映射表引用的是**本地化名**（思源黑体 CN / 源ノ角ゴシック JP，Windows
+    平台 langID 0x0804/0x0411 等）。这里遍历 name 表全部记录，取 family
+    相关 nameID 的各语言写法，供 lookup 经 aliases 命中。
+    """
+    names: list[str] = []
+    try:
+        records = list(name_table.names)
+    except Exception:
+        return names
+    for rec in records:
+        try:
+            if getattr(rec, "nameID", None) not in name_ids:
+                continue
+            value = rec.toUnicode().strip()
+        except Exception:
+            continue
+        if not value or value in exclude:
+            continue
+        if value in names:
+            continue
+        names.append(value)
+    return names
+
+
 def sniff_license(license_text: Optional[str]) -> tuple[str, str]:
     """从 license 文本嗅探 (license_name, license_category)。
 
@@ -217,6 +248,11 @@ def extract_font_record(path: str) -> Optional[dict]:
             )
             license_text = _name_str(name_table, _NAME_ID_LICENSE_TEXT)
             license_url = _name_str(name_table, _NAME_ID_LICENSE_URL)
+            # 本地化 family 名（各语言 nameID 16/1/4 写法）——必须在字体
+            # 文件关闭前收集（lazy 表数据关后不可读）。
+            localized_families = _localized_family_names(
+                name_table, (_NAME_ID_TYPO_FAMILY, _NAME_ID_FAMILY,
+                             _NAME_ID_FULL_NAME), set())
             weight: Optional[int] = None
             if "OS/2" in font:
                 weight = int(font["OS/2"].usWeightClass)
@@ -241,6 +277,15 @@ def extract_font_record(path: str) -> Optional[dict]:
         if candidate and candidate not in seen:
             seen.add(candidate)
             aliases.append(candidate)
+    # 本地化名并入别名——运行时样式/中日映射表引用的是"思源黑体 CN"
+    # 这类本地化名，只收英文名会导致运行时查不到。
+    for localized in localized_families:
+        if len(aliases) >= _MAX_ALIASES:
+            break
+        if localized in seen:
+            continue
+        seen.add(localized)
+        aliases.append(localized)
 
     return {
         "table": "fonts",

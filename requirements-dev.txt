@@ -1,2 +1,5 @@
 ruff==0.12.10
 pytest==8.4.2
+# ETL 侧可选：Seekladoom 厂商 xlsx 对照表导入（scripts/import_jp_cn_font_map.py
+# 的 .xlsx 输入路径）。运行时不依赖；缺 openpyxl 时 xlsx 输入给出明确报错。
+openpyxl>=3.1

@@ -109,7 +109,7 @@ OCR 识别 → LLM 润色/纠错（已有） → 翻译（新增阶段） → AS
 
 **用户已确认定位（两期设计）**：**前期（开发期一次性）**由 LLM 主导对 Japanese-Chinese-Fonts-adaptation 做数据清洗，生成种子字体数据库随包分发；**运行时**只做查询、匹配与缺口反馈，不依赖原始仓库文件。
 
-### 5.0 数据源实测结论（2026-09-21 拉取核实）
+### 5.0 数据源实测结论（2026-09-21 拉取核实；2026-09-22 入库实施并联网核实命名约定）
 
 - `匹配表修改备份 20190805.txt`（28 行，GBK 编码、CRLF）**并非结构化匹配表，而是自由格式的修改笔记/勘误增量**，多种记录类型混排：
   - 映射：`A1明朝 → 华文宋体`
@@ -119,7 +119,12 @@ OCR 识别 → LLM 润色/纠错（已有） → 翻译（新增阶段） → AS
   - 追加搭配：`FOT-Chiaro 追加搭配：汉仪润圆`
   - 坑名清单（"简繁日名称翻车"）：华康新综艺体 / 华康雅宋体 / 华康华综体 / 华康勘亭流 / 华康龙门石碑
   - 待办：`方正悠宋后6个字重待追加`；标记：`森泽UD新黑 简繁通用`、`简繁通用像素字体追加：UniFont`
-- **完整的三大厂商（DynaFont/Fontworks/Morisawa）结构化对照表在 rar 压缩包内**（含样张图）。因此清洗主对象是用户本机解包后的 rar 内容，txt 作为增量与勘误参与合并。
+- **完整的三大厂商（DynaFont/Fontworks/Morisawa）结构化对照表在 rar 压缩包内**（含样张图）。因此清洗主对象是用户本机解包后的 rar 内容，txt 作为增量与勘误参与合并。**已实施（2026-09-22）**：rar 内实为 5 份 xlsx（DynaFont×3 / Fontworks / Morisawa），S0 扩展 xlsx 提取器（`font_intel/etl/xlsx_extract.py`），种子库已入库。
+- **联网核实的命名约定（固化进 S0.5 清洗规则，`font_intel/etl/clean.py`）**：DynaFont 半角 `(P)` = Proportional 调合字（dynacw.com.hk 官方 FAQ），属正式品名**不得剥离**；`FOT-`（Fontworks）/`A-OTF`（Morisawa）为厂商+OpenType 前缀，同样属品名；全角注记括号（台繁/港繁/开粗体/注：…）与含空格英数交叉引用（`华康宋体W7(华康宋体 Std W7)`）为笔记式注记，从品名剥离进 note 字段。
+
+### 5.1a 标准化清洗（S0.5，已实施）
+
+xlsx 提取后经 `font_intel/etl/clean.py` 规范化：① 一格多名展开（`DFGabiMincho Std/StdN W3` → 原组合串保真 + `DFGabiMincho Std W3`/`DFGabiMincho StdN W3`，共享字重 token 按 W7/Pr6/Std 白名单分发，展开行 note 标注"多名展开"）；② 候选名注记剥离进 note（schema v4 新增 `jp_cn_font_map.note` 列，如 `简体；台繁`）；③ 首次入库实测：正映射 5068 行 / 唯一日文名 923 / 脏名扫描残留 0。简繁同字体异写（华康古籍银杏 ↔ 華康古籍銀杏类）的别名归并属 fonts/aliases 种子层任务（T1.2），本轮不做。
 
 ### 5.1 清洗管线（规则优先 → LLM 辅助 → 人工兜底）
 

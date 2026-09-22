@@ -192,6 +192,29 @@ def test_extract_record_ttc_takes_first_face(tmp_path):
     assert rec["canonical_name"] == "TtcFaceA"
 
 
+def test_extract_record_includes_localized_family_aliases(tmp_path):
+    # 本地化 family 名（zh-CN langID 0x0804）必须进别名：ASS 样式与中日
+    # 映射表引用的是"思源黑体 CN"这类本地化名，只收英文名会查不到。
+    path = _build_test_font(os.path.join(tmp_path, "loc.ttf"))
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(path)
+    nt = font["name"]
+    nt.setName("测试黑体", 16, 3, 1, 0x0804)
+    nt.setName("测试黑体", 1, 3, 1, 0x0804)
+    nt.setName("测试黑体 Regular", 4, 3, 1, 0x0804)
+    font.save(path)
+    font.close()
+
+    rec = fontlib_index.extract_font_record(path)
+    assert rec is not None
+    # nameID 16（Typographic family）优先于 1：带本地化 16 记录的字体，
+    # 规范名取本地化名（与 ASS 默认样式/中日映射表的引用名一致——真实
+    # 库中思源黑体 CN 即由此成为规范名），英文名落入别名。
+    assert rec["canonical_name"] == "测试黑体"
+    assert "TestFont CI" in rec["aliases"]
+
+
 def test_license_category_strict_unknown_without_license(tmp_path):
     path = _build_test_font(
         os.path.join(tmp_path, "p.ttf"),
