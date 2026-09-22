@@ -392,29 +392,22 @@ DICT = {
     'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.': 'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; using static pose tags instead.',
 
     # ── T2.5 AI 翻译选项组（ControlPanelWidget / SubtitleOCRGUI）──
+    # （提供方/端点行已并入「大模型润色」区，独立翻译提供方词条随之移除）
     "AI 翻译（可选）": "AI translation (optional)",
     "目标语言：": "Target language:",
-    "翻译提供方：": "Translation provider:",
-    "云端 API": "Cloud API",
-    "本地 Sakura": "Local Sakura",
-    "VLM 兜底": "VLM fallback",
-    "API Base URL（云端 / Sakura 共用）": "API base URL (shared by cloud / Sakura)",
-    "模型名（如 deepseek-chat / sakura-14b）": "Model name (e.g. deepseek-chat / sakura-14b)",
     "术语表 JSON：": "Glossary JSON:",
     "选择术语表 JSON 文件": "Select glossary JSON file",
     "术语表 JSON (*.json)": "Glossary JSON (*.json)",
     "上下文行数：": "Context lines:",
     "最大行长：": "Max line length:",
-    "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。":
-        "Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). The cloud provider reuses the API key saved in the LLM polish section; an unconfigured or failed level automatically falls back to the next one, and a fully exhausted chain keeps the original text.",
-    "云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。":
-        "Cloud API: OpenAI-compatible endpoint (DeepSeek by default). Local Sakura: a locally deployed Sakura JP-ZH translation model (OpenAI-compatible /v1 endpoint). VLM fallback: reuses the VLM_REFINE_* environment variables, zero configuration.",
+    "使用上方「大模型润色」的提供方、API Key、Base URL 与模型。":
+        "Uses the provider, API key, base URL and model from the LLM polish section above.",
+    "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。":
+        "Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). Provider, API key, base URL and model are reused from the LLM polish section above; a failure falls back to the VLM fallback automatically, and a fully exhausted chain keeps the original text.",
     "可选。JSON 文件（{\"术语\": \"译名\"}），译文中术语强制一致；文件缺失或格式错误时自动忽略。":
         'Optional. A JSON file ({"term": "translation"}) enforcing consistent terminology in every translation; missing or malformed files are ignored automatically.',
-    "已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。":
-        "AI translation (cloud API) is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.",
-    "已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。":
-        "AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).",
+    "已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。":
+        "AI translation is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.",
     "已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。":
         "AI translation is enabled, but the translation module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or untick \"AI translation\" and try again.",
     "[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。":

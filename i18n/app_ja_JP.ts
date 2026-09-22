@@ -106,7 +106,7 @@
         <translation type="vanished">インメモリモード（実験的）</translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="+139"/>
+        <location filename="../components/control_panel.py" line="+129"/>
         <source>识别语言：</source>
         <translation>認識言語：</translation>
     </message>
@@ -131,14 +131,14 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+554"/>
+        <location line="+530"/>
         <location line="+104"/>
         <location line="+25"/>
         <source>浏览…</source>
         <translation>参照…</translation>
     </message>
     <message>
-        <location line="-667"/>
+        <location line="-643"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
         <translation type="unfinished">字幕の言語を選択します。簡体字中国語/繁体字中国語/英語/日本語およびラテン系言語は PP-OCRv6 モデルを使用し、韓国語/ロシア語/アラビア語などは自動的に PP-OCRv5 多言語モデルへフォールバックします。</translation>
     </message>
@@ -475,12 +475,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+995"/>
+        <location line="+880"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>API Key と Base URL で /v1/models を取得します。</translation>
     </message>
     <message>
-        <location line="-993"/>
+        <location line="-878"/>
         <source>清除已存密钥</source>
         <translation>保存済みキーを削除</translation>
     </message>
@@ -501,51 +501,53 @@
     </message>
     <message>
         <location line="+4"/>
-        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
-        <translation>認識した字幕行を大規模言語モデルで目標言語へ翻訳します（ポリッシュの後、書き出しの前に実行）。クラウド プロバイダーは「大規模モデルによる字幕ポリッシュ」欄に保存済みの API Key を再利用します。未設定または失敗した段は自動的に次の段へフォールバックし、すべて失敗した場合は原文を保持します。</translation>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。</source>
+        <translation>認識した字幕行を大規模言語モデルで目標言語へ翻訳します（ポリッシュの後、書き出しの前に実行）。プロバイダー・API Key・Base URL・モデルは上の「大規模モデルによる字幕ポリッシュ」欄の設定を再利用します。失敗した場合は自動的に VLM フォールバックへ切り替わり、すべて失敗した場合は原文を保持します。</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+33"/>
+        <source>使用上方「大模型润色」的提供方、API Key、Base URL 与模型。</source>
+        <translation>上の「大規模モデルによる字幕ポリッシュ」欄のプロバイダー・API Key・Base URL・モデルを使用します。</translation>
+    </message>
+    <message>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <translation type="vanished">認識した字幕行を大規模言語モデルで目標言語へ翻訳します（ポリッシュの後、書き出しの前に実行）。クラウド プロバイダーは「大規模モデルによる字幕ポリッシュ」欄に保存済みの API Key を再利用します。未設定または失敗した段は自動的に次の段へフォールバックし、すべて失敗した場合は原文を保持します。</translation>
+    </message>
+    <message>
+        <location line="-21"/>
         <source>目标语言：</source>
         <translation>翻訳先の言語：</translation>
     </message>
     <message>
-        <location line="+19"/>
         <source>翻译提供方：</source>
-        <translation>翻訳プロバイダー：</translation>
+        <translation type="vanished">翻訳プロバイダー：</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
-        <translation>クラウド API: OpenAI 互換エンドポイント（既定は DeepSeek）。ローカル Sakura: ローカル配置の Sakura 日中翻訳モデル（OpenAI 互換 /v1 エンドポイント）。VLM フォールバック: VLM_REFINE_* 環境変数を再利用、設定不要。</translation>
+        <translation type="vanished">クラウド API: OpenAI 互換エンドポイント（既定は DeepSeek）。ローカル Sakura: ローカル配置の Sakura 日中翻訳モデル（OpenAI 互換 /v1 エンドポイント）。VLM フォールバック: VLM_REFINE_* 環境変数を再利用、設定不要。</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>云端 API</source>
-        <translation>クラウド API</translation>
+        <translation type="vanished">クラウド API</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>本地 Sakura</source>
-        <translation>ローカル Sakura</translation>
+        <translation type="vanished">ローカル Sakura</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>VLM 兜底</source>
-        <translation>VLM フォールバック</translation>
+        <translation type="vanished">VLM フォールバック</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>API Base URL（云端 / Sakura 共用）</source>
-        <translation>API Base URL（クラウド / Sakura 共通）</translation>
+        <translation type="vanished">API Base URL（クラウド / Sakura 共通）</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>模型名（如 deepseek-chat / sakura-14b）</source>
-        <translation>モデル名（例: deepseek-chat / sakura-14b）</translation>
+        <translation type="vanished">モデル名（例: deepseek-chat / sakura-14b）</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+31"/>
         <source>术语表 JSON：</source>
         <translation>用語集 JSON：</translation>
     </message>
@@ -625,7 +627,7 @@
         <translation>フォントライセンス／マッピング照会用データベース。空欄 = 既定の XDG データディレクトリの fonts.db。</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+46"/>
         <source>完整设置</source>
         <translation>詳細設定</translation>
     </message>
@@ -645,7 +647,7 @@
         <translation>ワンクリックのシンプル表示に戻り、詳細設定を隠します。すべての選択肢は変わりません。</translation>
     </message>
     <message>
-        <location line="+223"/>
+        <location line="+216"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 テキストソースフィルタはオフです。認識したすべてのテキストを保持します。</translation>
     </message>
@@ -655,7 +657,7 @@
         <translation>🔄 テキストソースフィルタはオンです。動画を読み込むと自動解析を開始します...</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+81"/>
         <source>颜色门控：已关闭（默认）。</source>
         <translation>カラーゲート：オフ（既定）。</translation>
     </message>
@@ -670,7 +672,7 @@
         <translation>カラーゲート：確認済み。次の「字幕 OCR 認識」のステージ 1 で使用されます。</translation>
     </message>
     <message>
-        <location line="+257"/>
+        <location line="+165"/>
         <source>选择术语表 JSON 文件</source>
         <translation>用語集 JSON ファイルを選択</translation>
     </message>
@@ -695,7 +697,7 @@
         <translation>SQLite フォントデータベース (*.db)</translation>
     </message>
     <message>
-        <location line="+186"/>
+        <location line="+185"/>
         <source>（无可用引擎）</source>
         <translation>（利用可能なエンジンなし）</translation>
     </message>
@@ -787,7 +789,7 @@
         <translation type="vanished">Medium（高精度）</translation>
     </message>
     <message>
-        <location line="-1323"/>
+        <location line="-1207"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大規模モデルによる字幕ポリッシュ（DeepSeek / OpenAI、任意）</translation>
     </message>
@@ -2278,7 +2280,7 @@
         <translation>画面上で ROI {} の領域を調整しました</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+174"/>
+        <location filename="../main_window/pipeline_control.py" line="+157"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
@@ -2408,22 +2410,25 @@
         <translation>カラーゲートを確認しました。次回の「字幕 OCR 認識」のステージ 1 で有効になります。</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="-135"/>
+        <location filename="../main_window/pipeline_control.py" line="-120"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>AI 翻訳が有効ですが、翻訳モジュールを利用できません（{0}）。先に font_intel の依存関係（requirements-fontintel.txt）をインストールするか、「AI 翻訳」のチェックを外して再試行してください。</translation>
     </message>
     <message>
-        <location line="+15"/>
         <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
-        <translation>AI 翻訳（クラウド API）が有効ですが、API Key が未入力です。「大規模モデルによる字幕ポリッシュ」欄に API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
+        <translation type="vanished">AI 翻訳（クラウド API）が有効ですが、API Key が未入力です。「大規模モデルによる字幕ポリッシュ」欄に API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
     </message>
     <message>
-        <location line="+12"/>
         <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
-        <translation>AI 翻訳（ローカル Sakura）が有効ですが、Base URL が未入力です。ローカル Sakura サーバーの OpenAI 互換エンドポイントアドレス（例: http://127.0.0.1:8080/v1）を入力してください。</translation>
+        <translation type="vanished">AI 翻訳（ローカル Sakura）が有効ですが、Base URL が未入力です。ローカル Sakura サーバーの OpenAI 互換エンドポイントアドレス（例: http://127.0.0.1:8080/v1）を入力してください。</translation>
     </message>
     <message>
-        <location line="+46"/>
+        <location line="+10"/>
+        <source>已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <translation>AI 翻訳が有効ですが、API Key が未入力です。「大規模モデルによる字幕ポリッシュ」欄に API Key を入力するか、環境変数 DEEPSEEK_API_KEY を設定してください。</translation>
+    </message>
+    <message>
+        <location line="+48"/>
         <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
         <translation>フォント識別が有効ですが、フォント識別モジュールを利用できません（{0}）。font_intel の依存パッケージ（requirements-fontintel.txt）をインストールするか、「フォント識別」のチェックを外して再試行してください。</translation>
     </message>

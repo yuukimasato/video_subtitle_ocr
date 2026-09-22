@@ -106,7 +106,7 @@
         <translation type="vanished">内存模式（实验性）</translation>
     </message>
     <message>
-        <location filename="../components/control_panel.py" line="+139"/>
+        <location filename="../components/control_panel.py" line="+129"/>
         <source>识别语言：</source>
         <translation>识别语言：</translation>
     </message>
@@ -131,14 +131,14 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+554"/>
+        <location line="+530"/>
         <location line="+104"/>
         <location line="+25"/>
         <source>浏览…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-667"/>
+        <location line="-643"/>
         <source>选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</source>
         <translation type="unfinished">选择字幕语言。中文简体/繁体/英语/日语及拉丁语系使用 PP-OCRv6 模型，韩/俄/阿拉伯语等自动回落 PP-OCRv5 多语言模型。</translation>
     </message>
@@ -472,12 +472,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+995"/>
+        <location line="+880"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-993"/>
+        <location line="-878"/>
         <source>清除已存密钥</source>
         <translation type="unfinished"></translation>
     </message>
@@ -498,51 +498,21 @@
     </message>
     <message>
         <location line="+4"/>
-        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+33"/>
+        <source>使用上方「大模型润色」的提供方、API Key、Base URL 与模型。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-21"/>
         <source>目标语言：</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+19"/>
-        <source>翻译提供方：</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>云端 API</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>本地 Sakura</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>VLM 兜底</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>API Base URL（云端 / Sakura 共用）</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>模型名（如 deepseek-chat / sakura-14b）</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+31"/>
         <source>术语表 JSON：</source>
         <translation type="unfinished"></translation>
     </message>
@@ -622,7 +592,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+46"/>
         <source>完整设置</source>
         <translation type="unfinished"></translation>
     </message>
@@ -642,7 +612,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+223"/>
+        <location line="+216"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -652,7 +622,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+81"/>
         <source>颜色门控：已关闭（默认）。</source>
         <translation type="unfinished"></translation>
     </message>
@@ -667,7 +637,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+257"/>
+        <location line="+165"/>
         <source>选择术语表 JSON 文件</source>
         <translation type="unfinished"></translation>
     </message>
@@ -692,7 +662,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+186"/>
+        <location line="+185"/>
         <source>（无可用引擎）</source>
         <translation type="unfinished"></translation>
     </message>
@@ -784,7 +754,7 @@
         <translation type="vanished">Medium(最准)</translation>
     </message>
     <message>
-        <location line="-1323"/>
+        <location line="-1207"/>
         <source>大模型润色（DeepSeek / OpenAI，可选）</source>
         <translation>大模型润色（DeepSeek / OpenAI，可选）</translation>
     </message>
@@ -2271,7 +2241,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+174"/>
+        <location filename="../main_window/pipeline_control.py" line="+157"/>
         <location line="+6"/>
         <location line="+10"/>
         <location line="+19"/>
@@ -2401,22 +2371,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="-135"/>
+        <location filename="../main_window/pipeline_control.py" line="-120"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+15"/>
-        <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <location line="+10"/>
+        <source>已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+12"/>
-        <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+46"/>
+        <location line="+48"/>
         <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
         <translation type="unfinished"></translation>
     </message>

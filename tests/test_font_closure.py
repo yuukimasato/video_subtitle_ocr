@@ -397,8 +397,8 @@ class TestEventClosureFourActions:
                  for f in range(10, 21)]
         conv.convert_from_memory(iter(items))
         text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
-        line = next(l for l in text.splitlines()
-                    if l.startswith("Dialogue:") and "画面中央字" in l)
+        line = next(ln for ln in text.splitlines()
+                    if ln.startswith("Dialogue:") and "画面中央字" in ln)
         assert "\\fn思源黑体 CN" in line
         block = line[line.index("{"):line.index("}") + 1]
         assert block.endswith("\\fn思源黑体 CN}")
@@ -471,6 +471,36 @@ class TestTranslationLinkedMapping:
         assert recs[0]["target_lang"] == "zh"
         assert recs[0]["final_font"] == "思源黑体 CN"
 
+    def test_split_output_fn_lands_on_translated_dialogue_only(
+            self, tmp_path, monkeypatch):
+        """翻译拆分形态：目标语言 \\fn 只写译文 Dialogue 行；原文 Comment
+        行（含样式标签）逐字原样——翻转 Comment→Dialogue 即可无损找回。"""
+        import font_intel.translation as tr
+        from font_intel.matching import STATUS_RESOLVED, ChainResult
+
+        # 有实际译文 → 拆分为 Comment 原文 + Dialogue 译文。
+        monkeypatch.setattr(
+            tr, "translate_subtitle_texts",
+            lambda texts, cfg, **kw: tr.TranslationResult(
+                [f"译[{ t }]" for t in texts],
+                tr.TranslationStats(total_lines=len(texts))))
+        ident = _simple_ident("源ノ角ゴシック JP")
+        result = ChainResult(
+            STATUS_RESOLVED, "源ノ角ゴシック JP", "zh",
+            [_chain_candidate("思源黑体 CN", "mapping")], [])
+        text, recs, _calls = self._run(tmp_path, ident, monkeypatch, result)
+
+        lines = text.splitlines()
+        comments = [ln for ln in lines if ln.startswith("Comment:")]
+        dialogues = [ln for ln in lines if ln.startswith("Dialogue:")]
+        # 原文行：Comment，无 \fn（标签未被映射链改写）。
+        assert len(comments) == 1 and "学成归来" in comments[0]
+        assert "\\fn" not in comments[0]
+        # 译文行：Dialogue，带映射链落下的目标语言字体。
+        assert len(dialogues) == 1
+        assert "译[学成归来]" in dialogues[0]
+        assert "\\fn思源黑体 CN" in dialogues[0]
+
     def test_open_source_alternate_basis_recorded(self, tmp_path, monkeypatch):
         from font_intel.matching import STATUS_RESOLVED, ChainResult
 
@@ -483,7 +513,7 @@ class TestTranslationLinkedMapping:
         assert "\\fn思源黑体 CN" in text
         assert recs[0]["mapping_basis"] == "open_source"
 
-    def test_unresolved_keeps_original_name_and_marks_unmapped(
+    def test_unresolved_falls_back_to_library_open_font(
             self, tmp_path, monkeypatch):
         from font_intel.matching import STATUS_UNRESOLVED, ChainResult
 
@@ -492,11 +522,45 @@ class TestTranslationLinkedMapping:
             STATUS_UNRESOLVED, "謎フォント", "zh", [],
             ["映射表中无 謎フォント 的记录。"])
         text, recs, _calls = self._run(tmp_path, ident, monkeypatch, result)
-        # 保留原字体名引用 + 报告标注未映射，不强行替换。
-        assert "\\fn謎フォント" in text
-        assert recs[0]["final_font"] == "謎フォント"
-        assert recs[0]["mapping_basis"] == "unresolved"
+        # 种子库含思源黑体 CN（open_source）→ 回退命中，译文行落 \fn；
+        # 决策保持 unmapped=True 留痕（回退不掩盖映射缺口）。
+        assert "\\fn思源黑体 CN" in text
+        assert recs[0]["mapping_basis"] == "open_fallback"
+        assert recs[0]["final_font"] == "思源黑体 CN"
         assert recs[0]["unmapped"] is True
+        assert recs[0]["action"] == "replace_auto"
+
+    def test_unresolved_without_fallback_font_writes_no_fn(
+            self, tmp_path, monkeypatch):
+        """库内无可回退的开源目标语言字体：译文行不写 \\fn（回落样式字体），
+        决策标注未映射——绝不把原（日文）字体名钉死在译文行上。"""
+        from font_intel.integration import FontComplianceConfig
+        from font_intel.matching import STATUS_UNRESOLVED, ChainResult
+        from font_intel.translation import TranslationConfig
+
+        _patch_chain(monkeypatch, ChainResult(
+            STATUS_UNRESOLVED, "謎フォント", "zh", [],
+            ["映射表中无 謎フォント 的记录。"]))
+        # 种子库只收 Malgun Gothic（commercial_paid）：无可用回退。
+        db_path = _seed_db_file(
+            tmp_path / "fonts.db",
+            extra_fonts=[
+                {"table": "fonts", "canonical_name": "思源黑体 CN",
+                 "license_category": "commercial_paid"},
+            ])
+        conv = _make_optimizer(
+            tmp_path,
+            font_compliance=FontComplianceConfig(
+                enabled=True, db_path=db_path),
+            font_identifications=_simple_ident("謎フォント"),
+            translation_config=TranslationConfig(
+                target_language="简体中文",
+                cloud_api_key="", cloud_base_url="", sakura_base_url=""),
+        )
+        conv.convert_from_memory(iter(_items()))
+        text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+        assert "\\fn" not in text
+        # 报告仍标注未映射（回退缺口的可见性）。
         assert "未映射" in (tmp_path / "out_compliance_report.md").read_text(
             encoding="utf-8")
 

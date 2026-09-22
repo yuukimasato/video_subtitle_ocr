@@ -51,6 +51,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from font_intel.compliance import decide, sanitize_url
 from font_intel.matching import (
+    ALLOWED_LICENSE_CATEGORIES,
     BASIS_CATEGORY_MATCH,
     BASIS_MAPPING,
     STATUS_RESOLVED,
@@ -61,6 +62,23 @@ logger = logging.getLogger(__name__)
 
 # 更新建议包 schema（复用 T1.5 review.py 的版本标记模式；导出可再导入）。
 SUGGESTIONS_SCHEMA = "vso_font_update_suggestions/1"
+
+# 译文行映射链 unresolved 时的回退字体偏好（确定性、逐库核验）：按目标
+# 语言给出常见开源 CJK 字体名，取第一个「库内收录且许可放行」的；库里
+# 没有任何命中 → 不写 \fn，译文行回落样式字体。映射缺口仍照常进报告与
+# 更新建议包——回退只解决渲染，不掩盖数据缺口。
+FALLBACK_FONTS_BY_LANG: Dict[str, tuple] = {
+    "zh": (
+        "思源黑体 CN", "思源黑体", "思源黑體 Noto Sans CJK",
+        "Source Han Sans CN", "Noto Sans CJK SC", "Noto Sans SC",
+        "思源宋体 CN", "思源宋体", "Source Han Serif CN", "Noto Serif CJK SC",
+        "文泉驿正黑", "WenQuanYi Zen Hei", "方正黑体", "方正书宋",
+    ),
+    "ja": (
+        "源ノ角ゴシック", "Noto Sans CJK JP", "源ノ明朝", "Noto Serif CJK JP",
+        "IPAexゴシック", "IPAexGothic",
+    ),
+}
 
 # 建议类型（§5.4：新增字体记录 / 映射修正 / 新增映射）。
 TYPE_NEW_FONT_RECORD = "new_font_record"
@@ -381,6 +399,24 @@ def _decide_direct(ev, identified, snapshot, gate, db, provider, interactive,
         snapshot=snapshot, fn_written=bool(fn_font))
 
 
+def _fallback_font_for_lang(db, lang: str) -> tuple:
+    """库内回退字体：偏好列表 ∩ 收录 ∩ 许可放行，取首个命中。
+
+    返回 ``(字体名, fonts 表记录)``；无命中 ``(None, None)``。
+    """
+    if db is None:
+        return None, None
+    for name in FALLBACK_FONTS_BY_LANG.get(lang, ()):
+        try:
+            info = db.lookup_font(name)
+        except Exception:
+            info = None
+        if info and (info.get("license_category") or "unknown") \
+                in ALLOWED_LICENSE_CATEGORIES:
+            return name, info
+    return None, None
+
+
 def _decide_translated(ev, identified, snapshot, gate, db, target_lang,
                        decisions, suggestions, seen_suggestions) -> None:
     """翻译联动（§5.3 路径二）：不走原名直判，改走三级映射链。"""
@@ -407,17 +443,40 @@ def _decide_translated(ev, identified, snapshot, gate, db, target_lang,
         _mapping_suggestions(identified, chain, seen_suggestions, suggestions)
         return
 
-    # unresolved：保留原字体名引用 + 报告标注"未映射"，不强行替换（§9）。
+    # unresolved：译文行不再钉死原（日文）字体名——原字体名对目标语言
+    # 文本没有字形意义，写 \fn 反而把译文锁进错误字形体系。回退顺序：
+    # 1) 库内已知开源/免费目标语言字体（确定性偏好列表 ∩ 许可放行）；
+    # 2) 库内无可用回退 → 不写 \fn，译文行回落样式字体。两种情况都保持
+    #    unmapped=True 留痕（回退只解决渲染，不掩盖映射数据缺口）。
     license_category, official_url = _lookup_public_info(db, identified)
     note_text = "；".join(notes) if notes else "全链无可用候选。"
-    ev["tags"] = merge_fn_tag(ev.get("tags"), identified)
+    fallback_name, fallback_info = _fallback_font_for_lang(db, lang)
+    if fallback_name is not None:
+        fallback_license = (fallback_info or {}).get(
+            "license_category") or "unknown"
+        _, fallback_url = _lookup_public_info(db, fallback_name)
+        ev["tags"] = merge_fn_tag(ev.get("tags"), fallback_name)
+        _record_decision(
+            decisions, ev=ev, identified=identified,
+            final_font=fallback_name, action="replace_auto",
+            license_category=fallback_license, gate=gate,
+            reason=(f"翻译目标语言 {lang} 的映射链 unresolved（{note_text}），"
+                    f"译文行回退库内开源字体 {fallback_name} 保障渲染；"
+                    f"原字体 {identified} 保留于原文 Comment 行。"),
+            official_url=fallback_url, alternatives=[fallback_name],
+            granted=False, snapshot=snapshot, fn_written=True,
+            mapping_basis="open_fallback", target_lang=lang, unmapped=True)
+        return
+
+    # 库内无可用回退字体：译文行不落 \fn（回落样式字体），决策留痕。
     _record_decision(
         decisions, ev=ev, identified=identified, final_font=identified,
         action="allow", license_category=license_category, gate=gate,
         reason=(f"翻译目标语言 {lang} 的映射链 unresolved（{note_text}），"
-                f"保留原字体名引用，不强行替换；报告标注未映射。"),
+                f"库内无可用回退字体，译文行不写 \\fn（回落样式字体）；"
+                f"报告标注未映射。"),
         official_url=official_url, alternatives=[], granted=False,
-        snapshot=snapshot, fn_written=True, mapping_basis="unresolved",
+        snapshot=snapshot, fn_written=False, mapping_basis="unresolved",
         target_lang=lang, unmapped=True)
 
 

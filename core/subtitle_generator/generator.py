@@ -611,6 +611,13 @@ class OCRToASSOptimizer(
             if not organized_data:
                 if self.motion_events:
                     logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found; writing motion-trajectory events only."))
+                    # 纯轨迹输出同样过翻译拆分（原文 Comment / 译文 Dialogue）。
+                    if self.translation_config is not None:
+                        self._translate_subtitle_events(
+                            [],
+                            progress_callback=polish_progress_callback,
+                            cancel_check=polish_cancel_check,
+                        )
                     self._write_final_file([])
                 else:
                     logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found, an empty ASS file will be generated."))
@@ -820,8 +827,11 @@ class OCRToASSOptimizer(
                     )
 
             # T3.4：润色/翻译改写 body 之前，按 OCR 原文把识别侧表挂到
-            # 事件（合规关闭时只是轻量匹配、不改任何事件字段）。
+            # 事件（合规关闭时只是轻量匹配、不改任何事件字段）。轨迹事件
+            # 同样捕获（识别侧表无对应条目时零操作）。
             self._capture_event_font_idents(subtitle_events)
+            if self.motion_events:
+                self._capture_event_font_idents(self.motion_events)
 
             if (
                 subtitle_events
@@ -873,8 +883,12 @@ class OCRToASSOptimizer(
 
             # T3.4：识别 → 合规决策 → 逐事件 \fn 落名（翻译联动映射链在
             # 闭包内感知 translation_config；§5.3 顺序：翻译 → 字体映射 →
-            # 同一合规闸门 → ASS 生成）。合规关闭时零操作。
+            # 同一合规闸门 → ASS 生成）。合规关闭时零操作。轨迹事件同样
+            # 过链（无识别快照的事件零操作；翻译拆分的译文行经快照映射
+            # 目标语言字体，原文 Comment 行保持逐字原样）。
             self._apply_event_font_closure(subtitle_events)
+            if self.motion_events:
+                self._apply_event_font_closure(self.motion_events)
 
             self._write_final_file(subtitle_events)
 
@@ -904,12 +918,22 @@ class OCRToASSOptimizer(
     ) -> None:
         """对参与出片的字幕行执行翻译（T2.3，阶段 4：润色之后、写出之前）。
 
-        - 只送普通字幕行（与润色同一过滤：``policy`` 事件与空 body 不进
-          模型，不给遮罩/NoteBox "补全"文本的机会）；
+        输出形态（用户要求）：**原文行转 Comment 隐藏，译文行以 Dialogue
+        写出**，两者时间/样式/标签（遮罩、\\move 等特效）逐项一致——
+
+        - 只送普通字幕行（``policy`` 事件与空 body 不进模型，不给遮罩/
+          NoteBox "补全"文本的机会）；静态事件与移动文字轨迹事件
+          （``motion_events``，此前完全绕过翻译）都送翻；
         - 双语路由：行按所属 ROI 的 ``ocr_lang`` 分组送翻，每组以
           :data:`OCR_LANG_SOURCE_NAMES` 映射的人类语言名写入
           ``source_language`` 提示；未配置/未知 id 缺键时留空 = 模型自动
           检测源语言；
+        - 拆分语义：译文与原文相同（该批失败/降级保留原文）→ 不拆分，
+          保持单条 Dialogue 原文；有实际译文 → 原事件标 ``comment``
+          （播放器不渲染，内容逐字保留），其后插入译文副本；
+        - 字体识别快照（``_font_ident``）只留在译文副本上：后续字体映射
+          链（T2.4 三级链）只给译文行写目标语言 ``\\fn``，原文行逐字
+          原样，翻转 Comment → Dialogue 即可无损找回原文；
         - 进度与取消沿用润色的回调通道（``polish_progress_callback`` /
           ``polish_cancel_check`` 同款签名）；
         - 硬约束：任何异常（含模块导入失败）只记日志并保留原文，绝不
@@ -923,63 +947,97 @@ class OCRToASSOptimizer(
             # chunk worker 子进程不经此处，且其载荷不含翻译配置）。
             from font_intel.translation import translate_subtitle_texts
 
-            trans_idx = [
-                k for k, ev in enumerate(subtitle_events)
-                if not ev.get("policy") and str(ev.get("body", ""))
-            ]
-            if not trans_idx:
-                return
-            cancel = cancel_check if cancel_check is not None else (lambda: False)
-            # 按源语言分组（组间顺序 = 事件顺序；组内下标互不重叠，逐组
-            # 回写不会相互覆盖）。
-            groups: Dict[str, List[int]] = {}
-            for k in trans_idx:
-                roi_id = str(subtitle_events[k].get("roi", ""))
-                lang = str(self.roi_ocr_langs.get(roi_id, "") or "").strip()
-                groups.setdefault(lang, []).append(k)
+            def _translate_split(events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+                """翻译一个事件列表并做 原文 Comment / 译文 Dialogue 拆分。"""
+                trans_idx = [
+                    k for k, ev in enumerate(events)
+                    if not ev.get("policy") and not ev.get("comment")
+                    and str(ev.get("body", ""))
+                ]
+                if not trans_idx:
+                    return events
+                cancel = cancel_check if cancel_check is not None else (lambda: False)
+                # 按源语言分组（组间顺序 = 事件顺序；组内下标互不重叠）。
+                groups: Dict[str, List[int]] = {}
+                for k in trans_idx:
+                    roi_id = str(events[k].get("roi", ""))
+                    lang = str(self.roi_ocr_langs.get(roi_id, "") or "").strip()
+                    groups.setdefault(lang, []).append(k)
 
-            for lang, indices in groups.items():
-                if cancel():
+                translated: Dict[int, str] = {}
+                for lang, indices in groups.items():
+                    if cancel():
+                        logger.info(
+                            _tr("OCRToASSOptimizer",
+                                "Translation cancelled; keeping remaining original subtitles."))
+                        break
+                    cfg = self.translation_config
+                    source = OCR_LANG_SOURCE_NAMES.get(lang, "")
+                    if source:
+                        cfg = replace(cfg, source_language=source)
+                    bodies = [events[k]["body"] for k in indices]
+
+                    def _on_batch(idx: int, total: int) -> None:
+                        if progress_callback:
+                            progress_callback(
+                                99,
+                                _tr(
+                                    "OCRToASSOptimizer",
+                                    "Step 4/4: Translating subtitles ({}/{} batches)...",
+                                ).format(idx, total),
+                            )
+
+                    result = translate_subtitle_texts(
+                        bodies, cfg, cancel_check=cancel, on_batch_done=_on_batch)
+                    if len(result.texts) != len(indices):
+                        logger.warning(
+                            _tr("OCRToASSOptimizer",
+                                "Translation output length mismatch, keeping original subtitles."))
+                        continue
+                    for k, text in zip(indices, result.texts):
+                        translated[k] = text
+                    stats = result.stats
                     logger.info(
                         _tr("OCRToASSOptimizer",
-                            "Translation cancelled; keeping remaining original subtitles."))
-                    break
-                cfg = self.translation_config
-                source = OCR_LANG_SOURCE_NAMES.get(lang, "")
-                if source:
-                    cfg = replace(cfg, source_language=source)
-                bodies = [subtitle_events[k]["body"] for k in indices]
+                            "Translation ({0}): {1}/{2} batches ok, {3} degraded, providers {4}, shortened {5} lines.")
+                        .format(
+                            source or "auto",
+                            stats.batches_success, stats.batches_total,
+                            stats.batches_degraded,
+                            stats.provider_batches or {},
+                            stats.shortened_lines,
+                        ))
 
-                def _on_batch(idx: int, total: int) -> None:
-                    if progress_callback:
-                        progress_callback(
-                            99,
-                            _tr(
-                                "OCRToASSOptimizer",
-                                "Step 4/4: Translating subtitles ({}/{} batches)...",
-                            ).format(idx, total),
-                        )
+                if not translated:
+                    return events
+                # 有实际译文的行拆成 原文 Comment + 译文 Dialogue；译文与
+                # 原文相同（失败/降级）的行保持单条原文 Dialogue 不拆。
+                try:
+                    from font_intel.closure import _IDENT_KEY
+                except Exception:  # pragma: no cover - font_intel 必在（上方已导入 translation）
+                    _IDENT_KEY = "_font_ident"
+                out: List[Dict[str, str]] = []
+                for k, ev in enumerate(events):
+                    text = translated.get(k)
+                    if text is None or text == ev.get("body"):
+                        out.append(ev)
+                        continue
+                    original = dict(ev)
+                    original["comment"] = True
+                    original.pop(_IDENT_KEY, None)
+                    translated_ev = dict(ev)
+                    translated_ev["body"] = text
+                    out.append(original)
+                    out.append(translated_ev)
+                return out
 
-                result = translate_subtitle_texts(
-                    bodies, cfg, cancel_check=cancel, on_batch_done=_on_batch)
-                if len(result.texts) != len(indices):
-                    logger.warning(
-                        _tr("OCRToASSOptimizer",
-                            "Translation output length mismatch, keeping original subtitles."))
-                    continue
-                for k, text in zip(indices, result.texts):
-                    subtitle_events[k]["body"] = text
-                stats = result.stats
-                logger.info(
-                    _tr("OCRToASSOptimizer",
-                        "Translation ({0}): {1}/{2} batches ok, {3} degraded, providers {4}, shortened {5} lines.")
-                    .format(
-                        source or "auto",
-                        stats.batches_success, stats.batches_total,
-                        stats.batches_degraded,
-                        stats.provider_batches or {},
-                        stats.shortened_lines,
-                    ))
+            new_events = _translate_split(subtitle_events)
+            if new_events is not subtitle_events:
+                subtitle_events[:] = new_events
+            # 轨迹事件（此前完全绕过翻译）同样送翻拆分；worker 产出的
+            # 轨迹事件带 roi（CLI 手动路径无 roi，走自动检测源语言）。
+            if self.motion_events:
+                self.motion_events[:] = _translate_split(self.motion_events)
         except Exception as exc:
             # 防线纵深：翻译模块承诺不抛，这里兜住导入失败等一切残漏，
             # 保留原文继续出片（全局硬约束：服务端故障绝不击穿任务链）。
@@ -993,10 +1051,12 @@ class OCRToASSOptimizer(
         """事件表(+ 轨迹事件)→ Dialogue/Comment 行 → 按起始时间排序 → 写 .ass。
 
         轨迹事件(Name=motion,scripts/motion_ass.build_motion_events 产出)
-        在此处并入——位于噪声过滤/合并/LLM 润色之后,脚本产出的 tags/body
-        逐字保留,不参与任何重写。Name 列缺省空串,既有事件输出逐字节不变。
-        事件可选 ``comment`` 真值 → 写 ``Comment:`` 行(mask_only 策略的
-        排版参考行,播放器不渲染),缺省 ``Dialogue:``。
+        在此处并入——位于噪声过滤/合并/LLM 润色之后;未开启翻译时脚本产出
+        的 tags/body 逐字保留,开启翻译时轨迹事件同样经 原文 Comment /
+        译文 Dialogue 拆分(见 _translate_subtitle_events)。Name 列缺省
+        空串,既有事件输出逐字节不变。事件可选 ``comment`` 真值 → 写
+        ``Comment:`` 行(mask_only 策略的排版参考行、翻译拆分的原文行,
+        播放器不渲染),缺省 ``Dialogue:``。
         """
         events = list(subtitle_events) + [dict(e) for e in self.motion_events]
         all_dialogue_entries = []

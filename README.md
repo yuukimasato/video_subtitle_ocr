@@ -75,7 +75,7 @@
   - **难帧 VLM 兜底**：投票不一致或低置信度的"难帧"可交给 OpenAI 兼容视觉大模型裁决（环境变量 `VLM_REFINE_BASE_URL` / `VLM_REFINE_API_KEY` / `VLM_REFINE_MODEL` 配置），失败时自动保留原 OCR 结果。
   - **LLM 字幕润色**：可选调用 OpenAI 兼容接口（如 DeepSeek）对识别文本批量校对，自动重试与自验证。
 - **字体智能与 AI 翻译（font_intel，全部可选、缺失即优雅降级）**：
-  - **AI 翻译**：润色之后、写出之前的新流水线阶段——云端 API / 本地 Sakura / VLM 三级提供方按序降级，术语表强制一致、行长约束自动断行；429 限流走有界退避，全部失败保留原文继续出片。
+  - **AI 翻译**：润色之后、写出之前的新流水线阶段——开启后原文行转 `Comment:` 隐藏保留（遮罩/`\move` 等特效标签逐字原样），译文以 `Dialogue:` 行写出（同时间/样式/标签），术语表强制一致、行长约束自动断行；429 限流走有界退避，全部失败保留原文继续出片。移动文字轨迹事件（`Name=motion`）同样送翻。字体识别联动目标语言字体匹配：译文行经三级映射链（对位 → 开源替代 → 同风格）落 `\fn`，映射 unresolved 时回退库内开源中文字体（如思源黑体 CN）保障渲染，决策报告照常标注未映射。GUI 中凭据复用「大模型润色」区的提供方 / API Key / Base URL / 模型（失败自动降级 VLM 兜底）；CLI 保留 `--translate-provider` 可选云端 / 本地 Sakura / VLM 三级按序降级。
   - **中日字体映射与合规闸门**：Seekladoom 中日字体映射 + 免费商用清单入库（SQLite `fonts.db`，种子层/覆盖层双层），合规规则（许可类别×使用场景→放行/询问/自动替换/仅报告）随 ASS 输出 `*_compliance_report.md/.json`；识别出的字体名落 Style 行或逐事件 `\fn`，未确认的模型推断绝不参与自动替换。
   - **字体识别**：视频字块 → Top-N 候选（YuzuMarker 深度模型，torch 可选；无 torch 时 `--text` 字形重排降级路径）→ 许可类别查询 → 字体库更新建议包，GUI 复核对话框逐条确认入覆盖层。
   - **独立 CLI `vso-font`**：`identify`（图片 / 视频+ROI 采样识别）、`index`（本机字体库建索引）、`review import`（复核/建议包导入），与主 CLI 互相独立；可选依赖见 `requirements-fontintel.txt`。

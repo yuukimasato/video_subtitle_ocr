@@ -62,7 +62,7 @@
 <context>
     <name>ControlPanelWidget</name>
     <message>
-        <location filename="../components/control_panel.py" line="+120"/>
+        <location filename="../components/control_panel.py" line="+110"/>
         <source>样式模板（可选）</source>
         <translation>樣式範本（可選）</translation>
     </message>
@@ -73,14 +73,14 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+554"/>
+        <location line="+530"/>
         <location line="+104"/>
         <location line="+25"/>
         <source>浏览…</source>
         <translation>瀏覽…</translation>
     </message>
     <message>
-        <location line="-676"/>
+        <location line="-652"/>
         <source>识别设置</source>
         <translation>辨識設定</translation>
     </message>
@@ -441,12 +441,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+995"/>
+        <location line="+880"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>使用 API Key 和 Base URL 拉取 /v1/models。</translation>
     </message>
     <message>
-        <location line="-993"/>
+        <location line="-878"/>
         <source>清除已存密钥</source>
         <translation>清除已存金鑰</translation>
     </message>
@@ -467,51 +467,53 @@
     </message>
     <message>
         <location line="+4"/>
-        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
-        <translation>把辨識出的字幕行交給大型模型翻譯成目標語言（在潤飾之後、寫出之前執行）。雲端提供方重用「大型模型潤飾」區已儲存的 API Key；某一級未設定或失敗時自動降級到下一級，全部失敗保留原文。</translation>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。</source>
+        <translation>把辨識出的字幕行交給大型模型翻譯成目標語言（在潤飾之後、寫出之前執行）。提供方、API Key、Base URL 與模型重用上方「大型模型潤飾」區的設定；失敗時自動降級到 VLM 備援，全部失敗保留原文。</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+33"/>
+        <source>使用上方「大模型润色」的提供方、API Key、Base URL 与模型。</source>
+        <translation>使用上方「大型模型潤飾」的提供方、API Key、Base URL 與模型。</translation>
+    </message>
+    <message>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <translation type="vanished">把辨識出的字幕行交給大型模型翻譯成目標語言（在潤飾之後、寫出之前執行）。雲端提供方重用「大型模型潤飾」區已儲存的 API Key；某一級未設定或失敗時自動降級到下一級，全部失敗保留原文。</translation>
+    </message>
+    <message>
+        <location line="-21"/>
         <source>目标语言：</source>
         <translation>目標語言：</translation>
     </message>
     <message>
-        <location line="+19"/>
         <source>翻译提供方：</source>
-        <translation>翻譯提供方：</translation>
+        <translation type="vanished">翻譯提供方：</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
-        <translation>雲端 API：OpenAI 相容端點（預設 DeepSeek）；本機 Sakura：本機部署的 Sakura 日中翻譯模型（OpenAI 相容 /v1 端點）；VLM 備援：重用 VLM_REFINE_* 環境變數，零設定。</translation>
+        <translation type="vanished">雲端 API：OpenAI 相容端點（預設 DeepSeek）；本機 Sakura：本機部署的 Sakura 日中翻譯模型（OpenAI 相容 /v1 端點）；VLM 備援：重用 VLM_REFINE_* 環境變數，零設定。</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>云端 API</source>
-        <translation>雲端 API</translation>
+        <translation type="vanished">雲端 API</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>本地 Sakura</source>
-        <translation>本機 Sakura</translation>
+        <translation type="vanished">本機 Sakura</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>VLM 兜底</source>
-        <translation>VLM 備援</translation>
+        <translation type="vanished">VLM 備援</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>API Base URL（云端 / Sakura 共用）</source>
-        <translation>API Base URL（雲端 / Sakura 共用）</translation>
+        <translation type="vanished">API Base URL（雲端 / Sakura 共用）</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>模型名（如 deepseek-chat / sakura-14b）</source>
-        <translation>模型名稱（如 deepseek-chat / sakura-14b）</translation>
+        <translation type="vanished">模型名稱（如 deepseek-chat / sakura-14b）</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+31"/>
         <source>术语表 JSON：</source>
         <translation>術語表 JSON：</translation>
     </message>
@@ -591,7 +593,7 @@
         <translation>字型授權／對應查詢資料庫；留空使用預設 XDG 資料目錄下的 fonts.db。</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+46"/>
         <source>完整设置</source>
         <translation>完整設定</translation>
     </message>
@@ -611,7 +613,7 @@
         <translation>返回一鍵簡潔檢視，隱藏進階設定。所有選項保持不變。</translation>
     </message>
     <message>
-        <location line="+223"/>
+        <location line="+216"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 文字來源過濾已關閉，將保留所有辨識到的文字。</translation>
     </message>
@@ -621,7 +623,7 @@
         <translation>🔄 文字來源過濾已啟用，載入影片後將自動分析...</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+81"/>
         <source>颜色门控：已关闭（默认）。</source>
         <translation>顏色門檻：已關閉（預設）。</translation>
     </message>
@@ -636,7 +638,7 @@
         <translation>顏色門檻：已確認，將用於下一輪「字幕 OCR 辨識」階段一擷取。</translation>
     </message>
     <message>
-        <location line="+257"/>
+        <location line="+165"/>
         <source>选择术语表 JSON 文件</source>
         <translation>選擇術語表 JSON 檔案</translation>
     </message>
@@ -661,7 +663,7 @@
         <translation>SQLite 字型庫 (*.db)</translation>
     </message>
     <message>
-        <location line="+179"/>
+        <location line="+178"/>
         <source>自动(Auto)</source>
         <translation>自動(Auto)</translation>
     </message>
@@ -1764,22 +1766,25 @@
         <translation>自動分析失敗，請手動選擇場景類型</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+40"/>
+        <location filename="../main_window/pipeline_control.py" line="+38"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>已啟用 AI 翻譯，但翻譯模組不可用（{0}）。請先安裝 font_intel 相依套件（requirements-fontintel.txt），或取消勾選「AI 翻譯」後重試。</translation>
     </message>
     <message>
-        <location line="+15"/>
         <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
-        <translation>已啟用 AI 翻譯（雲端 API），但未填寫 API Key。請在大型模型潤飾區填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。</translation>
+        <translation type="vanished">已啟用 AI 翻譯（雲端 API），但未填寫 API Key。請在大型模型潤飾區填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。</translation>
     </message>
     <message>
-        <location line="+12"/>
         <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
-        <translation>已啟用 AI 翻譯（本機 Sakura），但未填寫 Base URL。請填寫本機 Sakura 伺服器的 OpenAI 相容端點位址（如 http://127.0.0.1:8080/v1）。</translation>
+        <translation type="vanished">已啟用 AI 翻譯（本機 Sakura），但未填寫 Base URL。請填寫本機 Sakura 伺服器的 OpenAI 相容端點位址（如 http://127.0.0.1:8080/v1）。</translation>
     </message>
     <message>
-        <location line="+46"/>
+        <location line="+10"/>
+        <source>已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <translation>已啟用 AI 翻譯，但未填寫 API Key。請在大型模型潤飾區填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。</translation>
+    </message>
+    <message>
+        <location line="+48"/>
         <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
         <translation>已啟用字型辨識，但字型辨識模組不可用（{0}）。請先安裝 font_intel 相依套件（requirements-fontintel.txt），或取消勾選「字型辨識」後重試。</translation>
     </message>

@@ -34,15 +34,6 @@ from core.subtitle_llm_polish import (
 
 logger = logging.getLogger(__name__)
 
-# 翻译提供方的共用行（Base URL / 模型名）默认值：Sakura/本地端点留空等
-# 用户填写（空 = 该级未配置，降级链自动跳过），云端取翻译模块的 DeepSeek
-# 常量；VLM 兜底零配置（复用 VLM_REFINE_* 环境变量），共用行禁用。
-_TRANSLATION_PROVIDER_DEFAULTS = {
-    "cloud": {"base_url": DEFAULT_DEEPSEEK_BASE, "model": DEFAULT_DEEPSEEK_MODEL},
-    "sakura": {"base_url": "", "model": ""},
-    "vlm": {"base_url": "", "model": ""},
-}
-
 
 class _FetchOpenAIModelsThread(QThread):
     finished_ok = Signal(list)
@@ -105,11 +96,10 @@ class ControlPanelWidget(QWidget):
         self._user_overrode: bool = False
         self._suppress_preset_signal: bool = False
         self._quick_mode: bool = True
-        # AI 翻译（T2.5）：共用端点行按提供方记忆输入；加载期间不回写设置。
+        # AI 翻译（T2.5）：加载期间不回写设置（与 LLM 组同策略）。
+        # 翻译不再有独立提供方/端点配置，直接复用「大模型润色」区的
+        # API Key / Base URL / 模型。
         self._loading_translation_settings: bool = False
-        self._active_translation_provider: str = "cloud"
-        self._translation_endpoint_values: Dict[str, Dict[str, str]] = {}
-        self._load_translation_endpoint_values()
         # 字体识别（T3.5）：加载期间不回写设置（同翻译组策略）。
         self._loading_font_identify_settings: bool = False
 
@@ -602,8 +592,8 @@ class ControlPanelWidget(QWidget):
             QCoreApplication.translate(
                 "ControlPanelWidget",
                 "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。"
-                "云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时"
-                "自动降级到下一级，全部失败保留原文。",
+                "提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；"
+                "失败时自动降级到 VLM 兜底，全部失败保留原文。",
             )
         )
         translation_grid = QGridLayout()
@@ -629,41 +619,17 @@ class ControlPanelWidget(QWidget):
         translation_grid.addWidget(self.translation_target_lang_label, 0, 0)
         translation_grid.addWidget(self.translation_target_lang_combo, 0, 1)
 
-        self.translation_provider_label = QLabel(
-            QCoreApplication.translate("ControlPanelWidget", "翻译提供方：")
-        )
-        self.translation_provider_combo = QComboBox()
-        self.translation_provider_combo.setToolTip(
+        # 提供方凭据不再在此重复：直接复用上方「大模型润色」区的
+        # 提供方 / API Key / Base URL / 模型（黄框区域），仅提示不设输入。
+        self.translation_reuse_hint_label = QLabel(
             QCoreApplication.translate(
                 "ControlPanelWidget",
-                "云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 "
-                "Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 "
-                "VLM_REFINE_* 环境变量，零配置。",
+                "使用上方「大模型润色」的提供方、API Key、Base URL 与模型。",
             )
         )
-        self.translation_provider_combo.addItem(
-            QCoreApplication.translate("ControlPanelWidget", "云端 API"), "cloud"
-        )
-        self.translation_provider_combo.addItem(
-            QCoreApplication.translate("ControlPanelWidget", "本地 Sakura"), "sakura"
-        )
-        self.translation_provider_combo.addItem(
-            QCoreApplication.translate("ControlPanelWidget", "VLM 兜底"), "vlm"
-        )
-        translation_grid.addWidget(self.translation_provider_label, 1, 0)
-        translation_grid.addWidget(self.translation_provider_combo, 1, 1)
-
-        # 共用端点行（Base URL + 模型名）：云端/Sakura 按提供方记忆各自输入。
-        self.translation_base_url_edit = QLineEdit()
-        self.translation_base_url_edit.setPlaceholderText(
-            QCoreApplication.translate("ControlPanelWidget", "API Base URL（云端 / Sakura 共用）")
-        )
-        self.translation_model_edit = QLineEdit()
-        self.translation_model_edit.setPlaceholderText(
-            QCoreApplication.translate("ControlPanelWidget", "模型名（如 deepseek-chat / sakura-14b）")
-        )
-        translation_grid.addWidget(self.translation_base_url_edit, 2, 0, 1, 2)
-        translation_grid.addWidget(self.translation_model_edit, 2, 2, 1, 2)
+        self.translation_reuse_hint_label.setWordWrap(True)
+        self.translation_reuse_hint_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+        translation_grid.addWidget(self.translation_reuse_hint_label, 1, 0, 1, 4)
 
         self.translation_glossary_label = QLabel(
             QCoreApplication.translate("ControlPanelWidget", "术语表 JSON：")
@@ -685,7 +651,7 @@ class ControlPanelWidget(QWidget):
         glossary_row.addWidget(self.translation_glossary_label)
         glossary_row.addWidget(self.translation_glossary_edit, 1)
         glossary_row.addWidget(self.translation_glossary_btn)
-        translation_grid.addLayout(glossary_row, 3, 0, 1, 4)
+        translation_grid.addLayout(glossary_row, 2, 0, 1, 4)
 
         # 数字输入沿用高级区的行内短输入风格（QLineEdit 固定宽）。
         self.translation_context_label = QLabel(
@@ -708,7 +674,7 @@ class ControlPanelWidget(QWidget):
         numbers_row.addWidget(self.translation_max_chars_label)
         numbers_row.addWidget(self.translation_max_chars_edit)
         numbers_row.addStretch(1)
-        translation_grid.addLayout(numbers_row, 4, 0, 1, 4)
+        translation_grid.addLayout(numbers_row, 3, 0, 1, 4)
         translation_grid.setColumnStretch(4, 1)
         translation_content.addLayout(translation_grid)
 
@@ -908,15 +874,12 @@ class ControlPanelWidget(QWidget):
         self.deepseek_api_key_edit.textChanged.connect(self._update_llm_ui_visibility)
 
         # AI 翻译：任何改动立即持久化（与 auto_roi_on_load 同策略）。
+        # 翻译依赖「大模型润色」区的凭据，开关变化同步凭据区显隐。
         self.translation_group.toggled.connect(self._save_translation_settings)
+        self.translation_group.toggled.connect(self._update_llm_ui_visibility)
         self.translation_target_lang_combo.currentIndexChanged.connect(
             self._save_translation_settings
         )
-        self.translation_provider_combo.currentIndexChanged.connect(
-            self._on_translation_provider_changed
-        )
-        self.translation_base_url_edit.textChanged.connect(self._save_translation_settings)
-        self.translation_model_edit.textChanged.connect(self._save_translation_settings)
         self.translation_glossary_edit.textChanged.connect(self._save_translation_settings)
         self.translation_context_edit.textChanged.connect(self._save_translation_settings)
         self.translation_max_chars_edit.textChanged.connect(self._save_translation_settings)
@@ -1007,9 +970,6 @@ class ControlPanelWidget(QWidget):
             self.color_gate_preview_btn,
             self.translation_group,
             self.translation_target_lang_combo,
-            self.translation_provider_combo,
-            self.translation_base_url_edit,
-            self.translation_model_edit,
             self.translation_glossary_edit,
             self.translation_glossary_btn,
             self.translation_context_edit,
@@ -1049,7 +1009,6 @@ class ControlPanelWidget(QWidget):
             )
             self.set_color_gate_preview_allowed(self._gate_preview_allowed)
             self._update_llm_ui_visibility()
-            self._update_translation_ui_state()
 
     def set_pipeline_stage(self, stage: str) -> None:
         """Update the stage text shown on the main button while running."""
@@ -1149,11 +1108,16 @@ class ControlPanelWidget(QWidget):
         self.draw_mode_changed.emit("edit")
 
     def _update_llm_ui_visibility(self) -> None:
-        """凭据区按需显示：任一 LLM 功能启用才显示；刷新按钮还需 API Key。"""
+        """凭据区按需显示：任一 LLM 功能（含 AI 翻译）启用才显示。
+
+        AI 翻译的提供方/API Key/Base URL/模型全部复用本凭据区，因此只勾
+        翻译也要展开凭据区，否则用户无处配置翻译用的端点。
+        """
         llm_on = (
             self.deepseek_polish_checkbox.isChecked()
             or self.deepseek_fragment_merge_checkbox.isChecked()
             or self.deepseek_strategy_checkbox.isChecked()
+            or self.translation_group.isChecked()
         )
         self.llm_credentials_container.setVisible(llm_on)
         self.refresh_models_btn.setVisible(llm_on and bool(self.deepseek_api_key_edit.text().strip()))
@@ -1274,32 +1238,6 @@ class ControlPanelWidget(QWidget):
             return default
         return parsed if parsed >= 0 else default
 
-    def _load_translation_endpoint_values(self) -> None:
-        """从 QSettings 恢复各提供方的共用行输入（无记录用提供方默认）。"""
-        settings = QSettings()
-        cloud_defaults = _TRANSLATION_PROVIDER_DEFAULTS["cloud"]
-        self._translation_endpoint_values = {
-            "cloud": {
-                "base_url": str(
-                    settings.value(
-                        "translation/base_url_cloud", cloud_defaults["base_url"]
-                    )
-                    or cloud_defaults["base_url"]
-                ),
-                "model": str(
-                    settings.value(
-                        "translation/model_cloud", cloud_defaults["model"]
-                    )
-                    or cloud_defaults["model"]
-                ),
-            },
-            "sakura": {
-                "base_url": str(settings.value("translation/base_url_sakura", "") or ""),
-                "model": str(settings.value("translation/model_sakura", "") or ""),
-            },
-            "vlm": {"base_url": "", "model": ""},
-        }
-
     def _load_translation_from_settings(self) -> None:
         """恢复上次会话的翻译选项（控件信号已接好，期间抑制回写）。"""
         self._loading_translation_settings = True
@@ -1313,19 +1251,6 @@ class ControlPanelWidget(QWidget):
                 idx = self.translation_target_lang_combo.findData(target)
                 if idx >= 0:
                     self.translation_target_lang_combo.setCurrentIndex(idx)
-            provider = str(settings.value("translation/provider", "") or "")
-            if provider:
-                idx = self.translation_provider_combo.findData(provider)
-                if idx >= 0:
-                    self.translation_provider_combo.setCurrentIndex(idx)
-            self._active_translation_provider = (
-                self.translation_provider_combo.currentData() or "cloud"
-            )
-            values = self._translation_endpoint_values[
-                self._active_translation_provider
-            ]
-            self.translation_base_url_edit.setText(str(values.get("base_url", "") or ""))
-            self.translation_model_edit.setText(str(values.get("model", "") or ""))
             self.translation_glossary_edit.setText(
                 str(settings.value("translation/glossary_path", "") or "")
             )
@@ -1343,28 +1268,18 @@ class ControlPanelWidget(QWidget):
                     )
                 )
             )
-            self._update_translation_ui_state()
         finally:
             self._loading_translation_settings = False
 
     def _save_translation_settings(self) -> None:
         if self._loading_translation_settings:
             return
-        self._stash_translation_endpoint_edits()
         settings = QSettings()
         settings.setValue("translation/enabled", self.translation_group.isChecked())
         settings.setValue(
             "translation/target_language",
             str(self.translation_target_lang_combo.currentData() or "简体中文"),
         )
-        settings.setValue(
-            "translation/provider",
-            str(self.translation_provider_combo.currentData() or "cloud"),
-        )
-        for prov in ("cloud", "sakura"):
-            values = self._translation_endpoint_values[prov]
-            settings.setValue(f"translation/base_url_{prov}", values.get("base_url", ""))
-            settings.setValue(f"translation/model_{prov}", values.get("model", ""))
         settings.setValue(
             "translation/glossary_path", self.translation_glossary_edit.text().strip()
         )
@@ -1376,49 +1291,6 @@ class ControlPanelWidget(QWidget):
             "translation/max_line_chars",
             self._parse_translation_int(self.translation_max_chars_edit.text(), 42),
         )
-
-    def _stash_translation_endpoint_edits(self) -> None:
-        """把共用行当前输入记到当前提供方名下（切换时不丢用户已填内容）。"""
-        values = self._translation_endpoint_values.setdefault(
-            self._active_translation_provider, {"base_url": "", "model": ""}
-        )
-        values["base_url"] = self.translation_base_url_edit.text().strip()
-        values["model"] = self.translation_model_edit.text().strip()
-
-    def _on_translation_provider_changed(self, _index: int) -> None:
-        if self._loading_translation_settings:
-            return
-        provider = str(self.translation_provider_combo.currentData() or "cloud")
-        if provider == self._active_translation_provider:
-            self._save_translation_settings()
-            return
-        # 先把旧提供方的共用行输入落袋，再换上新提供方的记忆值。
-        # setText 期间屏蔽 textChanged（避免半新半旧的中间态被 stash/
-        # 落盘），换完统一保存一次。
-        self._stash_translation_endpoint_edits()
-        self._active_translation_provider = provider
-        values = self._translation_endpoint_values.setdefault(
-            provider, {"base_url": "", "model": ""}
-        )
-        base = str(values.get("base_url", "") or "")
-        model = str(values.get("model", "") or "")
-        self.translation_base_url_edit.blockSignals(True)
-        self.translation_model_edit.blockSignals(True)
-        try:
-            self.translation_base_url_edit.setText(base)
-            self.translation_model_edit.setText(model)
-        finally:
-            self.translation_model_edit.blockSignals(False)
-            self.translation_base_url_edit.blockSignals(False)
-        self._update_translation_ui_state()
-        self._save_translation_settings()
-
-    def _update_translation_ui_state(self) -> None:
-        """VLM 兜底零配置（VLM_REFINE_* 环境变量）：共用端点行禁用以免误导。"""
-        provider = str(self.translation_provider_combo.currentData() or "cloud")
-        endpoint_enabled = provider != "vlm"
-        self.translation_base_url_edit.setEnabled(endpoint_enabled)
-        self.translation_model_edit.setEnabled(endpoint_enabled)
 
     def _on_browse_glossary(self) -> None:
         path, _flt = QFileDialog.getOpenFileName(
@@ -1663,16 +1535,15 @@ class ControlPanelWidget(QWidget):
             "ocr_model_tier": self.ocr_model_tier_combo.currentData() or "auto",
             "source_filter_config": self.get_source_filter_config(),
             # AI 翻译（T2.5）：pipeline_control 依据 translation_enabled 决定
-            # 是否组装 TranslationConfig；关闭时其余字段不消费。
+            # 是否组装 TranslationConfig；关闭时其余字段不消费。翻译没有
+            # 独立提供方/端点，统一复用「大模型润色」区的凭据（cloud 级）。
             "translation_enabled": self.translation_group.isChecked(),
             "translation_target_language": str(
                 self.translation_target_lang_combo.currentData() or "简体中文"
             ),
-            "translation_provider": str(
-                self.translation_provider_combo.currentData() or "cloud"
-            ),
-            "translation_base_url": self.translation_base_url_edit.text().strip(),
-            "translation_model": self.translation_model_edit.text().strip(),
+            "translation_provider": "cloud",
+            "translation_base_url": self.deepseek_api_base_edit.text().strip(),
+            "translation_model": model_text,
             "translation_glossary_path": self.translation_glossary_edit.text().strip(),
             "translation_context_lines": self._parse_translation_int(
                 self.translation_context_edit.text(), 2

@@ -516,6 +516,11 @@ class PipelineWorker(QThread):
                         ).format(roi_id, coverage * 100.0),
                     )
                     continue
+                for ev in events:
+                    # 挂 ROI id：生成器翻译阶段据此路由该 ROI 的源语言，
+                    # 字体识别快照按 (roi, text) 匹配；缺省（CLI 手动路径）
+                    # 的事件无 roi，翻译走模型自动检测源语言。
+                    ev["roi"] = roi_id
                 events_all.extend(events)
                 taken_over.add(roi_id)
                 logger.info(

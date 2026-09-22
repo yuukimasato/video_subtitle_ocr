@@ -393,29 +393,22 @@ DICT = {
     'Motion trajectory for {0} covers only {1:.0f}% of the ROI time range; falling back to static pose tags.': 'ROI {0} 的軌跡事件僅涵蓋時間範圍的 {1:.0f}%，回退靜態位置標籤。',
 
     # ── T2.5 AI 翻譯選項組（ControlPanelWidget / SubtitleOCRGUI）──
+    # （提供方/端點行已併入「大型模型潤飾」區，獨立翻譯提供方詞條隨之移除）
     "AI 翻译（可选）": "AI 翻譯（可選）",
     "目标语言：": "目標語言：",
-    "翻译提供方：": "翻譯提供方：",
-    "云端 API": "雲端 API",
-    "本地 Sakura": "本機 Sakura",
-    "VLM 兜底": "VLM 備援",
-    "API Base URL（云端 / Sakura 共用）": "API Base URL（雲端 / Sakura 共用）",
-    "模型名（如 deepseek-chat / sakura-14b）": "模型名稱（如 deepseek-chat / sakura-14b）",
     "术语表 JSON：": "術語表 JSON：",
     "选择术语表 JSON 文件": "選擇術語表 JSON 檔案",
     "术语表 JSON (*.json)": "術語表 JSON (*.json)",
     "上下文行数：": "上下文行數：",
     "最大行长：": "最大行長：",
-    "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。":
-        "把辨識出的字幕行交給大型模型翻譯成目標語言（在潤飾之後、寫出之前執行）。雲端提供方重用「大型模型潤飾」區已儲存的 API Key；某一級未設定或失敗時自動降級到下一級，全部失敗保留原文。",
-    "云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。":
-        "雲端 API：OpenAI 相容端點（預設 DeepSeek）；本機 Sakura：本機部署的 Sakura 日中翻譯模型（OpenAI 相容 /v1 端點）；VLM 備援：重用 VLM_REFINE_* 環境變數，零設定。",
+    "使用上方「大模型润色」的提供方、API Key、Base URL 与模型。":
+        "使用上方「大型模型潤飾」的提供方、API Key、Base URL 與模型。",
+    "把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。":
+        "把辨識出的字幕行交給大型模型翻譯成目標語言（在潤飾之後、寫出之前執行）。提供方、API Key、Base URL 與模型重用上方「大型模型潤飾」區的設定；失敗時自動降級到 VLM 備援，全部失敗保留原文。",
     "可选。JSON 文件（{\"术语\": \"译名\"}），译文中术语强制一致；文件缺失或格式错误时自动忽略。":
         "可選。JSON 檔案（{\"術語\": \"譯名\"}），強制譯文術語一致；檔案缺失或格式錯誤時自動忽略。",
-    "已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。":
-        "已啟用 AI 翻譯（雲端 API），但未填寫 API Key。請在大型模型潤飾區填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。",
-    "已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。":
-        "已啟用 AI 翻譯（本機 Sakura），但未填寫 Base URL。請填寫本機 Sakura 伺服器的 OpenAI 相容端點位址（如 http://127.0.0.1:8080/v1）。",
+    "已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。":
+        "已啟用 AI 翻譯，但未填寫 API Key。請在大型模型潤飾區填寫 API Key，或設定環境變數 DEEPSEEK_API_KEY。",
     "已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。":
         "已啟用 AI 翻譯，但翻譯模組不可用（{0}）。請先安裝 font_intel 相依套件（requirements-fontintel.txt），或取消勾選「AI 翻譯」後重試。",
     "[LLM] 已启用 AI 翻译 —— 翻译进度会显示在下方。":

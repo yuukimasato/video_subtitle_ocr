@@ -10,9 +10,14 @@
    - ``PipelineWorker`` 接受 ``translation_config`` 但 ``_stage_ctx()``
      （阶段 1-3 的 picklable 参数包）不携带它。
 2. 生成器接入缝：``OCRToASSOptimizer.convert_from_memory`` 在润色之后、
-   事件写出之前执行翻译——译文替换生效；翻译入口抛异常/返回长度不符时
-   保留原文出片不中断；``translation_config=None`` 与不传参数逐字节一致
-   且翻译入口绝不被调用（canary 假模块守在 sys.modules）。
+   事件写出之前执行翻译——**原文行转 Comment 隐藏、译文行以 Dialogue
+   写出**（时间/样式/标签逐项一致；译文与原文相同 = 失败/降级不拆分）；
+   翻译入口抛异常/返回长度不符时保留原文出片不中断；
+   ``translation_config=None`` 与不传参数逐字节一致且翻译入口绝不被调用
+   （canary 假模块守在 sys.modules）。
+2.5 轨迹事件翻译：移动文字轨迹事件（Name=motion）此前完全绕过翻译——
+   现与静态行同样送翻并做 Comment/Dialogue 拆分；worker 产出的轨迹事件
+   携带 roi 供源语言路由；策略遮罩/mask_only Comment 行不送翻。
 3. 双语路由：行文本按所属 ROI 的 ``ocr_lang`` 分组送翻，源语言提示写入
    翻译配置；未配置 ocr_lang 的 ROI 回退自动检测（source_language=""）。
 4. CLI 贯通：``--translate`` 关闭时配置为 None（零行为变化）；开启时
@@ -154,8 +159,10 @@ class TestArchitectureRedLines:
 
 
 class TestGeneratorIntegration:
-    def test_translation_replaces_event_bodies(self, monkeypatch, tmp_path, _no_vlm):
-        """润色之后对出片字幕行执行翻译：译文替换进 ASS 事件。"""
+    def test_translation_splits_comment_original_and_dialogue_translated(
+            self, monkeypatch, tmp_path, _no_vlm):
+        """译文 Dialogue + 原文 Comment 拆分：时间/样式/Name 逐项一致，
+        原文行保留在文件中但播放器不渲染（Comment）。"""
         seen: dict = {}
 
         def fake_translate(texts, cfg, **kw):
@@ -173,10 +180,33 @@ class TestGeneratorIntegration:
         conv.convert_from_memory(iter(_items()))
 
         out = _read_out(tmp_path)
-        assert "译0" in out
-        assert "学成归来" not in out
+        lines = out.splitlines()
         assert seen["texts"] == ["学成归来"]
         assert isinstance(seen["cfg"], TranslationConfig)
+        # 原文 → Comment（隐藏但保留）；译文 → Dialogue。
+        comments = [ln for ln in lines if ln.startswith("Comment:") and "学成归来" in ln]
+        dialogues = [ln for ln in lines if ln.startswith("Dialogue:") and "译0" in ln]
+        assert len(comments) == 1
+        assert len(dialogues) == 1
+        # 拆分两侧时间/样式/Name 逐项一致（Layer,Start,End,Style,Name 列）。
+        c_head = comments[0].split(": ", 1)[1].rsplit(",0,0,0,,", 1)[0]
+        d_head = dialogues[0].split(": ", 1)[1].rsplit(",0,0,0,,", 1)[0]
+        assert c_head == d_head
+
+    def test_translation_same_text_keeps_single_dialogue(
+            self, monkeypatch, tmp_path, _no_vlm):
+        """译文与原文相同（失败/降级保留原文）：不拆分，无 Comment 行。"""
+        monkeypatch.setattr(
+            tr, "translate_subtitle_texts",
+            lambda texts, cfg, **kw: tr.TranslationResult(
+                list(texts), tr.TranslationStats(total_lines=len(texts),
+                                                 batches_total=1)))
+        conv = _make_optimizer(
+            tmp_path, translation_config=TranslationConfig(cloud_api_key="sk-test"))
+        conv.convert_from_memory(iter(_items()))
+        out = _read_out(tmp_path)
+        assert "学成归来" in out
+        assert "Comment:" not in out
 
     def test_translation_failure_keeps_originals_and_completes(
             self, monkeypatch, tmp_path, _no_vlm):
@@ -231,8 +261,15 @@ class TestGeneratorIntegration:
 
         assert len(seen) == 1  # 只有第 1 组送翻，取消后第 2 组不再派发
         out = _read_out(tmp_path)
-        assert "こんにちは" not in out  # 第 1 组已译
-        assert "Hello world" in out  # 第 2 组保留原文
+        # 第 1 组已译：原文转 Comment 隐藏，译文 Dialogue。
+        assert any(ln.startswith("Comment:") and "こんにちは" in ln for ln in out.splitlines())
+        assert any(ln.startswith("Dialogue:") and "こんにちは" not in ln and "译" in ln
+                   for ln in out.splitlines())
+        # 第 2 组未送翻：保持单条原文 Dialogue，无 Comment。
+        assert any(ln.startswith("Dialogue:") and "Hello world" in ln
+                   for ln in out.splitlines())
+        assert not any("Hello world" in ln for ln in out.splitlines()
+                       if ln.startswith("Comment:"))
 
     def test_none_config_is_inert_and_byte_identical(self, monkeypatch, tmp_path, _no_vlm):
         """translation_config=None：翻译入口绝不被调用，输出与不传参数
@@ -282,6 +319,100 @@ class TestGeneratorIntegration:
         assert seen == ["学成归来"]  # 仅对白行，无其他内容混入
 
 
+# ── 2.5 轨迹事件翻译（此前完全绕过翻译的阶段缺口） ────────────────
+
+
+def _motion_event(text="受信メール一覧", roi="roi_0", **extra) -> dict:
+    """对齐 worker/motion_ass 产出的轨迹事件形状（用户示例同款）。"""
+    ev = {
+        "start_time": "0:00:00.00",
+        "end_time": "0:00:03.54",
+        "style": "Scene",
+        "name": "motion",
+        "tags": r"{\an5\fs24\move(821.5,305.0,821.5,20.6,0,3545)}",
+        "body": text,
+        "roi": roi,
+    }
+    ev.update(extra)
+    return ev
+
+
+class TestMotionEventTranslation:
+    def test_motion_events_translated_with_split(self, monkeypatch, tmp_path,
+                                                 _no_vlm):
+        """轨迹事件送翻：原文 Comment + 译文 Dialogue，\\move 等标签原样。"""
+        seen: list = []
+
+        def fake_translate(texts, cfg, **kw):
+            seen.append(list(texts))
+            return tr.TranslationResult(
+                [f"译[{ t }]" for t in texts],
+                tr.TranslationStats(total_lines=len(texts), batches_total=1,
+                                    batches_success=1))
+
+        monkeypatch.setattr(tr, "translate_subtitle_texts", fake_translate)
+        conv = _make_optimizer(
+            tmp_path,
+            translation_config=TranslationConfig(cloud_api_key="sk-test"),
+            motion_events=[
+                _motion_event(),
+                # 策略遮罩（空 body）与 mask_only Comment 行不送翻。
+                _motion_event("", body="", tags=r"{\clip(...)}", policy=True),
+                _motion_event("参考行", comment=True),
+            ],
+        )
+        conv.convert_from_memory(iter(_items("学成归来")))
+
+        # 静态行与轨迹行各成一组送翻（轨迹事件带 roi 时按 ROI 路由语言）。
+        flattened = [t for group in seen for t in group]
+        assert "受信メール一覧" in flattened
+        assert "学成归来" in flattened
+        # 策略/Comment 轨迹行绝不进模型。
+        assert flattened.count("") == 0
+        assert "参考行" not in flattened
+
+        out = _read_out(tmp_path)
+        lines = out.splitlines()
+        comments = [ln for ln in lines if ln.startswith("Comment:")]
+        dialogues = [ln for ln in lines if ln.startswith("Dialogue:")]
+        # 原文轨迹行 → Comment（\\move 标签逐字保留）；译文轨迹行 → Dialogue。
+        assert any("受信メール一覧" in ln and r"\move(" in ln for ln in comments)
+        assert any("译[受信メール一覧]" in ln and r"\move(" in ln for ln in dialogues)
+        assert any(ln.startswith("Comment:") and "学成归来" in ln for ln in lines)
+        # mask_only 排版参考行维持 Comment 原样；遮罩行维持 Dialogue。
+        assert any("参考行" in ln for ln in comments)
+        assert any(r"\clip" in ln for ln in dialogues)
+
+    def test_motion_only_output_also_translated(self, monkeypatch, tmp_path,
+                                                _no_vlm):
+        """无静态数据、纯轨迹输出：早退路径同样过翻译拆分。"""
+        monkeypatch.setattr(
+            tr, "translate_subtitle_texts",
+            lambda texts, cfg, **kw: tr.TranslationResult(
+                [f"译[{ t }]" for t in texts],
+                tr.TranslationStats(total_lines=len(texts))))
+        conv = _make_optimizer(
+            tmp_path,
+            translation_config=TranslationConfig(cloud_api_key="sk-test"),
+            motion_events=[_motion_event()],
+        )
+        conv.convert_from_memory(iter([]))
+        out = _read_out(tmp_path)
+        assert any(ln.startswith("Comment:") and "受信メール一覧" in ln
+                   for ln in out.splitlines())
+        assert any(ln.startswith("Dialogue:") and "译[受信メール一覧]" in ln
+                   for ln in out.splitlines())
+
+    def test_worker_motion_events_carry_roi(self):
+        """worker 给轨迹事件挂 roi：生成器据此路由该 ROI 的源语言。"""
+        import inspect
+
+        from core.pipeline_worker import PipelineWorker
+
+        src = inspect.getsource(PipelineWorker._run_motion_stage)
+        assert 'ev["roi"] = roi_id' in src
+
+
 # ── 3. 双语路由：按 ROI ocr_lang 分组 + 源语言提示 ────────────────
 
 
@@ -310,7 +441,10 @@ class TestRoiLanguageRouting:
         assert by_source["日语"] == ["こんにちは"]
         assert by_source["英语"] == ["Hello world"]
         out = _read_out(tmp_path)
-        assert "こんにちは" not in out and "Hello world" not in out
+        # 两组都有实际译文：原文行转 Comment，译文行 Dialogue。
+        for original in ("こんにちは", "Hello world"):
+            assert any(ln.startswith("Comment:") and original in ln
+                       for ln in out.splitlines())
 
     def test_unknown_ocr_lang_falls_back_to_auto(self, monkeypatch, tmp_path, _no_vlm):
         """未配置/未知 ocr_lang：source_language 留空 = 模型自动检测。"""

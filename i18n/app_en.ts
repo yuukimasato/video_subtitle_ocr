@@ -62,7 +62,7 @@
 <context>
     <name>ControlPanelWidget</name>
     <message>
-        <location filename="../components/control_panel.py" line="+120"/>
+        <location filename="../components/control_panel.py" line="+110"/>
         <source>样式模板（可选）</source>
         <translation>Style template (optional)</translation>
     </message>
@@ -73,14 +73,14 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+554"/>
+        <location line="+530"/>
         <location line="+104"/>
         <location line="+25"/>
         <source>浏览…</source>
         <translation>Browse…</translation>
     </message>
     <message>
-        <location line="-676"/>
+        <location line="-652"/>
         <source>识别设置</source>
         <translation>Recognition settings</translation>
     </message>
@@ -441,12 +441,12 @@
     </message>
     <message>
         <location line="+1"/>
-        <location line="+995"/>
+        <location line="+880"/>
         <source>使用 API Key 和 Base URL 拉取 /v1/models。</source>
         <translation>Fetch /v1/models using the API Key and Base URL.</translation>
     </message>
     <message>
-        <location line="-993"/>
+        <location line="-878"/>
         <source>清除已存密钥</source>
         <translation>Clear saved key</translation>
     </message>
@@ -467,51 +467,53 @@
     </message>
     <message>
         <location line="+4"/>
-        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
-        <translation>Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). The cloud provider reuses the API key saved in the LLM polish section; an unconfigured or failed level automatically falls back to the next one, and a fully exhausted chain keeps the original text.</translation>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。提供方、API Key、Base URL 与模型复用上方「大模型润色」区的配置；失败时自动降级到 VLM 兜底，全部失败保留原文。</source>
+        <translation>Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). Provider, API key, base URL and model are reused from the LLM polish section above; a failure falls back to the VLM fallback automatically, and a fully exhausted chain keeps the original text.</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+33"/>
+        <source>使用上方「大模型润色」的提供方、API Key、Base URL 与模型。</source>
+        <translation>Uses the provider, API key, base URL and model from the LLM polish section above.</translation>
+    </message>
+    <message>
+        <source>把识别出的字幕行交给大模型翻译成目标语言（在润色之后、写出之前执行）。云端提供方复用「大模型润色」区已保存的 API Key；某一级未配置或失败时自动降级到下一级，全部失败保留原文。</source>
+        <translation type="vanished">Translate recognized subtitle lines into the target language with an LLM (runs after polish, before the ASS is written). The cloud provider reuses the API key saved in the LLM polish section; an unconfigured or failed level automatically falls back to the next one, and a fully exhausted chain keeps the original text.</translation>
+    </message>
+    <message>
+        <location line="-21"/>
         <source>目标语言：</source>
         <translation>Target language:</translation>
     </message>
     <message>
-        <location line="+19"/>
         <source>翻译提供方：</source>
-        <translation>Translation provider:</translation>
+        <translation type="vanished">Translation provider:</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>云端 API：OpenAI 兼容端点（默认 DeepSeek）；本地 Sakura：本地部署的 Sakura 日中翻译模型（OpenAI 兼容 /v1 端点）；VLM 兜底：复用 VLM_REFINE_* 环境变量，零配置。</source>
-        <translation>Cloud API: OpenAI-compatible endpoint (DeepSeek by default). Local Sakura: a locally deployed Sakura JP-ZH translation model (OpenAI-compatible /v1 endpoint). VLM fallback: reuses the VLM_REFINE_* environment variables, zero configuration.</translation>
+        <translation type="vanished">Cloud API: OpenAI-compatible endpoint (DeepSeek by default). Local Sakura: a locally deployed Sakura JP-ZH translation model (OpenAI-compatible /v1 endpoint). VLM fallback: reuses the VLM_REFINE_* environment variables, zero configuration.</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>云端 API</source>
-        <translation>Cloud API</translation>
+        <translation type="vanished">Cloud API</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>本地 Sakura</source>
-        <translation>Local Sakura</translation>
+        <translation type="vanished">Local Sakura</translation>
     </message>
     <message>
-        <location line="+3"/>
         <source>VLM 兜底</source>
-        <translation>VLM fallback</translation>
+        <translation type="vanished">VLM fallback</translation>
     </message>
     <message>
-        <location line="+8"/>
         <source>API Base URL（云端 / Sakura 共用）</source>
-        <translation>API base URL (shared by cloud / Sakura)</translation>
+        <translation type="vanished">API base URL (shared by cloud / Sakura)</translation>
     </message>
     <message>
-        <location line="+4"/>
         <source>模型名（如 deepseek-chat / sakura-14b）</source>
-        <translation>Model name (e.g. deepseek-chat / sakura-14b)</translation>
+        <translation type="vanished">Model name (e.g. deepseek-chat / sakura-14b)</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+31"/>
         <source>术语表 JSON：</source>
         <translation>Glossary JSON:</translation>
     </message>
@@ -591,7 +593,7 @@
         <translation>Font license/mapping lookup database; empty = fonts.db in the default XDG data directory.</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+46"/>
         <source>完整设置</source>
         <translation>Full settings</translation>
     </message>
@@ -611,7 +613,7 @@
         <translation>Return to the one-click simple view and hide advanced settings. All options are preserved.</translation>
     </message>
     <message>
-        <location line="+223"/>
+        <location line="+216"/>
         <source>🔒 文字来源过滤已关闭，将保留所有识别到的文字。</source>
         <translation>🔒 Text source filter is off; all recognized text will be kept.</translation>
     </message>
@@ -621,7 +623,7 @@
         <translation>🔄 Text source filter is on; auto analysis starts after a video is loaded...</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+81"/>
         <source>颜色门控：已关闭（默认）。</source>
         <translation>Color gate: off (default).</translation>
     </message>
@@ -636,7 +638,7 @@
         <translation>Color gate: confirmed; it will apply in stage one of the next &quot;subtitle OCR&quot; run.</translation>
     </message>
     <message>
-        <location line="+257"/>
+        <location line="+165"/>
         <source>选择术语表 JSON 文件</source>
         <translation>Select glossary JSON file</translation>
     </message>
@@ -661,7 +663,7 @@
         <translation>SQLite font database (*.db)</translation>
     </message>
     <message>
-        <location line="+179"/>
+        <location line="+178"/>
         <source>自动(Auto)</source>
         <translation>Auto</translation>
     </message>
@@ -1764,24 +1766,27 @@
         <translation>Auto analysis failed; choose the scene type manually</translation>
     </message>
     <message>
-        <location filename="../main_window/pipeline_control.py" line="+40"/>
+        <location filename="../main_window/pipeline_control.py" line="+38"/>
         <source>已启用 AI 翻译，但翻译模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。</source>
         <translation>AI translation is enabled, but the translation module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or untick &quot;AI translation&quot; and try again.</translation>
     </message>
     <message>
-        <location line="+15"/>
         <source>已启用 AI 翻译（云端 API），但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
-        <translation>AI translation (cloud API) is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.</translation>
+        <translation type="vanished">AI translation (cloud API) is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.</translation>
     </message>
     <message>
-        <location line="+12"/>
         <source>已启用 AI 翻译（本地 Sakura），但未填写 Base URL。请填写本地 Sakura 服务器的 OpenAI 兼容端点地址（如 http://127.0.0.1:8080/v1）。</source>
-        <translation>AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).</translation>
+        <translation type="vanished">AI translation (local Sakura) is enabled, but no base URL has been entered. Enter the OpenAI-compatible endpoint address of the local Sakura server (e.g. http://127.0.0.1:8080/v1).</translation>
     </message>
     <message>
-        <location line="+46"/>
+        <location line="+10"/>
+        <source>已启用 AI 翻译，但未填写 API Key。请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。</source>
+        <translation>AI translation is enabled, but no API key has been entered. Enter an API key in the LLM polish section, or set the DEEPSEEK_API_KEY environment variable.</translation>
+    </message>
+    <message>
+        <location line="+48"/>
         <source>已启用字体识别，但字体识别模块不可用（{0}）。请先安装 font_intel 依赖（requirements-fontintel.txt），或取消勾选「字体识别」后重试。</source>
-        <translation>Font recognition is enabled, but the font recognition module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or uncheck "Font recognition" and retry.</translation>
+        <translation>Font recognition is enabled, but the font recognition module is unavailable ({0}). Install the font_intel dependencies (requirements-fontintel.txt) first, or uncheck &quot;Font recognition&quot; and retry.</translation>
     </message>
     <message>
         <location line="+21"/>

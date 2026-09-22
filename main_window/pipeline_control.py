@@ -18,19 +18,17 @@ if TYPE_CHECKING:
 def build_translation_config(options: dict) -> Tuple[Optional["TranslationConfig"], str]:
     """控制面板选项 → ``(TranslationConfig | None, 错误消息)``。
 
-    与 CLI ``_translation_config_from_args``（T2.3）同构：
+    翻译不再有独立提供方/端点配置：统一复用「大模型润色」区的
+    API Key / Base URL / 模型（云端级，``translation_provider`` 恒为
+    ``"cloud"``）。与 CLI ``_translation_config_from_args``（T2.3）的关系：
     - ``translation_enabled`` 关闭 → ``(None, "")``：与未启用翻译的既有
       运行零行为差异；
-    - 提供方映射（三级降级链只配置所选级，其余级留空即自动跳过，失败沿
-      云端 → Sakura → VLM 降级，全部失败保留原文）：
-      * cloud：复用「大模型润色」已保存的 API Key（secret_store 途径），
-        缺失时回退 ``DEEPSEEK_API_KEY`` 环境变量；端点/模型留空用翻译
-        模块的 DeepSeek 常量；
-      * sakura：本地 OpenAI 兼容端点（Base URL 必填，无鉴权时 key 留空，
-        模块内部用占位 key）；模型留空用模块默认；
-      * vlm：零配置，复用 core/vlm_refine 的 ``VLM_REFINE_*`` 环境变量；
-    - 开启但配置不完整（无 API Key / 无 Base URL / 模块不可用）→
-      ``(None, 用户可读错误)``，由调用方弹窗中止本轮（避免静默丢翻译）。
+    - API Key 缺失时回退 ``DEEPSEEK_API_KEY`` 环境变量；Base URL / 模型
+      留空用翻译模块的 DeepSeek 常量；
+    - 云端失败时翻译模块内部沿降级链兜底（VLM 走 ``VLM_REFINE_*`` 环境
+      变量），全部失败保留原文；
+    - 开启但配置不完整（无 API Key / 模块不可用）→ ``(None, 用户可读
+      错误)``，由调用方弹窗中止本轮（避免静默丢翻译）。
     """
     if not options.get("translation_enabled"):
         return None, ""
@@ -43,37 +41,22 @@ def build_translation_config(options: dict) -> Tuple[Optional["TranslationConfig
             "（requirements-fontintel.txt），或取消勾选「AI 翻译」后重试。",
         ).format(exc)
 
-    provider = str(options.get("translation_provider") or "cloud").strip().lower()
+    api_key = str(options.get("deepseek_api_key") or "").strip() or (
+        os.environ.get("DEEPSEEK_API_KEY") or ""
+    ).strip()
+    if not api_key:
+        return None, QCoreApplication.translate(
+            "SubtitleOCRGUI",
+            "已启用 AI 翻译，但未填写 API Key。"
+            "请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。",
+        )
+    values: dict = {"cloud_api_key": api_key}
     base_url = str(options.get("translation_base_url") or "").strip()
     model = str(options.get("translation_model") or "").strip()
-    values: dict = {}
-    if provider == "cloud":
-        api_key = str(options.get("deepseek_api_key") or "").strip() or (
-            os.environ.get("DEEPSEEK_API_KEY") or ""
-        ).strip()
-        if not api_key:
-            return None, QCoreApplication.translate(
-                "SubtitleOCRGUI",
-                "已启用 AI 翻译（云端 API），但未填写 API Key。"
-                "请在大模型润色区填写 API Key，或设置环境变量 DEEPSEEK_API_KEY。",
-            )
-        values["cloud_api_key"] = api_key
-        if base_url:
-            values["cloud_base_url"] = base_url
-        if model:
-            values["cloud_model"] = model
-    elif provider == "sakura":
-        if not base_url:
-            return None, QCoreApplication.translate(
-                "SubtitleOCRGUI",
-                "已启用 AI 翻译（本地 Sakura），但未填写 Base URL。"
-                "请填写本地 Sakura 服务器的 OpenAI 兼容端点地址"
-                "（如 http://127.0.0.1:8080/v1）。",
-            )
-        values["sakura_base_url"] = base_url
-        if model:
-            values["sakura_model"] = model
-    # provider == "vlm"：零配置（VLM_REFINE_* 环境变量）。
+    if base_url:
+        values["cloud_base_url"] = base_url
+    if model:
+        values["cloud_model"] = model
 
     cfg = TranslationConfig(**values)
     target = str(options.get("translation_target_language") or "").strip()
