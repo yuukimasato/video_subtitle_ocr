@@ -560,5 +560,20 @@ P
 | CLI `--version` | `video-subtitle-ocr-cli 2.7.3`；`vso-font 2.7.3 (video-subtitle-ocr 2.7.3)`（2026-09-23 版本号统一后复验） |
 | GUI 离屏冒烟 | 通过（staging venv 内装配 `SubtitleOCRGUI`：`GUI OK: 视频字幕 OCR 工具`） |
 | vso-font 功能 | `identify --help` 正常；`index`（装 fontTools 后）扫描 1395 / 导入 1390 / 跳过 5（macOS `._*` 资源叉垃圾文件，逐条告警跳过） |
-| deb 构建 | `video-subtitle-ocr_2.8.0_all.deb`（6.0 MiB，184 条 md5sums，xz）；新增 `/usr/bin/vso-font` 启动器与 `vso-font.1` man 页；build_deb.sh 必需文件校验补 vso-font / font_cli.py / requirements-fontintel.txt |
+| deb 构建 | `video-subtitle-ocr_2.7.3_all.deb`（6.0 MiB，186 条 md5sums，xz）；新增 `/usr/bin/vso-font` 启动器与 `vso-font.1` man 页；build_deb.sh 必需文件校验补 vso-font / font_cli.py / requirements-fontintel.txt |
 | deb 安装测试 | rootless 安装（**全新 venv + 全量 pip 联网安装路径实测**，postinst 自动补装 rapidocr）→ CLI `--version` / 真实视频 OCR（输出与开发机逐字节一致）→ vso-font 无 fontTools 时可恢复降级（退出码 + 安装指引，无副作用）→ 补装后 `index` 全功能 → GUI 离屏冒烟 → remove（启动器删除、venv 保留）→ purge（目录与数据库记录全清）全流程通过 |
+
+### 2026-09-23 · v2.7.3 发布复验（CLI 链路 + deb 打包）· Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
+
+> 2.8.0 开发线整理为 2.7.3 发布（ETL S0.5 + schema v4 并入，CHANGELOG 合并
+> 版本节，99793ec / 31ac39d）后的发布复验；CLI 链路按用户操作路径模拟。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **1561 passed, 1 skipped**（73.9 s；含本轮新增 ETL S0.5 / xlsx / fontlib_index 本地化名共 48 项） |
+| CLI 入口/错误路径 | `--version` → `video-subtitle-ocr-cli 2.7.3`；`--help` 正常；不存在视频 exit 1；未知 `--preset` exit 2；`--template` 指向不存在文件 exit 1（`style template not found`，真实视频下复验）；非法 `--roi` exit 2（明确报错格式） |
+| CLI 端到端 | 8 s drawtext 中文字幕测试视频、全默认参数 → 3 条 Dialogue 逐条吻合、时间码精确（5.6 s 完成）；`--roi-file`（GUI 导出 JSON）、`--template`（config.ass，Style 行生效）、`--engine rapid`（与 paddle 结果一致）、`--font-identify`（compliance_report.md/json 生成，unknown 从严保留原字体名不阻断）全部 exit 0 |
+| `--translate` 无提供方 | 云端/本地/VLM 均未配置 → WARNING「全部保留原文」、exit 0，任务链不中断 |
+| `vso-font` | `--version` → `vso-font 2.7.3 (video-subtitle-ocr 2.7.3)`；identify 无 torch → 可恢复降级 exit 3 + `--text` 指引（无副作用）；`--text` 字形重排降级路径 exit 0；fontTools 就绪后 Top-1 命中测试视频真实字体（Source Han Sans SC 0.936，本地化名别名入库生效）；`index` 对真实 v4 库 1017 扫描 / 1012 导入 / 5 跳过（macOS `._*` 资源叉垃圾逐条告警）；**0612bf1 上「schema version 4 is newer than supported version 3」拒绝打开真实库的问题随 schema v4 支持解决** |
+| deb 打包 | `video-subtitle-ocr_2.7.3_all.deb`（6.0 MiB，186 条 md5sums，`-Zxz` 兼容老 dpkg）；`dpkg-deb -I` Version 2.7.3 / Architecture all；包内含 cli.py / font_cli.py / font_intel ETL 模块（clean.py、xlsx_extract.py）/ `/usr/bin/vso-font` + man 页 |
+| deb rootless 冒烟 | `dpkg-deb -x` 暂装树 + `VSO_APP_DIR` 启动器（video-subtitle-ocr-cli / vso-font）→ 均报 2.7.3；安装 venv 无 fontTools 时 identify/index 可恢复降级 exit 3 + 安装指引（设计内行为，无副作用） |
