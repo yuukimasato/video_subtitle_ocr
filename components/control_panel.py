@@ -827,6 +827,10 @@ class ControlPanelWidget(QWidget):
         advanced_content.addLayout(gate_row)
         advanced_content.addWidget(self.color_gate_status_label)
         llm_content.addLayout(llm_polish_grid)
+        # AI 翻译（T2.5）并入「大模型润色」组内：翻译与润色共用 API Key 与
+        # 运行锁控件，视觉上同属一个校对/润色区（用户要求），仅父布局变化，
+        # 控件属性名与 QSettings 键保持不变。
+        llm_content.addWidget(self.translation_group)
 
         secondary_row = QHBoxLayout()
         secondary_row.setSpacing(8)
@@ -838,7 +842,6 @@ class ControlPanelWidget(QWidget):
         # 检测状态行：加载视频后的自动分析进度/结果，两种视图下都可见。
         extract_layout.addWidget(self.source_status_label)
         extract_layout.addWidget(self.llm_group)
-        extract_layout.addWidget(self.translation_group)
         extract_layout.addWidget(self.font_identify_group)
         extract_layout.addWidget(self.advanced_group)
         mode_row = QHBoxLayout()

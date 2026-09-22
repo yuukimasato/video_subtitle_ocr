@@ -103,6 +103,9 @@ def panel():
     saved_auto_roi = settings.value("pipeline/auto_roi_on_load")
     settings.setValue("pipeline/auto_roi_on_load", True)
     w = ControlPanelWidget()
+    # 翻译组已并入「大模型润色」组内（checkable QGroupBox 未勾选时会禁用
+    # 并隐藏后代）——先展开润色组，翻译控件才处于可见可交互态。
+    w.llm_group.setChecked(True)
     yield w
     w.shutdown_background_threads(timeout_ms=100)
     w.deleteLater()
