@@ -367,6 +367,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
         _info(f"Error: video not found: {video_path}", args.quiet)
         return 1
 
+    if args.template and not os.path.isfile(args.template):
+        _info(f"Error: style template not found: {args.template}", args.quiet)
+        return 1
+
     out_path = os.path.abspath(args.output) if args.output else \
         os.path.splitext(video_path)[0] + ".ass"
 
