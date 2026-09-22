@@ -52,7 +52,7 @@ if PROJECT_ROOT not in sys.path:
 
 #: 独立入口版本号（--version 惰性读取 cli.__version__，失败时回退本值；
 #: 与主包版本保持一致，随每次发布同步更新）。
-__version__ = "2.8.0"
+__version__ = "2.7.3"
 
 EXIT_OK = 0
 EXIT_ERROR = 1

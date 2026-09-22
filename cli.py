@@ -32,7 +32,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "2.8.0"
+__version__ = "2.7.3"
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
