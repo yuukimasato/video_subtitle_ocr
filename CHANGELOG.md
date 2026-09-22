@@ -4,14 +4,63 @@
 各版本发布前的完整测试记录见 [docs/testing.md](docs/testing.md)，
 打包与发布流程见 [docs/packaging.md](docs/packaging.md) 的“版本发布检查清单”。
 
-## 2.8.0（2026-09-22）
+## 2.7.3（2026-09-22）
 
-> 本版本 `feature/font-intel-p1` 分支汇总：字体智能（font_intel）与 AI 翻译扩展。
-> 全部新能力均为**可选增强**：依赖缺失时优雅降级，全部关闭时输出与 2.7.3 基线
-> 逐字节一致（G4 门禁：中/日测试视频 worktree 对比，见
+> 本版本 = 2.7.3 修复线（每 ROI 识别语言、轨迹接管覆盖门限、CLI
+> `--template` 存在性校验）+ `feature/font-intel-p1` 字体智能（font_intel）
+> 与 AI 翻译扩展（原 2.8.0 开发线，发布前统一版本号为 2.7.3 并入本版）。
+> 字体智能/翻译均为**可选增强**：依赖缺失时优雅降级，全部关闭时输出与
+> 基线（3e5a423）逐字节一致（G4 门禁：中/日测试视频 worktree 对比，见
 > docs/superpowers/evidence/2026-09-22-font-intel-release-verification/）。
 
-### 新增
+### 新增 — 修复线批次（2026-09-21）
+
+- **每 ROI 识别语言（默认「自动」跟随全局）**：双语字幕（繁體中文 + 日語
+  两个 ROI）此前只能共用全局「识别语言」——选「日本語」时繁中行识别不全，
+  选「中文繁體」时日语行又漏认。现在 ROI 详情面板新增「识别语言」下拉
+  （与全局同一份 12 种语言取值，默认「自动（跟随全局）」保持既有行为），
+  给每种语言各画一个 ROI 并分别指定语言，各 ROI 用各自的识别模型。
+  - 实现：`roi["ocr_lang"]` 随 ROI 配置 JSON 持久化（`roi_config_io` 原样
+    读写，旧配置无该键 = 自动）；选中即写回（与场景策略同契约），
+    「添加/更新 ROI」与启动识别前的面板兜底同步均携带。
+  - 引擎层（`ocr_engine_manager`）：新增 `get_engine_for_lang()`——空值或
+    与全局同语言时复用进程级单例；其他语言按
+    (引擎, 选项+lang) 缓存独立引擎实例（双语跑批两份识别模型常驻，
+    不逐帧重载），`set_engine()` 切换引擎/选项时统一清理。引擎通过
+    `supports_lang_override` 声明是否消费 `lang`（PaddleOCR 是，
+    RapidOCR 单一多语言模型置否、直接共享单例不多加载模型）。
+  - 全链路生效：主流水线逐帧 OCR（`run_batch_ocr` 按 roi dict 逐帧路由）、
+    采样批量路径（`OcrOptimizer._run_batch_ocr_on_samples` 按语言分组跑
+    原生 `predict_batch`）、并行边界精修
+    （`refine_executor._ThreadResources` 按语言懒建并缓存独立引擎）、
+    移动文字轨迹管线（`collect_motion_roi_specs` 透传 `ocr_lang`，
+    `build_motion_events` 新增 `engine_options` 参数——此前轨迹管线的
+    独立引擎**从不接收语言选项**，无论界面选什么都用默认 ch）、进程
+    分片并行的 chunk worker（经 ROI 条目自动继承）。合并画布
+    （`roi_merged`）模式与全片扫描维持全局语言。
+  - CLI：`--roi-file` 条目携带 `ocr_lang` 即覆盖 `--lang`（ROI 绑定轨迹
+    规格同样透传），无需新参数。
+- **轨迹接管覆盖门限（修复双语字幕「一种语言整段消失」）**：真实复现
+  （「一周的朋友」NCOP，顶部繁中带 + 底部日语带各一个 ROI、均勾选位置
+  标签）——轨迹管线是单链设计，平面跟踪只在对比度足够的段落锁定，顶部
+  繁中带 ok 率仅 14.8%（4 条 ok 链全部落在前 13.7s），接管却抑制了该
+  ROI 的全部静态事件，产出 23.5s 之后繁中整段缺失（日语带跟踪 1% ok
+  失败回退静态反而完整）。现在轨迹事件去重时长 / ROI 时长低于 50%
+  （`TRAJECTORY_MIN_EVENT_COVERAGE`）即判接管失败，该 ROI 整体回退静态
+  路径（与跟踪失败同路径，GUI 主流水线与 CLI ROI 绑定规格同契约），
+  并留痕覆盖率。修复后同视频双语 10+10 行全程完整；真正跟随画面运动的
+  文字（滚动屏等）事件覆盖接近全程，不受门限影响。
+  - 新增 `pipeline_worker.trajectory_event_coverage_sec()`（重叠/相邻
+    事件取并集）与 `trajectory_takeover_ok()`（ROI 帧范围/fps 非法时
+    判定按通过处理，不误杀轨迹结果）。
+
+### 修复
+
+- **CLI `--template` 指向不存在的文件时报错退出（exit 1）**：此前静默
+  忽略退回默认样式，用户误以为模板已生效；现在启动即校验模板文件
+  存在性并明确报错（GUI 模板路径选择同源校验）。
+
+### 新增 — 字体智能与 AI 翻译（可选增强，原 2.8.0 开发线）
 
 - **本地字体数据库（T1.1）**：SQLite 单文件库 `fonts.db`（XDG 数据目录，
   与 `utils/secret_store.py` 约定一致），schema 版本化迁移；种子层（只读）
@@ -25,6 +74,12 @@
   429 有界退避）→ S3 词表校验防幻觉 → S5 人工复核对话框（低置信逐条
   采纳/否决）→ S6 溯源入库（`source_file/line_no/method/confidence`，
   采纳行 `method=human`）。
+  - **S0.5 标准化清洗（2026-09-22 实施）**：厂商 xlsx 对照表提取
+  （`font_intel/etl/xlsx_extract.py`，rar 内 DynaFont×3/Fontworks/
+  Morisawa 五份）→ `font_intel/etl/clean.py` 规范化——一格多名按字重
+  token 白名单展开、笔记式注记剥离进 note（DynaFont 半角 `(P)` =
+  Proportional 属品名不剥离）；schema v4 新增 `jp_cn_font_map.note`
+  可空列承接；首次入库实测正映射 5068 行 / 唯一日文名 923 / 脏名残留 0。
 - **合规决策引擎（T1.6–T1.8）**：许可类别 × 使用场景 → 动作规则表
   （allow / prompt / replace_auto / report_only）；硬红线代码化——绝不
   提供/链接/缓存破解渠道字体，`commercial_paid` 只出官方链接，`unknown`
@@ -72,49 +127,8 @@
   （实测双框架同进程兼容、常驻约 0.53 GB，决策 = 同 venv 可选依赖 +
   主流水线永不 import torch 保守隔离）；README / docs/packaging.md /
   本CHANGELOG 同步 font_intel / `vso-font` 说明。
-
-## 2.7.3（2026-09-21）
-
-### 新增
-
-- **每 ROI 识别语言（默认「自动」跟随全局）**：双语字幕（繁體中文 + 日語
-  两个 ROI）此前只能共用全局「识别语言」——选「日本語」时繁中行识别不全，
-  选「中文繁體」时日语行又漏认。现在 ROI 详情面板新增「识别语言」下拉
-  （与全局同一份 12 种语言取值，默认「自动（跟随全局）」保持既有行为），
-  给每种语言各画一个 ROI 并分别指定语言，各 ROI 用各自的识别模型。
-  - 实现：`roi["ocr_lang"]` 随 ROI 配置 JSON 持久化（`roi_config_io` 原样
-    读写，旧配置无该键 = 自动）；选中即写回（与场景策略同契约），
-    「添加/更新 ROI」与启动识别前的面板兜底同步均携带。
-  - 引擎层（`ocr_engine_manager`）：新增 `get_engine_for_lang()`——空值或
-    与全局同语言时复用进程级单例；其他语言按
-    (引擎, 选项+lang) 缓存独立引擎实例（双语跑批两份识别模型常驻，
-    不逐帧重载），`set_engine()` 切换引擎/选项时统一清理。引擎通过
-    `supports_lang_override` 声明是否消费 `lang`（PaddleOCR 是，
-    RapidOCR 单一多语言模型置否、直接共享单例不多加载模型）。
-  - 全链路生效：主流水线逐帧 OCR（`run_batch_ocr` 按 roi dict 逐帧路由）、
-    采样批量路径（`OcrOptimizer._run_batch_ocr_on_samples` 按语言分组跑
-    原生 `predict_batch`）、并行边界精修
-    （`refine_executor._ThreadResources` 按语言懒建并缓存独立引擎）、
-    移动文字轨迹管线（`collect_motion_roi_specs` 透传 `ocr_lang`，
-    `build_motion_events` 新增 `engine_options` 参数——此前轨迹管线的
-    独立引擎**从不接收语言选项**，无论界面选什么都用默认 ch）、进程
-    分片并行的 chunk worker（经 ROI 条目自动继承）。合并画布
-    （`roi_merged`）模式与全片扫描维持全局语言。
-  - CLI：`--roi-file` 条目携带 `ocr_lang` 即覆盖 `--lang`（ROI 绑定轨迹
-    规格同样透传），无需新参数。
-- **轨迹接管覆盖门限（修复双语字幕「一种语言整段消失」）**：真实复现
-  （「一周的朋友」NCOP，顶部繁中带 + 底部日语带各一个 ROI、均勾选位置
-  标签）——轨迹管线是单链设计，平面跟踪只在对比度足够的段落锁定，顶部
-  繁中带 ok 率仅 14.8%（4 条 ok 链全部落在前 13.7s），接管却抑制了该
-  ROI 的全部静态事件，产出 23.5s 之后繁中整段缺失（日语带跟踪 1% ok
-  失败回退静态反而完整）。现在轨迹事件去重时长 / ROI 时长低于 50%
-  （`TRAJECTORY_MIN_EVENT_COVERAGE`）即判接管失败，该 ROI 整体回退静态
-  路径（与跟踪失败同路径，GUI 主流水线与 CLI ROI 绑定规格同契约），
-  并留痕覆盖率。修复后同视频双语 10+10 行全程完整；真正跟随画面运动的
-  文字（滚动屏等）事件覆盖接近全程，不受门限影响。
-  - 新增 `pipeline_worker.trajectory_event_coverage_sec()`（重叠/相邻
-    事件取并集）与 `trajectory_takeover_ok()`（ROI 帧范围/fps 非法时
-    判定按通过处理，不误杀轨迹结果）。
+- **开发依赖**：`requirements-dev.txt` 增可选 `openpyxl`（ETL 厂商 xlsx
+  输入路径；运行时不依赖，缺依赖时明确报错）。
 
 ### 测试
 
@@ -125,6 +139,9 @@
 - `tests/test_trajectory_coverage_gate.py`（6 项）：覆盖并集计算（实跑
   产物形态/重叠合并/空与退化事件）、门限拒绝（15% 残段）、全程运动文字
   通过、非法 ROI/fps 判定按通过、50% 边界。
+- `tests/test_font_etl_clean.py` / `tests/test_font_etl_xlsx.py`（新增）与
+  `tests/test_fontlib_index.py`（扩充本地化名别名），ETL 侧合计 48 项：
+  多名展开/注记剥离/脏名扫描、xlsx 提取、别名并入与上限。
 
 ## 2.7.2（2026-09-21）
 

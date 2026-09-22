@@ -546,7 +546,7 @@ P
 | 发布 | 本轮与「孤立 API 清理」一并作为 **2.7.1** 发布（2026-09-21，`cli.py`/control 同步，`未发布` 节转正） |
 | 行为约束（缓行） | 「消失段校正不得移出 ROI」仍待真实素材暴露：稀疏采样间隔内滚出文字可远移，按帧连续性/距离门控会误伤 DMG 滚出形态；`n_roi_fallback` 即为暴露时的定位依据 |
 
-### 2026-09-22 · v2.8.0 · Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
+### 2026-09-22 · v2.7.3（原 2.8.0 开发线，2026-09-23 发布前统一版本号为 2.7.3）· Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
 
 > 本版主要变化：font_intel 字体智能（字体识别 / 中日映射 / 合规决策）+ AI 翻译
 > 阶段 + `vso-font` 独立入口；全部新能力可选、缺依赖优雅缺席。测试数量
@@ -557,7 +557,7 @@ P
 | 单元测试 | **1531 passed, 1 skipped**（72.3 s；skip 为需真实 OCR 引擎的用例） |
 | G4 逐字节门禁 | v2.7.3 基线 worktree（3e5a423）vs 本分支、同一测试视频、新功能全关：中文视频 sha256 `e32119bb…` 一致、150 OCR calls；**日文视频（`--lang ja` 新增）sha256 `7f7e2a28…` 一致、154 OCR calls**、日文文本正确写入 ASS |
 | 三链路 429 专项 | 65 passed（LLM 429 有界退避 / 翻译云端→Sakura 降级 / ETL 批级降级 / 权重下载有界重试），见 `docs/superpowers/evidence/2026-09-22-font-intel-release-verification/` |
-| CLI `--version` | `video-subtitle-ocr-cli 2.8.0`；`vso-font 2.8.0 (video-subtitle-ocr 2.8.0)` |
+| CLI `--version` | `video-subtitle-ocr-cli 2.7.3`；`vso-font 2.7.3 (video-subtitle-ocr 2.7.3)`（2026-09-23 版本号统一后复验） |
 | GUI 离屏冒烟 | 通过（staging venv 内装配 `SubtitleOCRGUI`：`GUI OK: 视频字幕 OCR 工具`） |
 | vso-font 功能 | `identify --help` 正常；`index`（装 fontTools 后）扫描 1395 / 导入 1390 / 跳过 5（macOS `._*` 资源叉垃圾文件，逐条告警跳过） |
 | deb 构建 | `video-subtitle-ocr_2.8.0_all.deb`（6.0 MiB，184 条 md5sums，xz）；新增 `/usr/bin/vso-font` 启动器与 `vso-font.1` man 页；build_deb.sh 必需文件校验补 vso-font / font_cli.py / requirements-fontintel.txt |
