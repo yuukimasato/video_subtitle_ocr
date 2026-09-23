@@ -203,6 +203,7 @@ class OCRToASSOptimizer(
         motion_events: Optional[List[Dict[str, str]]] = None,
         motion_roi_ids: Optional[set] = None,
         motion_evidence: Optional[Dict[str, List[Dict]]] = None,
+        roi_auto_brightness: Optional[Dict[str, bool]] = None,
         analysis_frame_mode: str = "single",
         font_compliance: Optional["FontComplianceConfig"] = None,
         font_identifications: Optional[Any] = None,
@@ -247,6 +248,9 @@ class OCRToASSOptimizer(
         # summary["pre_policy_events"]),接管前与静态 OCR 证据做文本保真
         # 对照;缺省(旧调用方未传)时接管一律按 unverified 拒绝,保留静态。
         self.motion_evidence = dict(motion_evidence or {})
+        # B3:roi_id → 自动亮度开关;开启时该 ROI 的静态策略事件(遮罩与
+        # 文字)按帧采样屏幕背景亮度并叠加 \1c/\alpha 曲线标签。
+        self.roi_auto_brightness = dict(roi_auto_brightness or {})
         # A3:保真门控拒绝接管的 ROI——其轨迹候选事件在写出前整体移除,
         # 不只清 motion_roi_ids(否则候选会作为附加输出漏进最终 .ass)。
         self._rejected_motion_rois: set = set()
@@ -624,6 +628,19 @@ class OCRToASSOptimizer(
 
         cfg = SceneTextPolicyConfig(mode=policy)
         base_fs = int(self.height * 0.04)
+        # B3:自动亮度开启时,静态遮罩/文字按帧采样屏幕背景亮度(遮罩的
+        # base_color 与亮度曲线按通道缩放、保持不透明)。
+        auto_brightness = bool(self.roi_auto_brightness.get(str(roi_id)))
+        luma_cache: Dict[int, Optional[np.ndarray]] = {}
+
+        def _read_frame(num: int) -> Optional[np.ndarray]:
+            if num not in luma_cache:
+                try:
+                    luma_cache[num] = self._get_analysis_reader().read(num)
+                except Exception:  # 取帧失败只跳过该采样点
+                    luma_cache[num] = None
+            return luma_cache[num]
+
         events: List[Dict] = []
         for sl in slices:
             slice_rows = [rows[i] for i in sl.row_ids]
@@ -646,15 +663,18 @@ class OCRToASSOptimizer(
                         sl.end_cs / 100.0, len(sl.row_ids), len(specs)))
             start_time = self._format_time_seconds(sl.start_cs / 100.0)
             end_time = self._format_time_seconds(sl.end_cs / 100.0)
+            slice_events: List[Dict] = []
             for spec in specs:
                 kind = spec["kind"]
                 if kind == "mask":
                     tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
-                    events.append({
+                    slice_events.append({
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": "Scene", "tags": tags, "body": "",
                         "layer": int(spec.get("layer", 0)), "policy": True,
+                        "base_color": spec.get("base_color"),
+                        "_mask_box": spec.get("box"),
                     })
                 elif kind == "text":
                     tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
@@ -676,9 +696,9 @@ class OCRToASSOptimizer(
                     }
                     if spec.get("comment"):  # mask_only:排版参考行 → Comment 行
                         event["comment"] = True
-                    events.append(event)
+                    slice_events.append(event)
                 elif kind == "note":
-                    events.append({
+                    slice_events.append({
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": spec.get("style", "NoteBox"),
@@ -686,7 +706,7 @@ class OCRToASSOptimizer(
                         "body": spec.get("body", ""), "policy": True,
                     })
                 elif kind == "scene_ws":
-                    events.append({
+                    slice_events.append({
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": spec.get("style", "Scene"),
@@ -694,6 +714,48 @@ class OCRToASSOptimizer(
                                                float(oy)),
                         "body": spec.get("body", ""), "policy": True,
                     })
+            if auto_brightness and slice_events:
+                from core.scene_brightness import (
+                    apply_scene_brightness,
+                    sample_static_mask_luma_curve,
+                )
+
+                t0, t1 = sl.start_cs / 100.0, sl.end_cs / 100.0
+                fps = float(self.fps) if self.fps else 25.0
+                mask_events = [e for e in slice_events if e.get("_mask_box")]
+                text_events = [e for e in slice_events
+                               if not e.get("_mask_box")]
+                mask_curves = {}
+                for e in mask_events:
+                    box = e.get("_mask_box")
+                    key = tuple(round(v, 1) for v in box)
+                    if key not in mask_curves:
+                        rect = (box[0] + ox, box[1] + oy,
+                                box[2] + ox, box[3] + oy)
+                        mask_curves[key] = sample_static_mask_luma_curve(
+                            _read_frame, rect, t0, t1, fps=fps)
+                curved: List[Dict] = []
+                for e in mask_events:
+                    key = tuple(round(v, 1) for v in e.get("_mask_box"))
+                    curved.extend(apply_scene_brightness(
+                        [e], mask_curves.get(key) or []))
+                # 文字与遮罩共用采样时间;文字取全部遮罩框的并集为采样窗。
+                if text_events and mask_events:
+                    ux1 = min(e["_mask_box"][0] for e in mask_events)
+                    uy1 = min(e["_mask_box"][1] for e in mask_events)
+                    ux2 = max(e["_mask_box"][2] for e in mask_events)
+                    uy2 = max(e["_mask_box"][3] for e in mask_events)
+                    union_curve = sample_static_mask_luma_curve(
+                        _read_frame, (ux1 + ox, uy1 + oy, ux2 + ox, uy2 + oy),
+                        t0, t1, fps=fps)
+                    curved.extend(apply_scene_brightness(
+                        text_events, union_curve))
+                else:
+                    curved.extend(text_events)
+                slice_events = curved
+            for e in slice_events:
+                e.pop("_mask_box", None)
+            events.extend(slice_events)
         # 仅合并「显示属性完全相同」的相邻事件(同行跨片延续);不做任何
         # 时间并集/最小最大回填。
         def _disp_key(ev: Dict) -> tuple:

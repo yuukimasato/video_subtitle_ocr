@@ -127,3 +127,53 @@ def test_identity_merge_keeps_same_row_continuous(tmp_path):
     conv.convert_from_memory(iter(items))
     notes = _note_lines(out.read_text(encoding="utf-8-sig"))
     assert len(notes) == 1, notes
+
+
+def test_static_mask_brightness_follows_dimming(tmp_path):
+    """B3:自动亮度开启时,静态遮罩按背景亮度缩放 base_color 且不写 alpha。"""
+    import re
+
+    from core.subtitle_generator import OCRToASSOptimizer
+
+    video = tmp_path / "dim.avi"
+    frame_bright = np.full((H, W, 3), 200, np.uint8)
+    frame_bright[100:106, 40:120] = 20
+    frame_dim = (frame_bright.astype(np.float32) * 0.4).astype(np.uint8)
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"FFV1"),
+                             FPS, (W, H))
+    assert writer.isOpened()
+    for i in range(60):
+        writer.write(frame_bright if i < 30 else frame_dim)
+    writer.release()
+
+    sign_box = (30, 85, 130, 115)
+    poly = [[sign_box[0], sign_box[1]], [sign_box[2], sign_box[1]],
+            [sign_box[2], sign_box[3]], [sign_box[0], sign_box[3]]]
+    items = []
+    for f in range(5, 45):
+        data = {
+            "dt_polys": [poly], "rec_polys": [poly],
+            "rec_texts": ["店铺招牌"], "rec_scores": [0.95],
+            "rec_boxes": [list(sign_box)],
+        }
+        items.append((data, f, "roi_0", f / FPS))
+
+    out = tmp_path / "out.ass"
+    conv = OCRToASSOptimizer(
+        video_path=str(video), output_path=str(out), fps=FPS, width=W,
+        height=H,
+        roi_scene_text_policies={"roi_0": "mask"},
+        roi_analysis_rects={"roi_0": (20, 80, 140, 130)},
+        roi_auto_brightness={"roi_0": True})
+    conv.convert_from_memory(iter(items))
+    text = out.read_text(encoding="utf-8-sig")
+    masks = [ln for ln in text.splitlines()
+             if ln.startswith("Dialogue: 0,") and "\\p1" in ln]
+    assert masks, "mask events must exist"
+    tagged = [ln for ln in masks if "\\1c&H" in ln]
+    assert tagged, "mask events must carry brightness-scaled color tags"
+    assert all("\\alpha" not in ln for ln in masks), \
+        "colored mask must stay opaque (no alpha reveal)"
+    # 亮段基色与暗段缩放色并存(\t 或分段 \1c)。
+    joined = "\n".join(tagged)
+    assert re.search(r"\\1c&H[0-9A-F]{6}&", joined)

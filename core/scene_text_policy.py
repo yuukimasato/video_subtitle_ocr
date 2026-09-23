@@ -1611,6 +1611,9 @@ def _static_mask_spec(
         "layer": 0,
         "rows": [int(i) for i in row_indices],
         "base_color": (b, g, r),
+        # B3:平面坐标采样矩形(生成器加回外接框原点得到视频坐标矩形),
+        # 供自动亮度按帧采样遮罩覆盖的背景亮度。
+        "box": [float(x1), float(y1), float(x2), float(y2)],
     }
 
 

@@ -145,3 +145,21 @@ def collect_roi_pose_tags(
         if roi.get("write_pose_tags") and isinstance(pose, dict):
             tags[f"roi_{idx}"] = pose
     return tags
+
+
+def collect_roi_auto_brightness(
+    rois: Optional[List[Dict[str, Any]]],
+    global_enabled: bool = False,
+) -> Dict[str, bool]:
+    """收集 ``roi_N`` → 是否自动亮度(逐 ROI 开关 OR 全局开关)。
+
+    CLI 的 ``--auto-brightness`` 与 GUI 的逐 ROI「自动亮度」勾选统一在此
+    合成;生成器据此决定是否为该 ROI 的静态遮罩/文字采样屏幕亮度曲线。
+    """
+    out: Dict[str, bool] = {}
+    for idx, roi in enumerate(rois or []):
+        if not isinstance(roi, dict):
+            continue
+        out[f"roi_{idx}"] = bool(roi.get("motion_auto_brightness", False)) \
+            or bool(global_enabled)
+    return out

@@ -1567,7 +1567,8 @@ def build_motion_events(
     #     事件经 line_idx 取所属行的曲线;整平面曲线仍作为缺省(行曲线缺失、
     #     遮罩事件)与 whitespace/external(文本被重新布局,行归属失效)回退。
     if auto_brightness:
-        from core.motion_ass import brightness_tag_chain, simplify_luma_curve
+        from core.scene_brightness import apply_scene_brightness
+        from core.motion_ass import simplify_luma_curve
         from core.screen_luma import (
             measure_line_luma_curves,
             measure_luma_curve_with_baseline,
@@ -1601,27 +1602,16 @@ def build_motion_events(
                     ]
                     log("      brightness: per-line curves for "
                         f"{sum(1 for c in per_line if c)}/{len(per_line)} line(s)")
-            n_tagged = 0
-            for ev in events:
-                base_color = ev.pop("base_color", None)
-                ev_curve = simplified
-                if per_line:
-                    li = ev.get("line_idx")
-                    if (isinstance(li, int) and 0 <= li < len(per_line)
-                            and per_line[li]):
-                        ev_curve = per_line[li]
-                chain = brightness_tag_chain(
-                    ev_curve,
-                    _parse_ass_time(ev["start_time"]),
-                    _parse_ass_time(ev["end_time"]),
-                    use_color=cfg.brightness_use_color,
-                    use_alpha=cfg.brightness_use_alpha
-                    and base_color is None,
-                    base_color=base_color,
-                )
-                if chain:
-                    ev["tags"] = f"{ev['tags']}{{{chain}}}"
-                    n_tagged += 1
+            before_tags = [e.get("tags") for e in events]
+            # B3:共用亮度标签循环(core.scene_brightness)——base_color
+            # 保留为元数据,遮罩按通道缩放且不写 alpha(不露原字)。
+            events = apply_scene_brightness(
+                events, simplified,
+                use_alpha=cfg.brightness_use_alpha,
+                use_color=cfg.brightness_use_color,
+                per_line=per_line)
+            n_tagged = sum(
+                1 for a, b in zip(before_tags, events) if a != b["tags"])
             log(f"      brightness: baseline {baseline_luma:.1f}, "
                 f"{len(simplified)} keyframe(s), "
                 f"tagged {n_tagged}/{len(events)} event(s)")
