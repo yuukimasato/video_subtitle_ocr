@@ -310,16 +310,11 @@ def _font_identify_config_from_args(args: argparse.Namespace):
     return FontIdentifyConfig(enabled=True, db_path=db_path or None)
 
 
-def _run_chunk_stages(args: argparse.Namespace, video_path: str,
-                      roi_entries: list, info: dict, work_dir: str, plan):
-    """Stages 1-3 through chunk-parallel workers; returns (records, elapsed).
-
-    Matches the CLI's single-process semantics: no boundary refinement.
-    """
-    from core import chunk_parallel_runner
+def _build_pipeline_context(args, video_path, roi_entries, info, work_dir):
+    """Share CLI stage configuration across sequential and chunk execution."""
     from core.pipeline_stages import PipelineContext
 
-    ctx = PipelineContext(
+    return PipelineContext(
         video_path=video_path,
         roi_data=roi_entries,
         total_frames=info["total_frames"],
@@ -333,6 +328,14 @@ def _run_chunk_stages(args: argparse.Namespace, video_path: str,
         engine_options=_engine_options_from_args(args),
         enable_boundary_refine=False,
     )
+
+
+def _run_chunk_stages(args: argparse.Namespace, video_path: str,
+                      roi_entries: list, info: dict, work_dir: str, plan):
+    """Run shared stages in chunk workers, preserving CLI refinement policy."""
+    from core import chunk_parallel_runner
+
+    ctx = _build_pipeline_context(args, video_path, roi_entries, info, work_dir)
     if not args.quiet:
         print(
             f"[1-3/4] Chunk-parallel OCR: {plan.workers} workers, "
@@ -359,8 +362,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # 保留引用:临时对象会被引用计数立即销毁,instance() 复回 None。
         _qt_app = QCoreApplication(sys.argv)
 
-    from core import coordinate_restorer, roi_extractor, subtitle_generator
-    from core.ocr_optimizer import OcrOptimizer
+    from core import pipeline_stages, subtitle_generator
 
     video_path = os.path.abspath(args.video)
     if not os.path.isfile(video_path):
@@ -491,80 +493,25 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 return 1
 
         if chunk_results is None:
-            # ── Stage 1: ROI frame extraction (in-memory) ──
-            t0 = time.perf_counter()
-            _info("[1/4] Extracting ROI frames...", args.quiet)
-            roi_frames = list(
-                roi_extractor.extract_roi_frames(
-                    video_path,
-                    roi_entries,
-                    info["total_frames"],
-                    info["fps"],
-                    work_dir,
-                    save_to_disk=False,
-                )
-            )
-            t1 = time.perf_counter()
-            _info(f"      {len(roi_frames)} ROI frames extracted ({t1 - t0:.2f}s)", args.quiet)
-            if not roi_frames:
-                _info("No frames fell inside any ROI time range; nothing to do.", args.quiet)
-                return 1
+            ctx = _build_pipeline_context(args, video_path, roi_entries, info, work_dir)
+            _info(f"[1-3/4] OCR ({args.engine} engine, lang={args.lang})...", args.quiet)
 
-            # ── Stage 2: optimized OCR ──
-            _info(f"[2/4] OCR ({args.engine} engine, lang={args.lang})...", args.quiet)
-            model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
-                else args.model_tier
-            engine_options = {"lang": args.lang, "model_tier": model_tier}
-            import inspect
-
-            supported = inspect.signature(OcrOptimizer.__init__).parameters
-            optimizer_kwargs = {
-                k: v for k, v in {
-                    "work_dir": work_dir,
-                    "visualize": False,
-                    "in_memory_mode": True,
-                    "save_ocr_json": False,
-                    "ocr_engine_id": ("" if args.engine == "auto" else args.engine),
-                    "engine_options": engine_options,
-                }.items() if k in supported
-            }
-            optimizer = OcrOptimizer(**optimizer_kwargs)
-
-            group_count = 0
-
-            def _progress_cb(_count: int) -> None:
-                nonlocal group_count
-                group_count += 1
+            def _progress(pct: int, _message: str) -> None:
                 if not args.quiet:
-                    print(f"\r      OCR groups processed: {group_count}", end="", file=sys.stderr, flush=True)
+                    print(f"\r      progress: {pct:3d}%", end="", file=sys.stderr, flush=True)
 
-            ocr_results = optimizer.process_roi_group(
-                roi_frames,
-                is_cancelled_func=lambda: False,
-                progress_callback=None if args.quiet else _progress_cb,
-            )
-            optimizer.cleanup()
-            t2 = time.perf_counter()
-            ocr_calls = int(getattr(optimizer, "ocr_calls", 0))
+            ocr_results, stats = pipeline_stages.extract_and_ocr_stage(
+                ctx, progress_cb=_progress, cancel_check=lambda: False)
+            restored_results = pipeline_stages.restore_stage(
+                ctx, ocr_results, progress_cb=_progress, cancel_check=lambda: False)
+            t3 = time.perf_counter()
             if not args.quiet:
                 print(file=sys.stderr)
             _info(
-                f"      {ocr_calls} OCR calls covered {len(ocr_results)} frames "
-                f"({t2 - t1:.2f}s)",
+                f"      {stats['total_ocr_calls']} OCR calls, "
+                f"{len(restored_results)} frames restored ({t3 - t0:.2f}s)",
                 args.quiet,
             )
-
-            # ── Stage 3: coordinate restoration ──
-            _info("[3/4] Restoring ROI coordinates to full-frame space...", args.quiet)
-            restored_results = list(
-                coordinate_restorer.restore_coordinates(
-                    iter(ocr_results),
-                    work_dir,
-                    save_json=False,
-                )
-            )
-            t3 = time.perf_counter()
-            _info(f"      {len(restored_results)} frames restored ({t3 - t2:.2f}s)", args.quiet)
 
         # ── Moving-text trajectory quads (independent of ROI entries) ──
         # Each --motion-quad / --motion-quad-file runs the trajectory

@@ -19,7 +19,7 @@ import threading
 import time
 import cv2
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -95,6 +95,25 @@ def extract_and_ocr_stage(
     them. Returns the raw per-frame OCR results and a stats dict.
     """
     stream_executor: Optional[ThreadPoolExecutor] = None
+    optimizer = None
+    frame_generator = None
+    stop_event = threading.Event()
+    external_cancel_check = cancel_check
+
+    def cancel_check():
+        return stop_event.is_set() or external_cancel_check()
+
+    report_progress = progress_cb
+    progress_lock = threading.Lock()
+    last_progress = -1
+
+    def progress_cb(pct, message):
+        nonlocal last_progress
+        with progress_lock:
+            if pct > last_progress:
+                last_progress = pct
+                report_progress(pct, message)
+
     try:
         progress_cb(0, QCoreApplication.translate(
             "pipeline_worker", "Step 1/4: Calculating number of ROI frames to process..."))
@@ -197,6 +216,8 @@ def extract_and_ocr_stage(
         max_outstanding = max_stream_workers * 2
 
         def _process_bucket_task(frames: List[tuple]):
+            if cancel_check():
+                raise PipelineCancelled()
             local_opt = OcrOptimizer(
                 work_dir=ctx.work_dir,
                 visualize=ctx.visualize,
@@ -205,23 +226,30 @@ def extract_and_ocr_stage(
                 ocr_engine_id=ctx.ocr_engine_id,
                 engine_options=ctx.engine_options,
             )
-            frames.sort(key=lambda x: x[2])
-            res = local_opt.process_roi_group(
-                frames,
-                is_cancelled_func=cancel_check,
-                progress_callback=None
-            )
-            calls = int(getattr(local_opt, "ocr_calls", 0))
-            filled = int(getattr(local_opt, "frames_filled", 0))
-            local_opt.cleanup()
-            return res, calls, filled, len(frames)
+            try:
+                frames.sort(key=lambda x: x[2])
+                res = local_opt.process_roi_group(
+                    frames,
+                    is_cancelled_func=cancel_check,
+                    progress_callback=None
+                )
+                calls = int(getattr(local_opt, "ocr_calls", 0))
+                filled = int(getattr(local_opt, "frames_filled", 0))
+                return res, calls, filled, len(frames)
+            finally:
+                local_opt.cleanup()
 
         def _collect_one_completed():
             nonlocal processed_count, total_ocr_calls, total_frames_filled
             if not pending_futures:
                 return
-            it = as_completed(list(pending_futures))
-            for fut in it:
+            completed = set()
+            while not completed:
+                if external_cancel_check():
+                    raise PipelineCancelled()
+                completed, _ = wait(pending_futures, timeout=0.1,
+                                    return_when=FIRST_COMPLETED)
+            for fut in completed:
                 pending_futures.discard(fut)
                 res, calls, filled, frame_cnt = fut.result()
                 ocr_results.extend(res)
@@ -421,35 +449,37 @@ def extract_and_ocr_stage(
                     ocr_engine_id=ctx.ocr_engine_id,
                     engine_options=ctx.engine_options,
                 )
-                frames.sort(key=lambda x: x[2])
+                try:
+                    frames.sort(key=lambda x: x[2])
 
-                # In parallel mode, use the optimizer's internal progress callback to update
-                # global progress smoothly (instead of only when each ROI group finishes).
-                last_reported = 0
+                    # In parallel mode, use the optimizer's internal progress callback to update
+                    # global progress smoothly (instead of only when each ROI group finishes).
+                    last_reported = 0
 
-                def progress_callback(group_processed_count: int):
-                    nonlocal last_reported, processed_count
-                    if cancel_check():
-                        return
-                    group_processed_count = int(max(0, min(group_processed_count, len(frames))))
-                    delta = group_processed_count - last_reported
-                    if delta <= 0:
-                        return
-                    last_reported = group_processed_count
-                    with processed_lock:
-                        processed_count += delta
-                        current_total_processed = min(processed_count, total_roi_frames)
-                    _emit_ocr_progress(current_total_processed)
+                    def progress_callback(group_processed_count: int):
+                        nonlocal last_reported, processed_count
+                        if cancel_check():
+                            return
+                        group_processed_count = int(max(0, min(group_processed_count, len(frames))))
+                        delta = group_processed_count - last_reported
+                        if delta <= 0:
+                            return
+                        last_reported = group_processed_count
+                        with processed_lock:
+                            processed_count += delta
+                            current_total_processed = min(processed_count, total_roi_frames)
+                        _emit_ocr_progress(current_total_processed)
 
-                res = local_opt.process_roi_group(
-                    frames,
-                    is_cancelled_func=cancel_check,
-                    progress_callback=progress_callback if use_parallel else None
-                )
-                calls = int(getattr(local_opt, "ocr_calls", 0))
-                filled = int(getattr(local_opt, "frames_filled", 0))
-                local_opt.cleanup()
-                return roi_id, res, calls, filled, len(frames), last_reported
+                    res = local_opt.process_roi_group(
+                        frames,
+                        is_cancelled_func=cancel_check,
+                        progress_callback=progress_callback if use_parallel else None
+                    )
+                    calls = int(getattr(local_opt, "ocr_calls", 0))
+                    filled = int(getattr(local_opt, "frames_filled", 0))
+                    return roi_id, res, calls, filled, len(frames), last_reported
+                finally:
+                    local_opt.cleanup()
 
             if use_parallel:
                 logger.info(
@@ -516,7 +546,6 @@ def extract_and_ocr_stage(
                 total_ocr_calls = int(getattr(optimizer, "ocr_calls", 0))
                 total_frames_filled = int(getattr(optimizer, "frames_filled", 0))
 
-            optimizer.cleanup()
         else:
             # Streaming path: flush remaining buffers at EOF, then cleanup.
             for roi_id in sorted(buffer_by_roi.keys()):
@@ -531,7 +560,6 @@ def extract_and_ocr_stage(
             if stream_executor is not None:
                 stream_executor.shutdown(wait=True)
                 stream_executor = None
-            optimizer.cleanup()
 
         if cancel_check():
             raise PipelineCancelled()
@@ -551,14 +579,21 @@ def extract_and_ocr_stage(
         return ocr_results, stats
 
     finally:
-        # Cancel/early-return paths bypass the normal shutdown; the
-        # executor's workers are non-daemon threads and would keep the
-        # process busy (and OCR models loaded) long after "cancel".
-        if stream_executor is not None:
+        # Signal running tasks before joining: the caller may remove work_dir
+        # immediately after this function returns, so no task may outlive it.
+        stop_event.set()
+        try:
+            if stream_executor is not None:
+                stream_executor.shutdown(wait=True, cancel_futures=True)
+        finally:
             try:
-                stream_executor.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                logger.warning("Failed to shut down streaming OCR executor.", exc_info=True)
+                if frame_generator is not None:
+                    close = getattr(frame_generator, "close", None)
+                    if close is not None:
+                        close()
+            finally:
+                if optimizer is not None:
+                    optimizer.cleanup()
 
 
 def refine_stage(
