@@ -128,7 +128,7 @@ def test_scene_lines_keep_own_pos_and_gain_rotation(tmp_path):
     # Scene 行的 \frz 取该行多边形自身的方向角(轴对齐框 → 0.0),不再继承
     # ROI 级 8.0;旋转写在 override 块内部(在外面会被当字面文本渲染),
     # 数值标签不带圆括号(\frz(8.0) 是非法 ASS,libass 静默忽略)。
-    assert "{\\an5\\pos(300,325)\\frz0.0\\frx0.0\\fry0.0}" in text
+    assert "{\\an5\\pos(300,325)\\fs50\\frz0.0\\frx0.0\\fry0.0}" in text
 
 
 def test_scene_lines_keep_tilted_polygon_angle(tmp_path):
@@ -173,7 +173,7 @@ def test_zero_tilt_rect_pose_still_writes_rotation_tags(tmp_path):
     conv.convert_from_memory(iter(items))
 
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
-    assert "{\\an5\\pos(300,325)\\frz0.0\\frx0.0\\fry0.0}" in text
+    assert "{\\an5\\pos(300,325)\\fs50\\frz0.0\\frx0.0\\fry0.0}" in text
     # ... and nothing leaks outside the override block as literal text
     assert "}\\frz" not in text and "}\\frx" not in text
 

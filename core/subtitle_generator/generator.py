@@ -1027,6 +1027,28 @@ class OCRToASSOptimizer(
                             continue
                         styled_lines = other_lines
                     pose = self.roi_pose_tags.get(str(roi_id))
+                    if pose and not self.template_path:
+                        # C2:上下字幕带(多行合并事件)在有 pose 且无模板时
+                        # 保留分行几何——事件字号取各行 fit 值的最小值,
+                        # 避免组宽超过 ROI。
+                        from core.line_geometry import fit_line_size
+
+                        for info in styled_lines:
+                            line_boxes = info.get("line_boxes")
+                            if not line_boxes or "\\fs" in info["tags"]:
+                                continue
+                            fits = [fit_line_size(tuple(float(v) for v in b),
+                                                  None)
+                                    for b in line_boxes]
+                            fits = [f for f in fits if f is not None]
+                            if not fits:
+                                continue
+                            fs_value = min(fits)
+                            fs_text = (str(int(fs_value))
+                                       if float(fs_value).is_integer()
+                                       else f"{fs_value:.2f}")
+                            info["tags"] = (info["tags"][:-1]
+                                            + f"\\fs{fs_text}" + "}")
                     if pose:
                         # 取组内中间帧供逐行取色(打不开/失败时自动跳过取色);
                         # FrameReader 按帧号缓存,多组共享同一句柄。

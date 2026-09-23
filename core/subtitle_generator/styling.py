@@ -152,7 +152,13 @@ class _StylingMixin:
 
         elif location_type == 'TOP':
             full_text = "\\N".join([line.text for line in sorted_lines])
-            dialogue_lines.append({'style': 'Top', 'text': full_text, 'tags': '{\\an8}'})
+            dialogue_lines.append({
+                'style': 'Top', 'text': full_text, 'tags': '{\\an8}',
+                # C2:分行几何保留——有 pose 且无模板时多行事件取各行
+                # fit 的最小值(由 convert 循环按 ROI 姿态开关施加)。
+                'line_boxes': [tuple(float(v) for v in ln.box)
+                               for ln in sorted_lines],
+            })
         elif location_type == 'SCENE':
             # 逐行投票检测原文对齐(左→\an4 锚行框左缘,右→\an6 锚右缘,中→
             # \an5 锚中心):识别行以行高回贴,渲染宽度与原框必有出入,居中
@@ -187,13 +193,29 @@ class _StylingMixin:
                 else:
                     x = int(line.center[0])
                     an = 5
-                tags = f"{{\\an{an}\\pos({x},{y})}}"
+                tags = f"{{\\an{an}\\pos({x},{y})"
+                # C2:无自定义模板时按行框几何写 per-line \fs——小字标签
+                # 不再被统一 Scene 字号放大,大字正文不被压小。字号受行框
+                # 约束(缺省退回行高估计);颜色/旋转仍只由 pose 标签加入。
+                auto_fs = None
+                if not self.template_path:
+                    from core.line_geometry import fit_line_size
+
+                    auto_fs = fit_line_size(
+                        tuple(float(v) for v in line.box), None)
+                if auto_fs is not None:
+                    fs_text = str(int(auto_fs)) if float(auto_fs).is_integer() \
+                        else f"{auto_fs:.2f}"
+                    tags += f"\\fs{fs_text}"
+                tags += "}"
                 dialogue_lines.append({
                     'style': 'Scene', 'text': line.text, 'tags': tags,
                     # 逐行还原(_apply_roi_pose_tags)用:屏幕坐标多边形与
                     # 行高(描边估计的字号参照)。
                     'poly': [tuple(p) for p in line.polygon],
                     'height': line.bounding_height,
+                    # C2:行框保留,供多行组取最小 fit 等下游几何决策。
+                    'box': tuple(float(v) for v in line.box),
                 })
         return dialogue_lines
 
