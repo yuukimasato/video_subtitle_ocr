@@ -585,13 +585,15 @@ def test_occlusion_clip_end_to_end(tmp_path, monkeypatch):
                            ocr_fn=make_mock_ocr([])) == 0
     plain = _text_fields(out_plain.read_text(encoding="utf-8-sig"))
     clipped = _text_fields(out_clip.read_text(encoding="utf-8-sig"))
-    assert len(plain) == len(clipped) == 2
+    assert len(plain) == 2
     assert all("\\iclip(" not in t for t in plain)
-    assert all("\\iclip(" in t for t in clipped)
-    # 首末采样帧(0、23)都有遮挡且多边形个数相同 → 动画形式
-    # \iclip + \t(0,段长ms,\iclip(...));段长 = 0.00 → 3.00s(链尾 +1 帧)
-    assert all(t.count("\\iclip(") == 2 for t in clipped)
-    assert all("\\t(0,3000,\\iclip(" in t for t in clipped)
+    # B2 离散切片:遮挡帧所在事件写**静态** \iclip(当前帧单应映射),
+    # 不再整段 \t 插值动画(libass 对 vector clip 插值支持未经验证);
+    # 无遮挡的中段时间不带 clip。
+    assert len(clipped) >= 2
+    assert any("\\iclip(" in t for t in clipped)
+    assert not any("\\iclip(" in t and "\\t(" in t for t in clipped)
+    assert any("\\iclip(" not in t for t in clipped)
 
 
 # ---------------------------------------------------------------------------

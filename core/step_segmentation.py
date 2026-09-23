@@ -148,12 +148,17 @@ def attach_step_fades(
     events: List[Dict],
     holds_by_line: Dict[int, List[HoldSegment]],
     cfg: MotionAssConfig,
+    *,
+    times_by_frame: Optional[Dict[int, float]] = None,
 ) -> int:
     """给相邻 hold 事件的连续边界注入 ``\\fad`` 渐隐,返回注入的边界数。
 
     ``events`` 的 ``line_idx`` 须已重映射回原始行号。仅处理 hold 数 ≥ 2
-    的行;边界两侧事件须时间连续(差 ≤ 2cs,ASS 精度),中间隔不可见
-    跨度的不加。``step_fade_ms ≤ 0`` 时不注入(纯硬切)。
+    的行。``times_by_frame``(帧号 → time_sec,B2 起生产路径必传)时以**原
+    hold 的绝对边界**定位注入点:遮挡离散切片会把一个 hold 拆成多个片段
+    事件,只有真正衔接 hold 边界的两个片段获得渐隐,hold 内部的切片边界
+    不重新从 0 渐显。缺省(旧调用/直接单测,无切片)按相邻事件结点注入,
+    语义与旧版一致。``step_fade_ms ≤ 0`` 时不注入(纯硬切)。
     """
     fade_ms = int(getattr(cfg, "step_fade_ms", 0) or 0)
     if fade_ms <= 0 or not holds_by_line:
@@ -168,9 +173,38 @@ def attach_step_fades(
         h, m, rest = str(value).split(":")
         return int(h) * 3600 + int(m) * 60 + float(rest)
 
+    def _boundary_time(hold: HoldSegment) -> Optional[float]:
+        if not times_by_frame:
+            return None
+        f = int(hold.start_frame)
+        if f in times_by_frame:
+            return float(times_by_frame[f])
+        later = [t for fr, t in times_by_frame.items() if fr >= f]
+        return min(later) if later else None
+
     n = 0
     for li in sorted(by_line):
         evs = sorted(by_line[li], key=lambda e: _cs(e["start_time"]))
+        if times_by_frame:
+            holds = holds_by_line[li]
+            for hold in holds[1:]:
+                bt = _boundary_time(hold)
+                if bt is None:
+                    continue
+                prev = [e for e in evs
+                        if abs(_cs(e["end_time"]) - bt) <= 0.02]
+                nxt = [e for e in evs
+                       if abs(_cs(e["start_time"]) - bt) <= 0.02]
+                if not prev or not nxt:
+                    continue
+                a = max(prev, key=lambda e: _cs(e["end_time"]))
+                b = min(nxt, key=lambda e: _cs(e["start_time"]))
+                if a is b or abs(_cs(a["end_time"]) - _cs(b["start_time"])) > 0.02:
+                    continue
+                a["tags"] += "{\\fad(0,%d)}" % fade_ms
+                b["tags"] += "{\\fad(%d,0)}" % fade_ms
+                n += 1
+            continue
         for a, b in zip(evs, evs[1:]):
             if abs(_cs(a["end_time"]) - _cs(b["start_time"])) > 0.02:
                 continue

@@ -676,6 +676,25 @@ def _anchored_center(
             center[1] + along * math.sin(ang))
 
 
+def _static_frame_tags(
+    center: Tuple[float, float],
+    angle_deg: float,
+    scale: float,
+    box_w: float,
+    align: str,
+    x_off: float,
+    fs_h: int,
+) -> str:
+    """单帧 ``\an\fs\pos`` 姿态标签(dense 兜底与遮挡离散切片共享构造)。
+
+    锚点 = :func:`_anchored_center`(按行对齐 + 标点补偿);单帧无
+    ``\move``/``\t`` 插值,坐标即该帧真实位姿。
+    """
+    ax, ay = _anchored_center(center, angle_deg, scale, box_w, align, x_off)
+    an = _AN_BY_ALIGN.get(align, 5)
+    return f"{{\\an{an}\\fs{int(fs_h)}\\pos({_fmt1(ax)},{_fmt1(ay)})}}"
+
+
 def _dense_events(
     chain: List[int],
     centers: np.ndarray,
@@ -705,7 +724,6 @@ def _dense_events(
         x_offset = punct_comp_offset_px(
             text, fs_h, enabled=cfg.punct_comp_enabled,
             max_px=cfg.punct_comp_max_px, video_height=video_height)
-    an = _AN_BY_ALIGN.get(align, 5)
     if angles is None:
         angles = [0.0] * n
     if scales is None:
@@ -719,10 +737,8 @@ def _dense_events(
             t1 = _next_frame_time(tmap, f0, t0, dt)
         if t1 <= t0:
             continue  # 零长段丢弃
-        ax, ay = _anchored_center(centers[k], angles[k], scales[k], box_w,
-                                  align, x_offset)
-        tags = (f"{{\\an{an}\\fs{fs_h}"
-                f"\\pos({_fmt1(ax)},{_fmt1(ay)})}}")
+        tags = _static_frame_tags(centers[k], angles[k], scales[k], box_w,
+                                  align, x_offset, fs_h)
         events.append({
             "start_time": format_ass_time(t0),
             "end_time": format_ass_time(t1),

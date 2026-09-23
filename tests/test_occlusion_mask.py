@@ -316,3 +316,111 @@ class TestAttachOcclusionClips:
             [ev], tracks=make_tracks(20), line_tracks=[make_line_track()],
             occlusions=occl, cfg=CFG)
         assert out == [ev]
+
+
+# ---------------------------------------------------------------------------
+# B1:采样证据 side-channel 与二次漏采修复
+# ---------------------------------------------------------------------------
+
+def test_real_detection_frame_is_not_resampled_away():
+    """V3 反例:100..200 帧跨度内单帧检测(103),与旧均匀七帧抽样不相交,
+    不得被二次抽样漏掉;行框必须被命中多边形覆盖。"""
+    tracks = make_tracks(200, dx=0.0)[100:]
+    poly = np.array([[120, 110], [180, 110], [180, 140], [120, 140]],
+                    dtype=float)
+    event = make_event()
+    event.update(start_time='0:00:04.00', end_time='0:00:08.00',
+                 tags=r'{\an5\pos(150,125)\fs50}')
+    out = attach_occlusion_clips([event], tracks=tracks,
+                                 line_tracks=[make_line_track()],
+                                 occlusions={103: [poly]},
+                                 cfg=OcclusionConfig())
+    assert any(r'\iclip(' in e['tags'] for e in out)
+
+
+def test_collect_samples_side_channel_clear_and_hit(tmp_path):
+    """samples side-channel:计划采样点全覆盖——命中帧非空、清晰帧 []。
+    兼容返回值仍只含非空 polys。"""
+    n = 12
+    frames = [make_plane() for _ in range(n)]
+    for i in range(6, n):
+        frames[i] = make_plane(occluder=True)
+    video = write_video(tmp_path / "occ_samples.avi", frames)
+    anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+    samples = {}
+    occl = collect_occlusions(
+        video, make_tracks(n, dx=0.0), anchor_gray=anchor,
+        plane_size=(PLANE_W, PLANE_H), origin=(0, 0), cfg=CFG,
+        samples=samples)
+    # 计划采样点 = 每 stride 个 ok 帧 + 末帧
+    planned = set(range(0, n, CFG.sample_stride_frames)) | {n - 1}
+    assert planned <= set(samples), (planned, sorted(samples))
+    assert set(occl) <= set(samples)
+    for f in planned:
+        if f < 6:
+            assert samples[f] == [], (f, samples[f])
+    assert any(samples[f] for f in planned), "occluded tail must be recorded"
+
+
+def test_collect_samples_decode_interruption_marks_none(tmp_path):
+    """解码中断(视频比轨迹短)→ 剩余计划点记 None,不伪装成清晰帧。"""
+    n_video, n_tracks = 5, 20
+    video = write_video(tmp_path / "short.avi",
+                        [make_plane() for _ in range(n_video)])
+    anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+    samples = {}
+    collect_occlusions(
+        video, make_tracks(n_tracks, dx=0.0), anchor_gray=anchor,
+        plane_size=(PLANE_W, PLANE_H), origin=(0, 0), cfg=CFG,
+        samples=samples)
+    planned = set(range(0, n_tracks, CFG.sample_stride_frames)) | {n_tracks - 1}
+    assert planned <= set(samples)
+    # 视频只有 5 帧:帧号 ≥5 的计划点必须为 None。
+    for f in sorted(planned):
+        if f >= n_video:
+            assert samples[f] is None, (f, samples[f])
+
+
+def test_collect_samples_detect_failure_marks_none(tmp_path, monkeypatch):
+    """单帧检测抛错(退化单应)→ 该计划点记 None。"""
+    import core.occlusion_mask as occ_mod
+    n = 4
+    video = write_video(tmp_path / "fail.avi",
+                        [make_plane() for _ in range(n)])
+    anchor = cv2.cvtColor(make_plane(), cv2.COLOR_BGR2GRAY)
+
+    def boom(*a, **k):
+        raise ValueError("degenerate homography")
+
+    monkeypatch.setattr(occ_mod, "detect_occlusion_polygons", boom)
+    samples = {}
+    occ_mod.collect_occlusions(
+        video, make_tracks(n, dx=0.0), anchor_gray=anchor,
+        plane_size=(PLANE_W, PLANE_H), origin=(0, 0), cfg=CFG,
+        samples=samples)
+    planned = set(range(0, n, CFG.sample_stride_frames)) | {n - 1}
+    assert planned <= set(samples)
+    assert all(samples[f] is None for f in planned)
+
+
+def test_attach_accepts_samples_and_clear_frames(tmp_path):
+    """attach 接受 samples 输入:清晰帧([])不产生裁剪,未知(None)不裁剪,
+    命中帧正常产生 \iclip。"""
+    tracks = make_tracks(200, dx=0.0)[100:]
+    poly = np.array([[120, 110], [180, 110], [180, 140], [120, 140]],
+                    dtype=float)
+    event = make_event()
+    event.update(start_time='0:00:04.00', end_time='0:00:08.00',
+                 tags=r'{\an5\pos(150,125)\fs50}')
+    samples = {100: [], 103: [poly], 106: [], 109: None}
+    out = attach_occlusion_clips([event], tracks=tracks,
+                                 line_tracks=[make_line_track()],
+                                 occlusions={103: [poly]}, cfg=CFG,
+                                 samples=samples)
+    assert any(r'\iclip(' in e['tags'] for e in out)
+    # 无命中(全部清晰)时事件原样:清晰证据不制造蒙版。
+    out2 = attach_occlusion_clips([event], tracks=tracks,
+                                  line_tracks=[make_line_track()],
+                                  occlusions={}, cfg=CFG,
+                                  samples={100: [], 130: []})
+    assert out2 == [event]

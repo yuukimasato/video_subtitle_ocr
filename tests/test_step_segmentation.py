@@ -401,3 +401,64 @@ def test_config_defaults_and_scaling():
         [make_line()], {}, MotionAssConfig(hold_tol_px=2.5),
         video_height=2160)
     assert out.tracks  # 无实测不进分段,仅验证参数路径不抛错
+
+
+# ---------------------------------------------------------------------------
+# B2:切片后按原 hold 绝对边界注入渐隐
+# ---------------------------------------------------------------------------
+
+def test_fades_anchor_at_hold_boundaries_after_slicing():
+    """遮挡切片把 hold A 拆成两段后,渐隐只落在原 hold 边界,
+    hold 内部的切片边界不重新从 0 渐显。"""
+    from core.motion_ass import MotionAssConfig
+    from core.step_segmentation import HoldSegment, attach_step_fades
+
+    holds = [
+        HoldSegment(start_frame=0, end_frame=24,
+                    center=(100.0, 50.0), n_samples=3,
+                    bound_confirmed=(True, True)),
+        HoldSegment(start_frame=50, end_frame=74,
+                    center=(160.0, 50.0), n_samples=3,
+                    bound_confirmed=(True, True)),
+    ]
+    times_by_frame = {f: f / 25.0 for f in range(100)}
+    # hold A [0,1.0s) 被遮挡切片拆成两段;hold B [2.0,3.0s) 一段。
+    events = [
+        {"line_idx": 0, "start_time": "0:00:00.00", "end_time": "0:00:00.40",
+         "tags": "", "body": "x"},
+        {"line_idx": 0, "start_time": "0:00:00.40", "end_time": "0:00:01.00",
+         "tags": "", "body": "x"},
+        {"line_idx": 0, "start_time": "0:00:02.00", "end_time": "0:00:03.00",
+         "tags": "", "body": "x"},
+    ]
+    n = attach_step_fades(events, {0: holds}, MotionAssConfig(step_fade_ms=80),
+                          times_by_frame=times_by_frame)
+    # hold A 末段结束于 1.00,hold B 起于 2.00:边界时间 2.00 处只有起始
+    # 事件匹配,两侧不衔接(中间是不可见间隔)→ 不注入;hold 内部的切片
+    # 边界(0.40)同样无渐隐。
+    assert n == 0
+    assert all("\\fad" not in e["tags"] for e in events)
+    # 连续边界场景:
+    holds2 = [
+        HoldSegment(start_frame=0, end_frame=24, center=(100.0, 50.0),
+                    n_samples=3, bound_confirmed=(True, True)),
+        HoldSegment(start_frame=10, end_frame=20, center=(160.0, 50.0),
+                    n_samples=3, bound_confirmed=(True, True)),
+    ]
+    events2 = [
+        {"line_idx": 0, "start_time": "0:00:00.00", "end_time": "0:00:00.40",
+         "tags": "", "body": "x"},
+        {"line_idx": 0, "start_time": "0:00:00.40", "end_time": "0:00:00.44",
+         "tags": "", "body": "x"},
+        {"line_idx": 0, "start_time": "0:00:00.44", "end_time": "0:00:00.88",
+         "tags": "", "body": "x"},
+    ]
+    n2 = attach_step_fades(events2, {0: holds2},
+                           MotionAssConfig(step_fade_ms=80),
+                           times_by_frame=times_by_frame)
+    # hold2 边界 = 帧 10 = 0.40s:渐隐落在衔接该边界的 (event0, event1) 上;
+    # hold 内部的切片边界 0.44(event1 → event2)不受影响。
+    assert n2 == 1
+    assert events2[0]["tags"] == "{\\fad(0,80)}"
+    assert events2[1]["tags"] == "{\\fad(80,0)}"
+    assert "\\fad" not in events2[2]["tags"]

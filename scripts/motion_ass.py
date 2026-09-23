@@ -1468,12 +1468,6 @@ def build_motion_events(
             li = ev.get("line_idx")
             if isinstance(li, int) and 0 <= li < len(hold_orig_of):
                 ev["line_idx"] = hold_orig_of[li]
-        if holds_by_line:
-            from core.step_segmentation import attach_step_fades
-
-            n_fade = attach_step_fades(events, holds_by_line, cfg)
-            log(f"      step-seg: {len(holds_by_line)} line(s) hold-split, "
-                f"{n_fade} fade boundary(ies)")
     # A3 内容保真证据:任何遮挡/hold 渐隐/策略重建扩增之前的行级可见区间
     # (按原始行身份合并;转换器用它对静态 OCR 证据做文本保真对照)。
     pre_policy_events = merged_line_intervals(events)
@@ -1503,12 +1497,48 @@ def build_motion_events(
             max_coverage=cfg.occlusion_max_coverage,
             sample_max_frames=cfg.occlusion_sample_max_frames)
         anchor_gray = _cv2.cvtColor(anchor_window, _cv2.COLOR_BGR2GRAY)
+        occl_samples: dict = {}
         occlusions = collect_occlusions(
             video_path, tracks, anchor_gray=anchor_gray,
-            plane_size=plane_size, origin=origin, cfg=occl_cfg, log=log)
+            plane_size=plane_size, origin=origin, cfg=occl_cfg, log=log,
+            samples=occl_samples)
+        # 逐行对齐结果:从合成事件自身的 \an 标签回读(与合成时使用的
+        # 判定同源),离散切片按同一锚点重建位姿。
+        import re as _re
+
+        _an_re = _re.compile(r"\\an(\d+)")
+        an_by_line: Dict[int, int] = {}
+        for _ev in events:
+            _li = _ev.get("line_idx")
+            if isinstance(_li, int) and _li not in an_by_line:
+                _m = _an_re.search(str(_ev.get("tags") or ""))
+                if _m:
+                    an_by_line[_li] = int(_m.group(1))
+        from core.text_alignment import ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT
+
+        _an_to_align = {4: ALIGN_LEFT, 5: ALIGN_CENTER, 6: ALIGN_RIGHT}
+        occl_alignments = [
+            _an_to_align.get(an_by_line.get(_li, 5), ALIGN_CENTER)
+            for _li in range(len(line_tracks))]
         events = attach_occlusion_clips(
             events, tracks=tracks, line_tracks=line_tracks,
-            occlusions=occlusions, cfg=occl_cfg)
+            occlusions=occlusions, cfg=occl_cfg, samples=occl_samples,
+            motion_cfg=cfg, alignments=occl_alignments,
+            video_height=height)
+        n_clip = sum(1 for e in events if "\\iclip(" in str(e.get("tags")))
+        log(f"      occlusion clips: {n_clip} clipped event(s) after "
+            f"discrete slicing ({len(events)} event(s) total)")
+
+    # 5.45 hold 边界渐隐(B2:移到遮挡切分之后)——以原 hold 的绝对边界
+    #     定位注入点,遮挡切片产生的 hold 内部边界不重新渐显。
+    if hold_orig_of is not None and holds_by_line:
+        from core.step_segmentation import attach_step_fades
+
+        times_by_frame = {f: float(t.time_sec) for f, t in by_frame.items()}
+        n_fade = attach_step_fades(events, holds_by_line, cfg,
+                                   times_by_frame=times_by_frame)
+        log(f"      step-seg: {len(holds_by_line)} line(s) hold-split, "
+            f"{n_fade} fade boundary(ies)")
 
     # 5.5 场景文字显示策略(默认 overlap:原样返回,输出与既有版本逐事件一致)。
     #     需要锚定关键帧(最清晰帧)的统一坐标展开图与平面坐标行框——均为

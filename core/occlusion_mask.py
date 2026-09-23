@@ -182,12 +182,20 @@ def collect_occlusions(
     origin: Tuple[int, int],
     cfg: Optional[OcclusionConfig] = None,
     log: Optional[Callable[[str], None]] = None,
+    samples: Optional[Dict[int, Optional[List[np.ndarray]]]] = None,
 ) -> Dict[int, List[np.ndarray]]:
     """逐采样 ok 帧检测遮挡,返回 ``{frame_num: [平面坐标多边形...]}``。
 
     顺序解码一遍(与 tracker/亮度测量同一时间轴);每
     ``sample_stride_frames`` 个 ok 帧采样一次、最后一个 ok 帧必测。任何
     帧都没有显著遮挡时返回空 dict。视频打不开抛 :class:`RuntimeError`。
+
+    ``samples``(可选 side-channel,B1):调用方传空 dict,返回后包含**每个
+    计划采样点**的完整检测证据——``[]`` = 成功检测且无遮挡(确认清晰,
+    不得再当未知)、非空 = 命中多边形、``None`` = 解码/检测失败或无效
+    跟踪(未知)。V3 的二次漏采根因正是「只保留命中帧、其余点信息丢失」
+    ——消费方无法区分清晰与未采样。兼容返回值仍只含非空 polys(既有调用
+    方的布尔判断与统计不变)。
     """
     import cv2
 
@@ -197,11 +205,15 @@ def collect_occlusions(
         f for f, t in tmap.items()
         if t.status == "ok" and t.homography_inv is not None)
     if not ok:
+        if samples is not None:
+            samples.clear()
         return {}
     stride = max(1, int(cfg.sample_stride_frames))
     sample_frames = set(ok[::stride])
     sample_frames.add(ok[-1])
 
+    if samples is not None:
+        samples.clear()
     occlusions: Dict[int, List[np.ndarray]] = {}
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -227,12 +239,21 @@ def collect_occlusions(
                         edge_sliver_max_px=cfg.edge_sliver_max_px,
                         edge_sliver_min_frac=cfg.edge_sliver_min_frac)
                 except (ValueError, cv2.error):
-                    polys = []  # 退化单应等:该帧不判遮挡
+                    polys = None  # 退化单应等:检测失败 = 未知,非清晰
+                    if samples is not None:
+                        samples[frame_idx] = None
+                else:
+                    if samples is not None:
+                        samples[frame_idx] = list(polys)
                 if polys:
                     occlusions[frame_idx] = polys
             frame_idx += 1
     finally:
         cap.release()
+    if samples is not None:
+        # 解码中断:剩余计划点从未检测 = 未知(None),不得伪装成清晰。
+        for f in sample_frames:
+            samples[f] = None
     if occlusions and log is not None:
         frames = sorted(occlusions)
         log(f"occlusion: detected on {len(frames)} sampled frame(s) "
@@ -363,6 +384,36 @@ def build_clip_tag(
     return f"\\iclip({_drawing(union)})"
 
 
+def _frame_clip_tag(
+    frame: int,
+    polys_plane: Sequence[np.ndarray],
+    lt: object,
+    homography: np.ndarray,
+    cfg: OcclusionConfig,
+) -> Optional[str]:
+    r"""单帧静态 ``\iclip`` 标签(当前帧单应映射),无有效命中返回 None。
+
+    多边形在平面坐标上做行框相交过滤、等点重采样,经**该帧**的
+    H(init→frame) 映射到画面坐标后写静态矢量 clip——绝不在 ``\t`` 内写
+    vector clip(libass 对其支持未经验证,V3)。
+    """
+    overlapping = [
+        poly for poly in polys_plane
+        if _poly_box_overlap_ratio(poly, lt.ref_box) >= cfg.min_line_overlap]
+    if not overlapping:
+        return None
+    n_pts = max(3, int(cfg.resample_points))
+    resampled = []
+    for poly in overlapping:
+        r = _resample_polygon(poly, n_pts)
+        if r is not None:
+            resampled.append(r)
+    if not resampled:
+        return None
+    screen = _to_screen(resampled, homography)
+    return f"\\iclip({_drawing(screen)})"
+
+
 def attach_occlusion_clips(
     events: List[Dict],
     *,
@@ -370,14 +421,29 @@ def attach_occlusion_clips(
     line_tracks: Sequence,
     occlusions: Dict[int, List[np.ndarray]],
     cfg: Optional[OcclusionConfig] = None,
+    samples: Optional[Dict[int, Optional[List[np.ndarray]]]] = None,
+    motion_cfg: Optional[object] = None,
+    alignments: Optional[Sequence[str]] = None,
+    video_height: Optional[float] = None,
 ) -> List[Dict]:
-    """给部分遮挡跨度内的事件追加 ``\\iclip`` 蒙版(无遮挡事件原样返回)。
+    r"""给部分遮挡跨度内的事件追加时间局部化的 ``\iclip`` 蒙版。
 
-    ``occlusions`` 为 :func:`collect_occlusions` 的产出(可为空 → 原样返回)。
-    仅处理带 ``line_idx`` 且能对应到 ``line_tracks`` 的事件(即合成文本行);
-    遮挡多边形须与该行 ref_box 相交达 ``min_line_overlap`` 才计入。
+    ``motion_cfg`` 为 None(旧调用)时保持旧的整段 ``\iclip(…\t…)`` 行为;
+    生产路径(B2)传 ``MotionAssConfig``:对有相交命中的事件,按原事件覆盖
+    的 ok 帧逐帧重建 ``\pos/\frz/\fscx/\fscy``(:func:`core.occlusion_timeline.
+    pose_events_for_frames`),每帧从**最近采样**取平面多边形、经**当前帧**
+    单应映射写静态 ``\iclip``;该帧无命中/样本未知则不带 clip。相邻帧仅当
+    正文/标签/图层完全一致才压缩合并。没有任何相交命中的事件原样返回。
+
+    ``samples``(B1 side-channel)提供每个计划采样点的完整证据([] = 确认
+    清晰、None = 未知、非空 = 命中);缺省时从 ``occlusions`` 的键构造
+    (只有命中帧已知)。``alignments`` 为逐行对齐结果(与 ``line_tracks``
+    同序;缺省居中)。候选发现仍然只认 ``occlusions`` 的实际检测键——先
+    无候选则整条事件零开销直通。
     """
-    if not events or not occlusions:
+    if not events:
+        return list(events)
+    if not occlusions:
         return list(events)
     cfg = cfg or OcclusionConfig()
     tmap = {t.frame_num: t for t in tracks}
@@ -387,6 +453,22 @@ def attach_occlusion_clips(
     if not ok_frames:
         return list(events)
     times = {f: float(tmap[f].time_sec) for f in ok_frames}
+    discrete = motion_cfg is not None
+    align_list = list(alignments) if alignments is not None else []
+    if discrete:
+        from core.motion_ass import ALIGN_CENTER, format_ass_time
+        from core.occlusion_timeline import (
+            frame_end_sec,
+            pose_events_for_frames,
+            sample_for_frame,
+        )
+
+        max_dist = max(0, int(cfg.sample_stride_frames) // 2)
+        # 生产者提供了证据就用之;samples 为空而 occlusions 非空(旧生产者/
+        # 测试替身)时从检测键推导——只有命中帧已知,其余视为未知。
+        sample_view: Dict[int, Optional[List[np.ndarray]]] = (
+            samples if samples
+            else {f: list(p) for f, p in occlusions.items()})
 
     def parse_cs(value: str) -> float:
         h, m, rest = str(value).split(":")
@@ -401,26 +483,105 @@ def attach_occlusion_clips(
             continue
         st = parse_cs(ev["start_time"])
         en = parse_cs(ev["end_time"])
-        span = [f for f in ok_frames if st - 1e-6 <= times[f] <= en + 1e-6]
-        if not span:
+        # 廉价预检:检测键与事件跨度不相交 → 零改动直通(逐帧解析都省了)。
+        candidates = [f for f in sorted(occlusions)
+                      if f in times and st - 1e-6 <= times[f] <= en + 1e-6]
+        if not candidates:
             out.append(ev)
             continue
-        chosen = _even_subset(span, cfg.sample_max_frames)
-        hits: List[Tuple[int, List[np.ndarray]]] = []
-        for f in chosen:
-            overlapping = [
-                poly for poly in occlusions.get(f, [])
-                if _poly_box_overlap_ratio(poly, lt.ref_box) >= cfg.min_line_overlap]
-            if overlapping:
-                hits.append((f, overlapping))
-        if not hits:
+        if not discrete:
+            hits: List[Tuple[int, List[np.ndarray]]] = []
+            for f in candidates:
+                overlapping = [
+                    poly for poly in occlusions.get(f, [])
+                    if _poly_box_overlap_ratio(poly, lt.ref_box)
+                    >= cfg.min_line_overlap]
+                if overlapping:
+                    hits.append((f, overlapping))
+            if not hits:
+                out.append(ev)
+                continue
+            tag = build_clip_tag(hits, tmap, cfg, st, en)
+            if not tag:
+                out.append(ev)
+                continue
+            ev = dict(ev)
+            ev["tags"] = f"{ev['tags']}{{{tag}}}"
             out.append(ev)
             continue
-        tag = build_clip_tag(hits, tmap, cfg, st, en)
-        if not tag:
+        # —— B2 离散切片:逐帧重建姿态 + 静态 iclip ——
+        align = (align_list[li]
+                 if 0 <= li < len(align_list) and align_list[li]
+                 else ALIGN_CENTER)
+        try:
+            pose_events = pose_events_for_frames(
+                lt, tracks, st, en, motion_cfg, align, li,
+                video_height=video_height)
+        except ValueError:
+            # 量化坍缩等明确失败:走有证据的保守回退(旧整段并集 clip,
+            # 宁多勿漏),不静默丢弃、不自动延长到后续文字。
+            hits = []
+            for f in candidates:
+                overlapping = [
+                    poly for poly in occlusions.get(f, [])
+                    if _poly_box_overlap_ratio(poly, lt.ref_box)
+                    >= cfg.min_line_overlap]
+                if overlapping:
+                    hits.append((f, overlapping))
+            tag = build_clip_tag(hits, tmap, cfg, st, en) if hits else ""
+            if not tag:
+                out.append(ev)
+            else:
+                ev2 = dict(ev)
+                ev2["tags"] = f"{ev2['tags']}{{{tag}}}"
+                out.append(ev2)
+            continue
+        sliced: List[Dict] = []
+        any_clip = False
+        for pev in pose_events:
+            frames = pev.get("_frames") or ()
+            # 每帧解析 clip;相邻同 clip(含同为无 clip)归并同段。
+            runs: List[Tuple[Optional[str], List[int]]] = []
+            for f in frames:
+                if f not in times:
+                    clip = None
+                else:
+                    sample = sample_for_frame(f, sample_view, max_dist)
+                    clip = None
+                    if sample is not None:
+                        polys = sample_view.get(sample) or []
+                        clip = _frame_clip_tag(
+                            f, polys, lt,
+                            np.asarray(tmap[f].homography, dtype=np.float64),
+                            cfg)
+                if runs and runs[-1][0] == clip:
+                    runs[-1][1].append(f)
+                else:
+                    runs.append((clip, [f]))
+            for clip, frames_run in runs:
+                t0 = times[frames_run[0]]
+                t1 = frame_end_sec(frames_run[-1], times, ok_frames, en)
+                if t1 <= t0:
+                    continue
+                new_ev = {
+                    "start_time": format_ass_time(t0),
+                    "end_time": format_ass_time(t1),
+                    "style": pev["style"],
+                    "name": pev["name"],
+                    "tags": pev["tags"],
+                    "body": pev["body"],
+                    "line_idx": pev.get("line_idx", li),
+                }
+                for key in ("layer", "policy", "comment", "roi"):
+                    if key in ev:
+                        new_ev[key] = ev[key]
+                if clip:
+                    new_ev["tags"] = f"{new_ev['tags']}{{{clip}}}"
+                    any_clip = True
+                sliced.append(new_ev)
+        if not any_clip:
+            # 没有任何相交命中(或全部样本未知/清晰):事件原样返回。
             out.append(ev)
             continue
-        ev = dict(ev)
-        ev["tags"] = f"{ev['tags']}{{{tag}}}"
-        out.append(ev)
+        out.extend(sliced)
     return out
