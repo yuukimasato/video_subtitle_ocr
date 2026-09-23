@@ -1,0 +1,109 @@
+Video: /home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4
+  1920x1080 @ 23.98 fps, 246 frames
+ROI: [[630, 287], [1290, 287], [1319, 1072], [599, 1079], [624, 285]] time=[00:00:00.000, 00:00:10.219]
+[1-3/4] OCR (paddle engine, lang=ch)...
+      progress:   0%      progress:   1%      progress:  10%/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/core/ocr_engine_paddle.py:306: UserWarning: `lang` and `ocr_version` will be ignored when model names or model directories are not `None`.
+  return PaddleOCR(**attempt)
+Creating model: ('PP-OCRv6_small_det', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_small_det`.
+/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/paddle/utils/cpp_extension/extension_utils.py:718: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+WARNING: OMP_NUM_THREADS set to 8, not 1. The computation speed will not be optimized if you use data parallel. It will fail if this PaddlePaddle binary is compiled with OpenBlas since OpenBlas does not support multi-threads.
+PLEASE USE OMP_NUM_THREADS WISELY.
+Creating model: ('PP-OCRv6_small_rec', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_small_rec`.
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+      progress:  11%      progress:  12%      progress:  13%      progress:  14%      progress:  15%      progress:  16%      progress:  17%      progress:  18%      progress:  19%      progress:  20%      progress:  21%      progress:  22%      progress:  23%      progress:  24%      progress:  25%      progress:  26%      progress:  27%      progress:  28%      progress:  29%      progress:  30%      progress:  31%      progress:  32%      progress:  33%      progress:  34%      progress:  35%      progress:  36%      progress:  37%      progress:  38%      progress:  39%      progress:  40%      progress:  41%      progress:  42%      progress:  43%      progress:  44%      progress:  45%      progress:  48%      progress:  49%      progress:  50%      progress:  55%      progress:  56%      progress:  57%      progress:  58%      progress:  59%      progress:  60%      progress:  61%      progress:  62%      progress:  63%      progress:  65%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  90%      progress:  90%
+      143 OCR calls, 246 frames restored (28.94s)
+[3.5/4] Motion trajectory for quad roi_0 (frames [0, 245]) (frames [0, 245])...
+      [1/5] tracking plane on frames [0, 245] ...
+            174/246 frames ok
+            ok ratio 70.7%, 2 ok chain(s): t=0.00–3.50s (85 ok frames); t=6.55–10.22s (89 ok frames)
+            lost reasons: non_convex=72
+      [2/5] keyframe pool (sharpest first): [2, 11, 84, 76, 52, 20, 40, 28, 61, 220, 232, 240, 157, 164, 185]
+            keyframe sharpness [pool]: 2:284.1, 11:232.0, 84:110.3, 76:96.3, 52:86.8, 20:86.4, 40:81.5, 28:80.1, 61:75.9, 220:40.3, 232:39.3, 240:37.7, 157:37.6, 164:37.5, 185:18.0
+            keyframe sharpness [candidates]: n=174 distinct=172 spread=17.9..284.1 (93.7% of max) -> score-ranked
+            keyframe coverage: pool t=[0.08, 10.01]s / ok t=[0.00, 10.22]s (97% of ok span); buckets=12 covered=10/12 appended +[157, 164, 185]
+Creating model: ('PP-OCRv6_medium_det', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_medium_det`.
+Creating model: ('PP-OCRv6_medium_rec', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_medium_rec`.
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+            2 hard line(s) (stage-1: no VLM refine): [1, 13]
+            junk filter: dropped 5 noise line(s): ['<', '500', '>', '<', '言']
+      [3/5] fused OCR lines: ['受信メール一覧', '安芸倫也', 'Title:金曜日サークルあります', '久しぶり。', '早速だけどサークルの次回ミーティングについて。', '新学期からの体制とか、次の企画とか、いろいろ決', 'めたいと思ってる。', '最初は、まず加藤とざっくりした方向性を決めたい', 'から、', 'とりあえず俺たちだけで金曜日の放課後どうかな。', '場所は視聴覚室で。', '都合の悪い場合は連絡くれ。']
+      pose-verify: ROI clamp active (margin=72.0px); measured centers are restricted to the drawn ROI
+      pose-verify: line 0 ('受信メール一覧') corrected (16/16 samples), dropped 0 invisible frame(s) roi_fallback=5
+      pose-verify: line 1 ('安芸倫也') corrected (16/16 samples), dropped 0 invisible frame(s) roi_fallback=3
+      pose-verify: line 2 ('Title:金曜日サークルあります') corrected (16/16 samples), dropped 0 invisible frame(s) roi_fallback=2
+      pose-verify: line 3 ('久しぶり。') corrected (15/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 4 ('早速だけどサークルの次回ミーティングについて。') corrected (15/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 5 ('新学期からの体制とか、次の企画とか、いろいろ決') corrected (16/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 6 ('めたいと思ってる。') corrected (16/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 7 ('最初は、まず加藤とざっくりした方向性を決めたい') corrected (16/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 8 ('から、') corrected (16/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 9 ('とりあえず俺たちだけで金曜日の放課後どうかな。') corrected (14/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 10 ('場所は視聴覚室で。') corrected (14/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 11 ('都合の悪い場合は連絡くれ。') corrected (16/16 samples), dropped 0 invisible frame(s)
+            pose-verify: 0 static, 12 corrected, 12 line(s) checked
+      line 0 ('受信メール一覧') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 1 ('安芸倫也') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 2 ('Title:金曜日サークルあります') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 3 ('久しぶり。') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 4 ('早速だけどサークルの次回ミーティングについて。') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 5 ('新学期からの体制とか、次の企画とか、いろいろ決') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 6 ('めたいと思ってる。') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 7 ('最初は、まず加藤とざっくりした方向性を決めたい') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 8 ('から、') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 9 ('とりあえず俺たちだけで金曜日の放課後どうかな。') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 10 ('場所は視聴覚室で。') fallback: jumps follow a steady linear path (continuous scroll?)
+      line 11 ('都合の悪い場合は連絡くれ。') fallback: jumps follow a steady linear path (continuous scroll?)
+            line alignments: shear_slope=0.0 [(0, 'center'), (1, 'center'), (2, 'left'), (3, 'left'), (4, 'left'), (5, 'left'), (6, 'left'), (7, 'left'), (8, 'left'), (9, 'left'), (10, 'left'), (11, 'left')]
+      motion-quad roi_0 (frames [0, 245]): 24 event(s) (174/246 frames ok, keyframes [2, 11, 84])
+[4/4] Generating ASS subtitles...
+      done (7.01s)
+
+Finished in 35.95s total.
+ASS subtitle file: /home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/mail.ass
+	Command being timed: "/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/bin/python /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/cli.py /home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4 --roi-file /home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19_roi.json --engine paddle --model-tier small --lang ch --workers 1 -o /home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/mail.ass"
+	User time (seconds): 174.01
+	System time (seconds): 84.05
+	Percent of CPU this job got: 697%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:36.98
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1934908
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 4
+	Minor (reclaiming a frame) page faults: 5517408
+	Voluntary context switches: 100141
+	Involuntary context switches: 34835364
+	Swaps: 0
+	File system inputs: 62880
+	File system outputs: 64
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

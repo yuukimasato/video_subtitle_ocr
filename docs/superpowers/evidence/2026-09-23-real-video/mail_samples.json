@@ -1,0 +1,1025 @@
+[
+  {
+    "frame": 0,
+    "t": 0.0,
+    "active": [
+      {
+        "line": 22,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\move(821.5,305.0,821.5,20.6,0,3545)}受信メール一覧"
+      },
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\move(829.5,372.0,829.5,87.6,0,3545)}安芸倫也"
+      },
+      {
+        "line": 24,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\move(661.5,442.5,661.4,158.0,0,3545)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 25,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\move(661.5,516.5,661.5,232.1,0,3545)}久しぶり。"
+      },
+      {
+        "line": 26,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\move(661.0,575.0,660.7,290.4,0,3545)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 27,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\move(653.5,605.5,653.2,320.9,0,3545)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 28,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\move(659.5,637.0,659.4,352.5,0,3545)}めたいと思ってる。"
+      },
+      {
+        "line": 29,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\move(649.5,666.5,649.2,381.9,0,3545)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 30,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\move(654.5,699.0,654.5,414.5,0,3545)}から、"
+      },
+      {
+        "line": 31,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\move(655.5,729.0,655.2,444.4,0,3545)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 32,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\move(653.5,761.0,653.4,476.4,0,3545)}場所は視聴覚室で。"
+      },
+      {
+        "line": 33,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\move(652.0,825.1,651.9,540.4,0,3545)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 48,
+    "t": 2.002,
+    "active": [
+      {
+        "line": 22,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\move(821.5,305.0,821.5,20.6,0,3545)}受信メール一覧"
+      },
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\move(829.5,372.0,829.5,87.6,0,3545)}安芸倫也"
+      },
+      {
+        "line": 24,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\move(661.5,442.5,661.4,158.0,0,3545)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 25,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\move(661.5,516.5,661.5,232.1,0,3545)}久しぶり。"
+      },
+      {
+        "line": 26,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\move(661.0,575.0,660.7,290.4,0,3545)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 27,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\move(653.5,605.5,653.2,320.9,0,3545)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 28,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\move(659.5,637.0,659.4,352.5,0,3545)}めたいと思ってる。"
+      },
+      {
+        "line": 29,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\move(649.5,666.5,649.2,381.9,0,3545)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 30,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\move(654.5,699.0,654.5,414.5,0,3545)}から、"
+      },
+      {
+        "line": 31,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\move(655.5,729.0,655.2,444.4,0,3545)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 32,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\move(653.5,761.0,653.4,476.4,0,3545)}場所は視聴覚室で。"
+      },
+      {
+        "line": 33,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 3.54,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\move(652.0,825.1,651.9,540.4,0,3545)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 120,
+    "t": 5.005,
+    "active": []
+  },
+  {
+    "frame": 144,
+    "t": 6.005999999999999,
+    "active": []
+  },
+  {
+    "frame": 156,
+    "t": 6.5065,
+    "active": []
+  },
+  {
+    "frame": 168,
+    "t": 7.007,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 192,
+    "t": 8.008,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 204,
+    "t": 8.5085,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 216,
+    "t": 9.008999999999999,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 228,
+    "t": 9.5095,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  },
+  {
+    "frame": 240,
+    "t": 10.01,
+    "active": [
+      {
+        "line": 34,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "受信メール一覧",
+        "raw": "{\\an5\\fs24\\pos(821.2,308.9)}受信メール一覧"
+      },
+      {
+        "line": 35,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "安芸倫也",
+        "raw": "{\\an5\\fs28\\pos(829.1,375.6)}安芸倫也"
+      },
+      {
+        "line": 36,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "Title:金曜日サークルあります",
+        "raw": "{\\an4\\fs23\\pos(661.5,446.3)}Title:金曜日サークルあります"
+      },
+      {
+        "line": 37,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "久しぶり。",
+        "raw": "{\\an4\\fs31\\pos(661.5,520.1)}久しぶり。"
+      },
+      {
+        "line": 38,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "早速だけどサークルの次回ミーティングについて。",
+        "raw": "{\\an4\\fs26\\pos(660.6,578.4)}早速だけどサークルの次回ミーティングについて。"
+      },
+      {
+        "line": 39,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "新学期からの体制とか、次の企画とか、いろいろ決",
+        "raw": "{\\an4\\fs25\\pos(653.0,608.8)}新学期からの体制とか、次の企画とか、いろいろ決"
+      },
+      {
+        "line": 40,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "めたいと思ってる。",
+        "raw": "{\\an4\\fs24\\pos(659.3,640.2)}めたいと思ってる。"
+      },
+      {
+        "line": 41,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "最初は、まず加藤とざっくりした方向性を決めたい",
+        "raw": "{\\an4\\fs27\\pos(648.8,669.6)}最初は、まず加藤とざっくりした方向性を決めたい"
+      },
+      {
+        "line": 42,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "から、",
+        "raw": "{\\an4\\fs30\\pos(654.2,702.1)}から、"
+      },
+      {
+        "line": 43,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "とりあえず俺たちだけで金曜日の放課後どうかな。",
+        "raw": "{\\an4\\fs28\\pos(654.7,732.0)}とりあえず俺たちだけで金曜日の放課後どうかな。"
+      },
+      {
+        "line": 44,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "場所は視聴覚室で。",
+        "raw": "{\\an4\\fs24\\pos(653.1,764.0)}場所は視聴覚室で。"
+      },
+      {
+        "line": 45,
+        "kind": "Dialogue",
+        "start": 6.54,
+        "end": 10.26,
+        "style": "Scene",
+        "name": "motion",
+        "text": "都合の悪い場合は連絡くれ。",
+        "raw": "{\\an4\\fs26\\pos(651.4,827.9)}都合の悪い場合は連絡くれ。"
+      }
+    ]
+  }
+]

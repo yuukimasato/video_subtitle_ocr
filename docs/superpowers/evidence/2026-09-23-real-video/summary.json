@@ -1,0 +1,57 @@
+[
+  {
+    "id": "mail",
+    "dialogue": 24,
+    "zero_duration": 0,
+    "negative_duration": 0,
+    "iclip_event_count": 0,
+    "elapsed_wall_clock": "0:36.98",
+    "peak_rss_KiB": 1934908,
+    "exit_code": 0,
+    "ass_sha256": "8e9608b4d7a4c8ed13de9f1ed080899b149dc977517d80a2acf8c503dc6a43b6"
+  },
+  {
+    "id": "phone11",
+    "dialogue": 1,
+    "zero_duration": 0,
+    "negative_duration": 0,
+    "iclip_event_count": 0,
+    "elapsed_wall_clock": "1:45.42",
+    "peak_rss_KiB": 4526740,
+    "exit_code": 0,
+    "ass_sha256": "32641f94dbbc4c18fad650fde3f394ab962bfe7783e10f8a400d3e551f286a65"
+  },
+  {
+    "id": "phone12",
+    "dialogue": 1441,
+    "zero_duration": 1138,
+    "negative_duration": 0,
+    "iclip_event_count": 0,
+    "elapsed_wall_clock": "0:59.79",
+    "peak_rss_KiB": 4373624,
+    "exit_code": 0,
+    "ass_sha256": "b868387f4af66da73e363f88d6b4a18a817aba2e8253a896fd4949a8b3aa0015"
+  },
+  {
+    "id": "opening4k",
+    "dialogue": 20,
+    "zero_duration": 0,
+    "negative_duration": 0,
+    "iclip_event_count": 0,
+    "elapsed_wall_clock": "3:31.20",
+    "peak_rss_KiB": 5454108,
+    "exit_code": 0,
+    "ass_sha256": "6b8fa6eac35097c3c57780ac9773fce28a456374189c39459f02bb92c7febef3"
+  },
+  {
+    "id": "mail_protected",
+    "dialogue": 24,
+    "zero_duration": 0,
+    "negative_duration": 0,
+    "iclip_event_count": 0,
+    "elapsed_wall_clock": "0:43.24",
+    "peak_rss_KiB": 1936648,
+    "exit_code": 0,
+    "ass_sha256": "421725b893e7b8c1d56d7971b2432a167cbc6a5621efcdea6c7acc52b15b83dc"
+  }
+]

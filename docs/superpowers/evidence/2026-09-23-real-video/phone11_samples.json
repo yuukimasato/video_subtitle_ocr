@@ -1,0 +1,50 @@
+[
+  {
+    "frame": 24,
+    "t": 1.001,
+    "active": [
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 27.15,
+        "style": "NoteBox",
+        "name": "motion",
+        "text": "***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)",
+        "raw": "{\\an2\\pos(960.0,1040.0)\\fs40}{\\1c&HF6F6F6&\\alpha&H09&\\t(0,2669,\\1c&HFEFEFE&\\alpha&H01&)\\t(2669,4171,\\1c&HE2E2E2&\\alpha&H1D&)\\t(4171,4838,\\1c&HF1F1F1&\\alpha&H0E&)\\t(4838,6173,\\1c&HDFDFDF&\\alpha&H20&)\\t(6173,7174,\\1c&HF4F4F4&\\alpha&H0B&)\\t(7174,7549,\\1c&HE1E1E1&\\alpha&H1E&)\\t(7549,7841,\\1c&HF5F5F5&\\alpha&H0A&)\\t(7841,9510,\\1c&HEAEAEA&\\alpha&H15&)\\t(9510,10260,\\1c&HFFFFFF&\\alpha&H00&)\\t(10260,12679,\\1c&HFFFFFF&\\alpha&H00&)\\t(12679,12846,\\1c&HF2F2F2&\\alpha&H0D&)\\t(12846,13680,\\1c&HFFFFFF&\\alpha&H00&)\\t(13680,14348,\\1c&HD7D7D7&\\alpha&H28&)\\t(14348,15516,\\1c&HEBEBEB&\\alpha&H14&)\\t(15516,15682,\\1c&HD8D8D8&\\alpha&H27&)\\t(15682,17017,\\1c&HE2E2E2&\\alpha&H1D&)\\t(17017,17267,\\1c&HD1D1D1&\\alpha&H2E&)\\t(17267,19019,\\1c&HEEEEEE&\\alpha&H11&)\\t(19019,19686,\\1c&HE4E4E4&\\alpha&H1B&)\\t(19686,20020,\\1c&HF5F5F5&\\alpha&H0A&)\\t(20020,20771,\\1c&HE4E4E4&\\alpha&H1B&)\\t(20771,21355,\\1c&HF1F1F1&\\alpha&H0E&)\\t(21355,21605,\\1c&HDEDEDE&\\alpha&H21&)\\t(21605,21855,\\1c&HE2E2E2&\\alpha&H1D&)\\t(21855,22064,\\1c&HCBCBCB&\\alpha&H34&)\\t(22064,23357,\\1c&HE7E7E7&\\alpha&H18&)\\t(23357,24191,\\1c&HD8D8D8&\\alpha&H27&)\\t(24191,24358,\\1c&HEAEAEA&\\alpha&H15&)\\t(24358,25192,\\1c&HEFEFEF&\\alpha&H10&)\\t(25192,25484,\\1c&HE1E1E1&\\alpha&H1E&)\\t(25484,25692,\\1c&HF2F2F2&\\alpha&H0D&)\\t(25692,25859,\\1c&HE5E5E5&\\alpha&H1A&)\\t(25859,26652,\\1c&HFEFEFE&\\alpha&H01&)\\t(26652,27110,\\1c&HECECEC&\\alpha&H13&)}***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)"
+      }
+    ]
+  },
+  {
+    "frame": 240,
+    "t": 10.01,
+    "active": [
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 27.15,
+        "style": "NoteBox",
+        "name": "motion",
+        "text": "***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)",
+        "raw": "{\\an2\\pos(960.0,1040.0)\\fs40}{\\1c&HF6F6F6&\\alpha&H09&\\t(0,2669,\\1c&HFEFEFE&\\alpha&H01&)\\t(2669,4171,\\1c&HE2E2E2&\\alpha&H1D&)\\t(4171,4838,\\1c&HF1F1F1&\\alpha&H0E&)\\t(4838,6173,\\1c&HDFDFDF&\\alpha&H20&)\\t(6173,7174,\\1c&HF4F4F4&\\alpha&H0B&)\\t(7174,7549,\\1c&HE1E1E1&\\alpha&H1E&)\\t(7549,7841,\\1c&HF5F5F5&\\alpha&H0A&)\\t(7841,9510,\\1c&HEAEAEA&\\alpha&H15&)\\t(9510,10260,\\1c&HFFFFFF&\\alpha&H00&)\\t(10260,12679,\\1c&HFFFFFF&\\alpha&H00&)\\t(12679,12846,\\1c&HF2F2F2&\\alpha&H0D&)\\t(12846,13680,\\1c&HFFFFFF&\\alpha&H00&)\\t(13680,14348,\\1c&HD7D7D7&\\alpha&H28&)\\t(14348,15516,\\1c&HEBEBEB&\\alpha&H14&)\\t(15516,15682,\\1c&HD8D8D8&\\alpha&H27&)\\t(15682,17017,\\1c&HE2E2E2&\\alpha&H1D&)\\t(17017,17267,\\1c&HD1D1D1&\\alpha&H2E&)\\t(17267,19019,\\1c&HEEEEEE&\\alpha&H11&)\\t(19019,19686,\\1c&HE4E4E4&\\alpha&H1B&)\\t(19686,20020,\\1c&HF5F5F5&\\alpha&H0A&)\\t(20020,20771,\\1c&HE4E4E4&\\alpha&H1B&)\\t(20771,21355,\\1c&HF1F1F1&\\alpha&H0E&)\\t(21355,21605,\\1c&HDEDEDE&\\alpha&H21&)\\t(21605,21855,\\1c&HE2E2E2&\\alpha&H1D&)\\t(21855,22064,\\1c&HCBCBCB&\\alpha&H34&)\\t(22064,23357,\\1c&HE7E7E7&\\alpha&H18&)\\t(23357,24191,\\1c&HD8D8D8&\\alpha&H27&)\\t(24191,24358,\\1c&HEAEAEA&\\alpha&H15&)\\t(24358,25192,\\1c&HEFEFEF&\\alpha&H10&)\\t(25192,25484,\\1c&HE1E1E1&\\alpha&H1E&)\\t(25484,25692,\\1c&HF2F2F2&\\alpha&H0D&)\\t(25692,25859,\\1c&HE5E5E5&\\alpha&H1A&)\\t(25859,26652,\\1c&HFEFEFE&\\alpha&H01&)\\t(26652,27110,\\1c&HECECEC&\\alpha&H13&)}***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)"
+      }
+    ]
+  },
+  {
+    "frame": 527,
+    "t": 21.980291666666666,
+    "active": [
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 0.0,
+        "end": 27.15,
+        "style": "NoteBox",
+        "name": "motion",
+        "text": "***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)",
+        "raw": "{\\an2\\pos(960.0,1040.0)\\fs40}{\\1c&HF6F6F6&\\alpha&H09&\\t(0,2669,\\1c&HFEFEFE&\\alpha&H01&)\\t(2669,4171,\\1c&HE2E2E2&\\alpha&H1D&)\\t(4171,4838,\\1c&HF1F1F1&\\alpha&H0E&)\\t(4838,6173,\\1c&HDFDFDF&\\alpha&H20&)\\t(6173,7174,\\1c&HF4F4F4&\\alpha&H0B&)\\t(7174,7549,\\1c&HE1E1E1&\\alpha&H1E&)\\t(7549,7841,\\1c&HF5F5F5&\\alpha&H0A&)\\t(7841,9510,\\1c&HEAEAEA&\\alpha&H15&)\\t(9510,10260,\\1c&HFFFFFF&\\alpha&H00&)\\t(10260,12679,\\1c&HFFFFFF&\\alpha&H00&)\\t(12679,12846,\\1c&HF2F2F2&\\alpha&H0D&)\\t(12846,13680,\\1c&HFFFFFF&\\alpha&H00&)\\t(13680,14348,\\1c&HD7D7D7&\\alpha&H28&)\\t(14348,15516,\\1c&HEBEBEB&\\alpha&H14&)\\t(15516,15682,\\1c&HD8D8D8&\\alpha&H27&)\\t(15682,17017,\\1c&HE2E2E2&\\alpha&H1D&)\\t(17017,17267,\\1c&HD1D1D1&\\alpha&H2E&)\\t(17267,19019,\\1c&HEEEEEE&\\alpha&H11&)\\t(19019,19686,\\1c&HE4E4E4&\\alpha&H1B&)\\t(19686,20020,\\1c&HF5F5F5&\\alpha&H0A&)\\t(20020,20771,\\1c&HE4E4E4&\\alpha&H1B&)\\t(20771,21355,\\1c&HF1F1F1&\\alpha&H0E&)\\t(21355,21605,\\1c&HDEDEDE&\\alpha&H21&)\\t(21605,21855,\\1c&HE2E2E2&\\alpha&H1D&)\\t(21855,22064,\\1c&HCBCBCB&\\alpha&H34&)\\t(22064,23357,\\1c&HE7E7E7&\\alpha&H18&)\\t(23357,24191,\\1c&HD8D8D8&\\alpha&H27&)\\t(24191,24358,\\1c&HEAEAEA&\\alpha&H15&)\\t(24358,25192,\\1c&HEFEFEF&\\alpha&H10&)\\t(25192,25484,\\1c&HE1E1E1&\\alpha&H1E&)\\t(25484,25692,\\1c&HF2F2F2&\\alpha&H0D&)\\t(25692,25859,\\1c&HE5E5E5&\\alpha&H1A&)\\t(25859,26652,\\1c&HFEFEFE&\\alpha&H01&)\\t(26652,27110,\\1c&HECECEC&\\alpha&H13&)}***00\\Nべにっぽ\\Nあんなに早く\\N帰ってくると思ってなくて\\Nテスト勉強することは\\Nちゃんと伝えてあったから\\Nけど、俺、あの時\\Nノート真っ白だったし\\N怪しまれたかも\\Nまあ、ウン(笑)"
+      }
+    ]
+  }
+]

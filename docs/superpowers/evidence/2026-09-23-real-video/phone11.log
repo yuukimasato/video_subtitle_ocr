@@ -1,0 +1,144 @@
+Video: /home/hope/Tools/video_subtitle_ocr/test/11.mp4
+  1920x1080 @ 23.98 fps, 652 frames
+ROI: [[862, 877], [867, 894], [867, 900], [468, 981], [325, 141], [364, 121], [753, 150], [863, 874]] time=[00:00:00.000, 00:00:27.110]
+[1-3/4] OCR (paddle engine, lang=japan)...
+      progress:   0%      progress:   1%      progress:  10%/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/core/ocr_engine_paddle.py:306: UserWarning: `lang` and `ocr_version` will be ignored when model names or model directories are not `None`.
+  return PaddleOCR(**attempt)
+Creating model: ('PP-OCRv6_small_det', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_small_det`.
+/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/lib/python3.12/site-packages/paddle/utils/cpp_extension/extension_utils.py:718: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+WARNING: OMP_NUM_THREADS set to 8, not 1. The computation speed will not be optimized if you use data parallel. It will fail if this PaddlePaddle binary is compiled with OpenBlas since OpenBlas does not support multi-threads.
+PLEASE USE OMP_NUM_THREADS WISELY.
+Creating model: ('PP-OCRv6_small_rec', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_small_rec`.
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+      progress:  11%      progress:  12%      progress:  13%      progress:  14%      progress:  15%      progress:  16%      progress:  17%      progress:  18%      progress:  19%      progress:  20%      progress:  21%      progress:  22%      progress:  23%      progress:  24%      progress:  25%      progress:  26%      progress:  27%      progress:  28%      progress:  29%      progress:  30%      progress:  31%      progress:  32%      progress:  33%      progress:  34%      progress:  35%      progress:  36%      progress:  37%      progress:  38%      progress:  39%      progress:  40%      progress:  41%      progress:  42%      progress:  43%      progress:  44%      progress:  45%      progress:  46%      progress:  47%      progress:  48%      progress:  49%      progress:  50%      progress:  51%      progress:  52%      progress:  53%      progress:  54%      progress:  55%      progress:  56%      progress:  57%      progress:  58%      progress:  59%      progress:  60%      progress:  61%      progress:  62%      progress:  63%      progress:  64%      progress:  65%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  80%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  81%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  82%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  83%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  84%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  85%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  86%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  87%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  88%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  89%      progress:  90%      progress:  90%
+      651 OCR calls, 651 frames restored (68.40s)
+[3.5/4] Motion trajectory for quad roi_0 (frames [0, 650]) (frames [0, 650])...
+      [1/5] tracking plane on frames [0, 650] ...
+            651/651 frames ok
+            ok ratio 100.0%, 1 ok chain(s): t=0.00–27.11s (651 ok frames)
+            lost reasons: none
+      [2/5] keyframe pool (sharpest first): [381, 389, 370, 626, 403, 616, 362, 431, 412, 604, 444, 421, 28, 95, 109, 211, 221, 279, 536, 584]
+            keyframe sharpness [pool]: 381:328.1, 389:319.6, 370:317.8, 626:316.5, 403:313.1, 616:306.5, 362:300.0, 431:293.2, 412:292.5, 604:288.7, 444:288.5, 421:283.8, 28:235.9, 95:229.5, 109:218.3, 211:254.7, 221:263.9, 279:247.8, 536:258.0, 584:271.0
+            keyframe sharpness [candidates]: n=651 distinct=651 spread=70.3..328.1 (78.6% of max) -> score-ranked
+            keyframe coverage: pool t=[1.17, 26.11]s / ok t=[0.00, 27.11]s (92% of ok span); buckets=12 covered=12/12 appended +[28, 95, 109, 211, 221, 279, 536, 584]
+Creating model: ('PP-OCRv6_medium_det', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_medium_det`.
+Creating model: ('PP-OCRv6_medium_rec', None, None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `/home/hope/.paddlex/official_models/PP-OCRv6_medium_rec`.
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+            2 hard line(s) (stage-1: no VLM refine): [0, 2]
+            junk filter: dropped 3 noise line(s): ['00', '札', '3']
+      [3/5] fused OCR lines: ['***00', 'べにっぽ', 'あんなに早く', '帰ってくると思ってなくて', 'テスト勉強することは', 'ちゃんと伝えてあったから', 'けど、俺、あの時', 'ノート真っ白だったし', '怪しまれたかも', 'まあ、ウン(笑)']
+      pose-verify: ROI clamp active (margin=56.0px); measured centers are restricted to the drawn ROI
+      pose-verify: line 0 ('***00') corrected (16/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 1 ('べにっぽ') corrected (14/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 2 ('あんなに早く') corrected (2/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 3 ('帰ってくると思ってなくて') corrected (4/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 4 ('テスト勉強することは') corrected (14/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 5 ('ちゃんと伝えてあったから') corrected (7/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 6 ('けど、俺、あの時') corrected (15/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 7 ('ノート真っ白だったし') corrected (5/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 8 ('怪しまれたかも') corrected (11/16 samples), dropped 0 invisible frame(s)
+      pose-verify: line 9 ('まあ、ウン(笑)') corrected (5/16 samples), dropped 44 invisible frame(s) spans=[347-390:double_mismatch/dropped]
+            pose-verify: 0 static, 10 corrected, 10 line(s) checked
+      densify: line 0 boundary -> frame 629
+      densify: line 4 boundary -> frame 4
+      densify: line 4 boundary -> frame 337
+      densify: line 4 boundary -> frame 488
+      densify: line 5 boundary -> frame 14
+      densify: line 5 boundary -> frame 475
+      densify: line 6 boundary -> frame 13
+      densify: line 6 boundary -> frame 468
+      densify: line 6 boundary -> frame 511
+      densify: line 7 boundary -> frame 4
+      densify: line 8 boundary -> frame 16
+      densify: line 8 boundary -> frame 175
+      densify: line 8 boundary -> frame 321
+      densify: line 8 boundary -> frame 499
+      densify: line 8 boundary -> frame 638
+      densify: line 9 boundary -> frame 646
+      recheck[short]: line 0 run 2 +6 sample(s), dev -> 1.0px (hold)
+      recheck[short]: line 0 run 4 +6 sample(s), dev -> 1.0px (hold)
+      recheck[short]: line 4 run 2 +6 sample(s), dev -> 0.9px (hold)
+      recheck[short]: line 4 run 3 +6 sample(s), dev -> 0.6px (hold)
+      recheck[short]: line 4 run 4 +6 sample(s), dev -> 1.1px (hold)
+      recheck[short]: line 4 run 5 +6 sample(s), dev -> 0.3px (hold)
+      recheck[short]: line 4 run 6 +6 sample(s), dev -> 0.4px (hold)
+      recheck[drift]: line 5 run 2 +6 sample(s), dev -> 3.4px (still drifting)
+      recheck[drift]: line 6 run 1 +6 sample(s), dev -> 8.5px (still drifting)
+      recheck[short]: line 6 run 2 +6 sample(s), dev -> 0.9px (hold)
+      recheck[drift]: line 6 run 3 +6 sample(s), dev -> 7.7px (still drifting)
+      recheck[short]: line 8 run 1 +6 sample(s), dev -> 0.7px (hold)
+      recheck[short]: line 8 run 2 +6 sample(s), dev -> 1.0px (hold)
+      recheck[short]: line 8 run 3 +6 sample(s), dev -> 0.7px (hold)
+      recheck[short]: line 8 run 4 +6 sample(s), dev -> 1.0px (hold)
+      recheck[drift]: line 8 run 5 +6 sample(s), dev -> 4.5px (still drifting)
+      recheck[short]: line 8 run 6 +6 sample(s), dev -> 1.3px (hold)
+      line 0 ('***00') fallback: interior 1-sample hold with unconfirmed boundary
+      line 1 ('べにっぽ') -> 1 hold(s) [0-650]@(535,218)
+      line 2 ('あんなに早く') -> 1 hold(s) [0-650]@(510,306)
+      line 3 ('帰ってくると思ってなくて') -> 1 hold(s) [0-650]@(532,300)
+      line 4 ('テスト勉強することは') -> 8 hold(s) [0-3]@(554,489) [4-336]@(633,399) [337-368]@(597,404) [369-411]@(586,404) [412-487]@(597,404) [488-541]@(569,369) [542-584]@(545,346) [585-650]@(553,320)
+      line 5 ('ちゃんと伝えてあったから') fallback: run drift 3.4px > hold_tol 2.5px (continuous motion?)
+      line 6 ('けど、俺、あの時') fallback: run drift 8.5px > hold_tol 2.5px (continuous motion?)
+      line 7 ('ノート真っ白だったし') -> 2 hold(s) [0-3]@(539,529) [4-650]@(666,574)
+      line 8 ('怪しまれたかも') fallback: run drift 4.5px > hold_tol 2.5px (continuous motion?)
+      line 9 ('まあ、ウン(笑)') -> 3 hold(s) [0-346]@(472,870) [391-645]@(721,835) [646-650]@(733,873)
+      6 line(s) hold-split, 4 fallback, 0 unchanged
+            step-seg: 6 line(s) hold-split, 9 fade boundary(ies)
+            line alignments: shear_slope=0.0 [(0, 'center'), (1, 'center'), (2, 'left'), (3, 'center'), (4, 'left'), (5, 'left'), (6, 'right'), (7, 'right'), (8, 'center'), (9, 'right')]
+      occlusion: detected on 158 sampled frame(s) (171..650)
+      warning: scene-text-policy: mask->external: block 0 background channel std 21.0 > bg_max_std 18
+            scene-text-policy: mask -> external
+            brightness: baseline 178.0, 35 keyframe(s), tagged 1/1 event(s)
+      motion-quad roi_0 (frames [0, 650]): 1 event(s) (651/651 frames ok, keyframes [381, 389, 370])
+[4/4] Generating ASS subtitles...
+      done (35.89s)
+
+Finished in 104.28s total.
+ASS subtitle file: /home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/phone11.ass
+	Command being timed: "/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/.venv/bin/python /home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/cli.py /home/hope/Tools/video_subtitle_ocr/test/11.mp4 --roi-file /home/hope/Tools/video_subtitle_ocr/test/11_roi.json --engine paddle --model-tier small --lang japan --workers 1 -o /home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/phone11.ass"
+	User time (seconds): 535.33
+	System time (seconds): 172.30
+	Percent of CPU this job got: 671%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:45.42
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 4526740
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 6400746
+	Voluntary context switches: 573878
+	Involuntary context switches: 87090972
+	Swaps: 0
+	File system inputs: 255936
+	File system outputs: 88
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

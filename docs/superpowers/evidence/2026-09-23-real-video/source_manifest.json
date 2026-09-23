@@ -1,0 +1,58 @@
+[
+  {
+    "id": "mail",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4",
+    "video_sha256": "d4ff1dec21906bc10506d088c8e4a930004e0543cd980b4e587dc1389727611c",
+    "roi": "/home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19_roi.json",
+    "roi_sha256": "35b22470cb3c8d35d62b57484f2870a91d6cf487e890d6e94435bd2600f3dd41",
+    "stream": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24000/1001",
+      "duration": "10.260250",
+      "nb_frames": "246"
+    }
+  },
+  {
+    "id": "phone11",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/11.mp4",
+    "video_sha256": "3963c2dde3c5fa7ef7ca1031e73648f9094a82c9ef0e9d5e309ac33f4b7d55a7",
+    "roi": "/home/hope/Tools/video_subtitle_ocr/test/11_roi.json",
+    "roi_sha256": "1b0cbfa73acec0aaa7384593a295a839f0ef9bd895304930fda15b5978ac5bba",
+    "stream": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24000/1001",
+      "duration": "27.193833",
+      "nb_frames": "652"
+    }
+  },
+  {
+    "id": "phone12",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/12.mp4",
+    "video_sha256": "6fa5a9469560221fcee542514082305fe263917c67bbb9b10005404738c6b907",
+    "roi": "/home/hope/Tools/video_subtitle_ocr/test/12_roi.json",
+    "roi_sha256": "8c243e9f3deedadccf451427f5c6ac584e5ddca3858ea9e4b7d9481f6528a638",
+    "stream": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24000/1001",
+      "duration": "93.718625",
+      "nb_frames": "2247"
+    }
+  },
+  {
+    "id": "opening4k",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/一周的朋友 NCOP(虹のかけら)_4k_high_quality_x264.mp4",
+    "video_sha256": "53315ef49d46f6ab46293e448bd0f2b8218860a6878db15ba3f859b6bdae7d42",
+    "roi": "/home/hope/Tools/video_subtitle_ocr/test/一周的朋友 NCOP(虹のかけら)_4k_high_quality_x264_roi_autosave.json",
+    "roi_sha256": "584ecf3b78544b6f1d108daf91c435a5d103d3b97dd6709f52ada3e873b42379",
+    "stream": {
+      "width": 3840,
+      "height": 2160,
+      "r_frame_rate": "24000/1001",
+      "duration": "92.175417",
+      "nb_frames": "2210"
+    }
+  }
+]

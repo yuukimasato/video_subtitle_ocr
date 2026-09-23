@@ -1,0 +1,80 @@
+[
+  {
+    "frame": 288,
+    "t": 12.011999999999999,
+    "active": [
+      {
+        "line": 22,
+        "kind": "Dialogue",
+        "start": 9.59,
+        "end": 17.26,
+        "style": "JP",
+        "name": "",
+        "text": "明日もこうして 君のそばにいて",
+        "raw": "明日もこうして 君のそばにいて"
+      },
+      {
+        "line": 23,
+        "kind": "Dialogue",
+        "start": 9.59,
+        "end": 17.26,
+        "style": "Top",
+        "name": "",
+        "text": "明天也依然想陪在你身旁",
+        "raw": "{\\an8}明天也依然想陪在你身旁"
+      }
+    ]
+  },
+  {
+    "frame": 480,
+    "t": 20.02,
+    "active": [
+      {
+        "line": 24,
+        "kind": "Dialogue",
+        "start": 17.26,
+        "end": 23.6,
+        "style": "JP",
+        "name": "",
+        "text": "同じ時を過ごしていたいな",
+        "raw": "同じ時を過ごしていたいな"
+      },
+      {
+        "line": 25,
+        "kind": "Dialogue",
+        "start": 17.26,
+        "end": 23.6,
+        "style": "Top",
+        "name": "",
+        "text": "與你一起度過共同時光",
+        "raw": "{\\an8}與你一起度過共同時光"
+      }
+    ]
+  },
+  {
+    "frame": 959,
+    "t": 39.99829166666667,
+    "active": [
+      {
+        "line": 30,
+        "kind": "Dialogue",
+        "start": 37.41,
+        "end": 44.62,
+        "style": "JP",
+        "name": "",
+        "text": "言葉にできないこと 押し寄せてきても",
+        "raw": "言葉にできないこと 押し寄せてきても"
+      },
+      {
+        "line": 31,
+        "kind": "Dialogue",
+        "start": 37.41,
+        "end": 44.71,
+        "style": "Top",
+        "name": "",
+        "text": "即便千言萬語湧上心頭無以言表",
+        "raw": "{\\an8}即便千言萬語湧上心頭無以言表"
+      }
+    ]
+  }
+]

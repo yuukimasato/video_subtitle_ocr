@@ -1,0 +1,52 @@
+[
+  {
+    "id": "phone11",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/11.mp4",
+    "fps": 23.976023976023978,
+    "sample_seconds": [
+      1,
+      10,
+      22
+    ]
+  },
+  {
+    "id": "phone12",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/12.mp4",
+    "fps": 23.976023976023978,
+    "sample_seconds": [
+      4.5,
+      14,
+      40
+    ]
+  },
+  {
+    "id": "mail",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4",
+    "fps": 23.976023976023978,
+    "sample_seconds": [
+      2,
+      6.5,
+      9
+    ]
+  },
+  {
+    "id": "opening4k",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/一周的朋友 NCOP(虹のかけら)_4k_high_quality_x264.mp4",
+    "fps": 23.976023976023978,
+    "sample_seconds": [
+      12,
+      20,
+      40
+    ]
+  },
+  {
+    "id": "mail_protected",
+    "video": "/home/hope/Tools/video_subtitle_ocr/test/[DMG] 冴えない彼女の育てかた♭ 第07話19.mp4",
+    "fps": 23.976023976023978,
+    "sample_seconds": [
+      2,
+      6.5,
+      9
+    ]
+  }
+]

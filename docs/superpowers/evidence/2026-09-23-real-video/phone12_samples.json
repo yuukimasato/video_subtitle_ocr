@@ -1,0 +1,489 @@
+[
+  {
+    "frame": 108,
+    "t": 4.504499999999999,
+    "active": []
+  },
+  {
+    "frame": 336,
+    "t": 14.014,
+    "active": [
+      {
+        "line": 134,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "âダーリン",
+        "raw": "{\\an5\\pos(326,204)}âダーリン"
+      },
+      {
+        "line": 135,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既情",
+        "raw": "{\\an5\\pos(322,264)}既情"
+      },
+      {
+        "line": 136,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既情",
+        "raw": "{\\an5\\pos(322,264)}既情"
+      },
+      {
+        "line": 137,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "昨日はごめんね",
+        "raw": "{\\an5\\pos(433,271)}昨日はごめんね"
+      },
+      {
+        "line": 138,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "私も言いすぎたよ",
+        "raw": "{\\an4\\pos(343,328)}私も言いすぎたよ"
+      },
+      {
+        "line": 139,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:23",
+        "raw": "{\\an4\\pos(287,337)}11:23"
+      },
+      {
+        "line": 140,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "でもやっぱり",
+        "raw": "{\\an4\\pos(401,387)}でもやっぱり"
+      },
+      {
+        "line": 141,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:24",
+        "raw": "{\\an4\\pos(342,395)}11:24"
+      },
+      {
+        "line": 142,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "ぜったい",
+        "raw": "{\\an5\\pos(494,444)}ぜったい"
+      },
+      {
+        "line": 143,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既装",
+        "raw": "{\\an4\\pos(404,441)}既装"
+      },
+      {
+        "line": 144,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:24",
+        "raw": "{\\an4\\pos(397,455)}11:24"
+      },
+      {
+        "line": 145,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "私の方が好きだよ",
+        "raw": "{\\an5\\pos(458,502)}私の方が好きだよ"
+      },
+      {
+        "line": 146,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既読",
+        "raw": "{\\an6\\pos(353,501)}既読"
+      },
+      {
+        "line": 147,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:24",
+        "raw": "{\\an5\\pos(333,516)}11:24"
+      },
+      {
+        "line": 148,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "俺の方が好き",
+        "raw": "{\\an5\\pos(323,570)}俺の方が好き"
+      },
+      {
+        "line": 149,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:24",
+        "raw": "{\\an5\\pos(435,579)}11:24"
+      },
+      {
+        "line": 150,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "もう!!",
+        "raw": "{\\an6\\pos(566,624)}もう!!"
+      },
+      {
+        "line": 151,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既谈",
+        "raw": "{\\an5\\pos(449,625)}既谈"
+      },
+      {
+        "line": 152,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:25",
+        "raw": "{\\an5\\pos(446,639)}11:25"
+      },
+      {
+        "line": 153,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "またケンカなるじゃん！",
+        "raw": "{\\an4\\pos(335,688)}またケンカなるじゃん！"
+      },
+      {
+        "line": 154,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既読",
+        "raw": "{\\an6\\pos(313,694)}既読"
+      },
+      {
+        "line": 155,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:25",
+        "raw": "{\\an6\\pos(316,710)}11:25"
+      },
+      {
+        "line": 156,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "もうっ！キライ！",
+        "raw": "{\\an5\\pos(486,749)}もうっ！キライ！"
+      },
+      {
+        "line": 157,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "既読",
+        "raw": "{\\an4\\pos(339,755)}既読"
+      },
+      {
+        "line": 158,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "11:32",
+        "raw": "{\\an4\\pos(333,771)}11:32"
+      },
+      {
+        "line": 159,
+        "kind": "Dialogue",
+        "start": 11.72,
+        "end": 18.1,
+        "style": "Scene",
+        "name": "",
+        "text": "+0",
+        "raw": "{\\an6\\pos(309,837)}+0"
+      }
+    ]
+  },
+  {
+    "frame": 959,
+    "t": 39.99829166666667,
+    "active": [
+      {
+        "line": 686,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "彼女さん",
+        "raw": "{\\an5\\pos(331,194)}彼女さん"
+      },
+      {
+        "line": 687,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "まだ帰ってない？",
+        "raw": "{\\an5\\pos(432,251)}まだ帰ってない？"
+      },
+      {
+        "line": 688,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "23:45",
+        "raw": "{\\an5\\pos(324,257)}23:45"
+      },
+      {
+        "line": 689,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "サークル入ってから",
+        "raw": "{\\an5\\pos(430,299)}サークル入ってから"
+      },
+      {
+        "line": 690,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "23:49",
+        "raw": "{\\an4\\pos(293,306)}23:49"
+      },
+      {
+        "line": 691,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "あんまり連絡ないよね",
+        "raw": "{\\an5\\pos(428,349)}あんまり連絡ないよね"
+      },
+      {
+        "line": 692,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "23:49",
+        "raw": "{\\an4\\pos(280,356)}23:49"
+      },
+      {
+        "line": 693,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "心配してる",
+        "raw": "{\\an4\\pos(434,399)}心配してる"
+      },
+      {
+        "line": 694,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "23:50",
+        "raw": "{\\an6\\pos(423,409)}23:50"
+      },
+      {
+        "line": 695,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "はあー—",
+        "raw": "{\\an5\\pos(503,450)}はあー—"
+      },
+      {
+        "line": 696,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "23.50",
+        "raw": "{\\an5\\pos(434,459)}23.50"
+      },
+      {
+        "line": 697,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "今日",
+        "raw": "{\\an4\\pos(358,498)}今日"
+      },
+      {
+        "line": 698,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "ごめん、今帰り!!",
+        "raw": "{\\an5\\pos(330,550)}ごめん、今帰り!!"
+      },
+      {
+        "line": 699,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "00:20",
+        "raw": "{\\an4\\pos(439,558)}00:20"
+      },
+      {
+        "line": 700,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "終電になっちゃった",
+        "raw": "{\\an4\\pos(243,607)}終電になっちゃった"
+      },
+      {
+        "line": 701,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "00:20",
+        "raw": "{\\an5\\pos(469,613)}00:20"
+      },
+      {
+        "line": 702,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "もう寝てるよね?",
+        "raw": "{\\an5\\pos(337,664)}もう寝てるよね?"
+      },
+      {
+        "line": 703,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "00:21",
+        "raw": "{\\an4\\pos(441,671)}00:21"
+      },
+      {
+        "line": 704,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "ごぬんなさい",
+        "raw": "{\\an4\\pos(254,733)}ごぬんなさい"
+      },
+      {
+        "line": 705,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "00:21",
+        "raw": "{\\an6\\pos(517,872)}00:21"
+      },
+      {
+        "line": 706,
+        "kind": "Dialogue",
+        "start": 38.28,
+        "end": 44.62,
+        "style": "Scene",
+        "name": "",
+        "text": "おやすみなさい・・・",
+        "raw": "{\\an4\\pos(287,931)}おやすみなさい・・・"
+      }
+    ]
+  }
+]

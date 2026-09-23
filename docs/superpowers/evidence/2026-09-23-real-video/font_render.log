@@ -1,0 +1,42 @@
+ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+  built with gcc 13 (Ubuntu 13.2.0-23ubuntu3)
+  configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared
+  WARNING: library configuration mismatch
+  avcodec     configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared --enable-version3 --disable-doc --disable-programs --disable-static --enable-libaribb24 --enable-libopencore_amrnb --enable-libopencore_amrwb --enable-libtesseract --enable-libvo_amrwbenc --enable-libsmbclient
+  libavutil      58. 29.100 / 58. 29.100
+  libavcodec     60. 31.102 / 60. 31.102
+  libavformat    60. 16.100 / 60. 16.100
+  libavdevice    60.  3.100 / 60.  3.100
+  libavfilter     9. 12.100 /  9. 12.100
+  libswscale      7.  5.100 /  7.  5.100
+  libswresample   4. 12.100 /  4. 12.100
+  libpostproc    57.  3.100 / 57.  3.100
+Input #0, lavfi, from 'color=c=0x303030:s=3840x2160:r=24:d=0.05':
+  Duration: N/A, start: 0.000000, bitrate: N/A
+  Stream #0:0: Video: wrapped_avframe, yuv420p, 3840x2160 [SAR 1:1 DAR 16:9], 24 fps, 24 tbr, 24 tbn
+[Parsed_ass_1 @ 0x58099eecf740] libass API version: 0x1701000
+[Parsed_ass_1 @ 0x58099eecf740] libass source: tarball: 0.17.1
+[Parsed_ass_1 @ 0x58099eecf740] Shaper: FriBidi 1.0.13 (SIMPLE) HarfBuzz-ng 8.3.0 (COMPLEX)
+[Parsed_ass_1 @ 0x58099eecf740] Using font provider fontconfig
+[Parsed_ass_1 @ 0x58099eecf740] Added subtitle file: '/home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/opening4k.ass' (8 styles, 20 events)
+Stream mapping:
+  Stream #0:0 -> #0:0 (wrapped_avframe (native) -> wrapped_avframe (native))
+Press [q] to stop, [?] for help
+[Parsed_ass_1 @ 0x58099eee8080] libass API version: 0x1701000
+[Parsed_ass_1 @ 0x58099eee8080] libass source: tarball: 0.17.1
+[Parsed_ass_1 @ 0x58099eee8080] Shaper: FriBidi 1.0.13 (SIMPLE) HarfBuzz-ng 8.3.0 (COMPLEX)
+[Parsed_ass_1 @ 0x58099eee8080] Using font provider fontconfig
+[Parsed_ass_1 @ 0x58099eee8080] Added subtitle file: '/home/hope/Tools/video_subtitle_ocr/test_run/visual_review_20260923/outputs/opening4k.ass' (8 styles, 20 events)
+[Parsed_ass_1 @ 0x58099eee8080] fontselect: (源ノ角ゴシック JP, 400, 0) -> /home/hope/.local/share/fonts/truetype/dejavu/DejaVuSans.ttf, 0, DejaVuSans
+[Parsed_ass_1 @ 0x58099eee8080] Glyph 0x660E not found, selecting one more font for (源ノ角ゴシック JP, 400, 0)
+[Parsed_ass_1 @ 0x58099eee8080] fontselect: (源ノ角ゴシック JP, 400, 0) -> /home/hope/.local/share/fonts/truetype/wqy/wqy-zenhei.ttc, 0, WenQuanYiZenHei
+[Parsed_ass_1 @ 0x58099eee8080] fontselect: (思源黑体 CN, 400, 0) -> /home/hope/.local/share/fonts/truetype/adobe/SourceHanSansCN-Regular.ttf, 0, SourceHanSansCN-Regular
+Output #0, null, to 'pipe:':
+  Metadata:
+    encoder         : Lavf60.16.100
+  Stream #0:0: Video: wrapped_avframe, yuv420p(progressive), 3840x2160 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 24 fps, 24 tbn
+    Metadata:
+      encoder         : Lavc60.31.102 wrapped_avframe
+frame=    0 fps=0.0 q=-0.0 size=       0kB time=00:00:12.00 bitrate=   0.0kbits/s speed=N/A
+[out#0/null @ 0x58099eecd640] video:0kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: unknown
+frame=    1 fps=0.0 q=-0.0 Lsize=N/A time=00:00:12.00 bitrate=N/A speed= 869x
