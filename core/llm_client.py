@@ -204,6 +204,9 @@ def get_llm_client(
     client_kwargs: dict = {
         "base_url": base_url,
         "api_key": api_key,
+        # Tenacity owns the HTTP attempt/wait budget. SDK retries would
+        # multiply those attempts and sleep outside that bounded policy.
+        "max_retries": 0,
     }
     if timeout is not None and timeout > 0:
         client_kwargs["timeout"] = float(timeout)

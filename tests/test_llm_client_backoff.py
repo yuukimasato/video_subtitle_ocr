@@ -154,3 +154,29 @@ def test_retry_after_extracted_from_openai_rate_limit_error():
     except TypeError:
         pytest.skip("stub openai: RateLimitError signature differs")
     assert llm_client.retry_after_seconds_from_exception(err) == 7.0
+
+
+def test_sdk_retries_disabled_so_outer_budget_counts_http_attempts(monkeypatch):
+    import httpx
+    import openai
+    from tenacity import stop_after_attempt, wait_none
+
+    _real_tenacity_or_skip()
+    attempts = []
+
+    def respond(request):
+        attempts.append(request)
+        return httpx.Response(429, json={
+            'error': {'message': 'rate limited', 'type': 'rate_limit_error',
+                      'code': 'rate_limit_exceeded'}})
+
+    real_openai = openai.OpenAI
+    transport = httpx.MockTransport(respond)
+    monkeypatch.setattr(llm_client, 'OpenAI', lambda **kw: real_openai(
+        **kw, http_client=httpx.Client(transport=transport)))
+    with llm_client.get_llm_client('https://test.invalid/v1', 'test-key') as client:
+        assert client.max_retries == 0
+        call = _call_llm_api.retry_with(stop=stop_after_attempt(3), wait=wait_none())
+        with pytest.raises(openai.RateLimitError):
+            call(client, [{'role': 'user', 'content': 'hello'}], 'test', 0)
+    assert len(attempts) == 3
