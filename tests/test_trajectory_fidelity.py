@@ -90,11 +90,11 @@ def test_empty_motion_rejected():
 
 def test_static_sampling_edges_do_not_reject_motion_extension():
     """静态证据跨度之外的轨迹延伸是「未采样 = 未知」,不判内容错误
-    (mail 真实形态:轨迹从 0 帧起有事件,静态 OCR 首组从 0.20s 起)。"""
-    static = [TextSpan(20, 354, " ".join(f"行{i}" for i in range(12)), i)
-              for i in range(12)]
-    motion = [TextSpan(0, 200, " ".join(f"行{i}" for i in range(13)), i)
-              for i in range(13)]
+    (mail 真实形态:轨迹从 0 帧起有事件,静态 OCR 首组从 0.20s 起;
+    跨度内部文本完全一致)。"""
+    texts = [f"行{i}" for i in range(12)]
+    static = [TextSpan(20, 354, texts[i], i) for i in range(12)]
+    motion = [TextSpan(0, 200, texts[i], i) for i in range(12)]
     result = check_text_fidelity(static, motion)
     assert result.ok, result.reason
 
