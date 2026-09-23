@@ -14,6 +14,7 @@ from core import chunk_planner, chunk_parallel_runner
 from core import pipeline_stages
 from core.pipeline_stages import PipelineContext, PipelineCancelled
 from core.scene_text_policy import POLICY_MODES
+from core.roi_runtime_config import collect_roi_pose_tags
 from core.subtitle_llm_polish import SubtitlePolisherConfig
 from utils.time_utils import parse_time
 
@@ -130,11 +131,16 @@ def collect_roi_ocr_langs(roi_data: Optional[List[Dict]]) -> Dict[str, str]:
 
 def apply_cli_scene_text_policy(entries: Optional[List[Dict]],
                                 cli_policy: Optional[str]) -> None:
-    """CLI ``--scene-text-policy`` 覆盖 ROI 配置的固定优先级(就地修改)。
+    """旧版 CLI「阶段 4 才施加策略」的就地覆盖(保留给既有调用者/测试)。
 
     - CLI 显式传入非 overlap 策略 → 覆盖全部 ROI 条目的策略(既有语义);
     - CLI 为缺省 overlap/空 → 不动条目,ROI JSON 内的逐 ROI 配置生效;
     - 合法性由 CLI argparse choices 校验,此处不重复校验。
+
+    .. note::
+        CLI 主流程自 C1 起改为在任何处理阶段之前用
+        :func:`core.roi_runtime_config.resolve_roi_policies` 一次性解析
+        (显式 overlap 也覆盖保存值),不再经由此函数。
     """
     if not cli_policy or cli_policy == "overlap":
         return
@@ -482,16 +488,19 @@ class PipelineWorker(QThread):
             ),
         )
         engine_id = str(self.ocr_engine_id) if self.ocr_engine_id else None
+        # C1: GUI 全局语言作为 cli_lang 参与解析;ROI 自带 ocr_lang 仍优先,
+        # model_tier 等其余选项与静态路径共用同一份有效结果。
+        from core.roi_runtime_config import effective_ocr_options
+
+        gui_lang = str(self.engine_options.get("lang") or "").strip() or None
         events_all: List[Dict[str, Any]] = []
         taken_over: set = set()
         for spec in specs:
             roi_id = spec["roi_id"]
             try:
                 quad = validate_quad(normalize_quad_winding(spec["quad"]))
-                engine_options = dict(self.engine_options)
-                if spec.get("ocr_lang"):
-                    # 每 ROI 识别语言覆盖:轨迹管线的独立引擎按该语言初始化。
-                    engine_options["lang"] = str(spec["ocr_lang"])
+                engine_options = effective_ocr_options(
+                    self.engine_options, spec, cli_lang=gui_lang)
                 events, summary = build_motion_events(
                     self.video_path, quad,
                     start_frame=spec["start_frame"],
@@ -722,17 +731,16 @@ class PipelineWorker(QThread):
                     translation_cfg,
                     log_line=lambda s: self.llm_detail.emit(s),
                 )
-            # Per-ROI placement metadata for ROIs with "write pose tags" on.
-            roi_pose_tags: Dict[str, Dict[str, Any]] = {}
+            # Per-ROI placement metadata for ROIs with "write pose tags" on
+            # (same collection rule for GUI and CLI — collect_roi_pose_tags).
+            roi_pose_tags: Dict[str, Dict[str, Any]] = (
+                collect_roi_pose_tags(self.roi_data))
             # Per-ROI text-filter policy ("keep_all" for manual ROIs — scene
             # text must survive; "auto" for detected main-subtitle bands).
             roi_text_filter_policies: Dict[str, str] = {}
             for idx, roi in enumerate(self.roi_data or []):
                 if not isinstance(roi, dict):
                     continue
-                pose = roi.get("pose")
-                if roi.get("write_pose_tags") and isinstance(pose, dict):
-                    roi_pose_tags[f"roi_{idx}"] = pose
                 roi_text_filter_policies[f"roi_{idx}"] = str(
                     roi.get("text_filter_policy") or "keep_all"
                 )

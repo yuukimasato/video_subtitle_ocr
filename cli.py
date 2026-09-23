@@ -132,26 +132,14 @@ def load_roi_file(path: str) -> list:
     per-ROI flags (write_pose_tags / motion_auto_brightness /
     scene_text_policy / text_filter_policy ...) are kept so the CLI run
     behaves exactly like the GUI pipeline with the same ROI list.
-    """
-    import json
 
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    entries = payload.get("rois") if isinstance(payload, dict) else payload
-    if not isinstance(entries, list):
-        raise ValueError(
-            f"ROI file {path!r}: expected {{\"rois\": [...]}} or a bare list")
-    out = []
-    for i, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise ValueError(f"ROI file {path!r}: entry {i} is not an object")
-        if not entry.get("type") or "points" not in entry:
-            raise ValueError(
-                f"ROI file {path!r}: entry {i} missing 'type'/'points'")
-        out.append(entry)
-    if not out:
-        raise ValueError(f"ROI file {path!r}: no ROI entries")
-    return out
+    Kept as the list-returning compatibility entry point; the main run reads
+    the full :class:`core.roi_runtime_config.RoiFileConfig` (which also
+    carries the file-top-level ``ocr_lang``) via ``read_roi_config``.
+    """
+    from core.roi_runtime_config import read_roi_config
+
+    return read_roi_config(path).rois
 
 
 def _time_to_sec(value) -> float:
@@ -227,10 +215,20 @@ def _plan_workers(args: argparse.Namespace, info: dict):
     )
 
 
-def _engine_options_from_args(args: argparse.Namespace) -> dict:
+def _engine_options_from_args(args: argparse.Namespace,
+                              file_lang: str | None = None) -> dict:
+    """全局引擎选项；未显式传 ``--lang`` 时回退 ROI 文件顶层语言，再回退 ch。
+
+    ``model_tier`` 原样进入选项：静态与运动两条路径共用这一份结果（C1 之前
+    运动路径丢失该键，medium/small 请求在轨迹引擎上不生效）。
+    """
+    from core.roi_runtime_config import effective_ocr_options
+
     model_tier = None if (args.model_tier or "auto").lower() in ("", "auto") \
         else args.model_tier
-    return {"lang": args.lang, "model_tier": model_tier}
+    return effective_ocr_options(
+        {"lang": None, "model_tier": model_tier}, {},
+        file_lang=file_lang, cli_lang=getattr(args, "lang", None))
 
 
 def _translation_config_from_args(args: argparse.Namespace):
@@ -310,7 +308,8 @@ def _font_identify_config_from_args(args: argparse.Namespace):
     return FontIdentifyConfig(enabled=True, db_path=db_path or None)
 
 
-def _build_pipeline_context(args, video_path, roi_entries, info, work_dir):
+def _build_pipeline_context(args, video_path, roi_entries, info, work_dir,
+                            engine_options=None):
     """Share CLI stage configuration across sequential and chunk execution."""
     from core.pipeline_stages import PipelineContext
 
@@ -325,17 +324,21 @@ def _build_pipeline_context(args, video_path, roi_entries, info, work_dir):
         visualize=False,
         save_intermediate_json=False,
         ocr_engine_id=("" if args.engine == "auto" else args.engine),
-        engine_options=_engine_options_from_args(args),
+        engine_options=(engine_options
+                        if engine_options is not None
+                        else _engine_options_from_args(args)),
         enable_boundary_refine=False,
     )
 
 
 def _run_chunk_stages(args: argparse.Namespace, video_path: str,
-                      roi_entries: list, info: dict, work_dir: str, plan):
+                      roi_entries: list, info: dict, work_dir: str, plan,
+                      engine_options=None):
     """Run shared stages in chunk workers, preserving CLI refinement policy."""
     from core import chunk_parallel_runner
 
-    ctx = _build_pipeline_context(args, video_path, roi_entries, info, work_dir)
+    ctx = _build_pipeline_context(args, video_path, roi_entries, info,
+                                  work_dir, engine_options=engine_options)
     if not args.quiet:
         print(
             f"[1-3/4] Chunk-parallel OCR: {plan.workers} workers, "
@@ -385,6 +388,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     )
 
     watermark_config = None
+    roi_file_config = None
     if getattr(args, "scan", False):
         # ── Scan mode: full-frame sampling → band/scene/watermark census ──
         from core.fullframe_scanner import perform_scan
@@ -397,7 +401,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         report = perform_scan(
             video_path,
             sample_count=args.scan_samples,
-            lang=args.lang,
+            lang=args.lang or "ch",
             model_tier=(args.model_tier or "auto"),
             ocr_engine_id=engine_id or "paddle",
             with_snapshots=False,
@@ -442,8 +446,12 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if args.roi_file:
             try:
                 # GUI-saved entries first (roi_0... numbering matches the GUI
-                # list order), then any interactive --roi specs.
-                roi_entries = load_roi_file(args.roi_file) + roi_entries
+                # list order), then any interactive --roi specs. The full
+                # config is read once: per-ROI flags stay on the entries and
+                # the file-top-level ocr_lang feeds the language fallback.
+                from core.roi_runtime_config import read_roi_config
+                roi_file_config = read_roi_config(args.roi_file)
+                roi_entries = roi_file_config.rois + roi_entries
             except (OSError, ValueError) as e:
                 _info(f"Error: {e}", args.quiet)
                 return 2
@@ -465,6 +473,35 @@ def run_pipeline(args: argparse.Namespace) -> int:
     for r in roi_entries:
         if r.get("end_time") is None:
             r["end_time"] = duration_sec
+
+    # ── C1: resolve the run's effective configuration ONCE, before any
+    # processing stage. The scene-text policy must be resolved before the
+    # motion stage runs (its per-ROI policy selects the display strategy) and
+    # before the static stage creates its engine; an explicit --scene-text-
+    # policy (including explicit overlap) overrides the saved ROI values,
+    # while an omitted flag keeps them (defaulting to overlap).
+    from core.roi_runtime_config import (
+        collect_roi_pose_tags,
+        effective_ocr_options,
+        resolve_roi_policies,
+    )
+    file_lang = roi_file_config.ocr_lang if roi_file_config else None
+    cli_lang = getattr(args, "lang", None)
+    engine_options = _engine_options_from_args(args, file_lang=file_lang)
+    roi_entries = resolve_roi_policies(
+        roi_entries, getattr(args, "scene_text_policy", None))
+    roi_pose_tags = collect_roi_pose_tags(roi_entries)
+    _info(
+        "Effective config: engine={} lang={} model_tier={} "
+        "file_lang={} scene_text_policy={} pose_rois={}".format(
+            args.engine, engine_options["lang"],
+            engine_options["model_tier"] or "auto",
+            file_lang or "-",
+            getattr(args, "scene_text_policy", None) or "(per-ROI saved/overlap)",
+            ",".join(sorted(roi_pose_tags)) or "-"),
+        args.quiet,
+    )
+
     for r in roi_entries:
         _info(
             f"ROI: {r['points']} time=[{r.get('start_time', 0)}, "
@@ -483,7 +520,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             chunk_plan = _plan_workers(args, info)
             if chunk_plan is not None:
                 chunk_results = _run_chunk_stages(
-                    args, video_path, roi_entries, info, work_dir, chunk_plan)
+                    args, video_path, roi_entries, info, work_dir, chunk_plan,
+                    engine_options=engine_options)
         if chunk_results is not None:
             restored_results, chunk_elapsed = chunk_results
             t3 = time.perf_counter()
@@ -493,8 +531,11 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 return 1
 
         if chunk_results is None:
-            ctx = _build_pipeline_context(args, video_path, roi_entries, info, work_dir)
-            _info(f"[1-3/4] OCR ({args.engine} engine, lang={args.lang})...", args.quiet)
+            ctx = _build_pipeline_context(
+                args, video_path, roi_entries, info, work_dir,
+                engine_options=engine_options)
+            _info(f"[1-3/4] OCR ({args.engine} engine, "
+                  f"lang={engine_options['lang']})...", args.quiet)
 
             def _progress(pct: int, _message: str) -> None:
                 if not args.quiet:
@@ -596,9 +637,13 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
             for (quad, start_sec, end_sec), label in motion_specs:
                 try:
-                    _run_motion_quad(quad, start_sec, end_sec,
-                                     label, args.auto_brightness,
-                                     occlusion_clip=args.occlusion_clip)
+                    _run_motion_quad(
+                        quad, start_sec, end_sec,
+                        label, args.auto_brightness,
+                        occlusion_clip=args.occlusion_clip,
+                        engine_options=effective_ocr_options(
+                            engine_options, {},
+                            file_lang=file_lang, cli_lang=cli_lang))
                 except Exception as exc:
                     _info(
                         f"Warning: motion quad {label} failed ({exc}); "
@@ -609,9 +654,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
             for spec in roi_motion_specs:
                 try:
                     prev_count = len(motion_events_all)
-                    spec_engine_options = (
-                        {"lang": str(spec["ocr_lang"])}
-                        if spec.get("ocr_lang") else None)
+                    spec_engine_options = effective_ocr_options(
+                        engine_options, spec,
+                        file_lang=file_lang, cli_lang=cli_lang)
                     _run_motion_quad(
                         spec["quad"],
                         None,
@@ -693,7 +738,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
                                 region.end_frame / info["fps"],
                                 f"auto[roi_{idx}]#{k}",
                                 args.auto_brightness,
-                                occlusion_clip=args.occlusion_clip)
+                                occlusion_clip=args.occlusion_clip,
+                                engine_options=effective_ocr_options(
+                                    engine_options, roi_entries[idx],
+                                    file_lang=file_lang, cli_lang=cli_lang))
                             motion_roi_ids.add(f"roi_{idx}")
                             detected_any = True
                         except Exception as exc:
@@ -724,12 +772,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # collection rule as the GUI worker; empty = auto-detect.
         from core.pipeline_worker import collect_roi_ocr_langs
         roi_ocr_langs = collect_roi_ocr_langs(roi_entries)
-        # Per-ROI scene-text display policy (overlap/mask/external/whitespace):
-        # an explicit (non-overlap) --scene-text-policy overrides the ROI
-        # JSON policies; the overlap default leaves them untouched.
-        from core.pipeline_worker import (
-            apply_cli_scene_text_policy, collect_roi_scene_text_options)
-        apply_cli_scene_text_policy(roi_entries, args.scene_text_policy)
+        # Per-ROI scene-text display policy: already resolved ONCE before the
+        # motion/static stages (resolve_roi_policies above) so the trajectory
+        # path and the generator consume the same effective policy.
+        from core.pipeline_worker import collect_roi_scene_text_options
         roi_scene_policies, roi_analysis_rects = collect_roi_scene_text_options(
             roi_entries
         )
@@ -814,6 +860,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             font_compliance=font_compliance_config,
             font_identifications=font_identifications,
             roi_ocr_langs=roi_ocr_langs or None,
+            roi_pose_tags=roi_pose_tags or None,
             source_filter_config=source_filter_config,
             roi_text_filter_policies=roi_policies or None,
             roi_scene_text_policies=roi_scene_policies or None,
@@ -891,7 +938,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--engine", default="auto", choices=["auto", "paddle", "rapid"],
         help="OCR engine (default: auto = first available)",
     )
-    parser.add_argument("--lang", default="ch", help="recognition language (default: ch)")
+    parser.add_argument(
+        "--lang", default=None,
+        help="recognition language (default: ch; an explicit value wins over "
+             "the ROI file's top-level language, while each ROI's own "
+             "ocr_lang still takes precedence for that ROI)",
+    )
     parser.add_argument(
         "--model-tier", default="auto", choices=["auto", "tiny", "small", "medium"],
         help="PP-OCRv6 model tier (default: auto)",
@@ -903,12 +955,15 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     parser.add_argument("--template", help="external .ass file as style template")
     parser.add_argument(
-        "--scene-text-policy", default="overlap",
+        "--scene-text-policy", default=None,
         choices=["overlap", "mask", "mask_only", "external", "whitespace"],
-        help="scene-text display policy for --roi entries (default: overlap; "
-             "mask_only = cover patch only, recognized text written as "
-             "Comment lines for hand re-typesetting; unavailable modes fall "
-             "back whitespace->mask->external, mask_only->external)",
+        help="scene-text display policy for --roi entries. An explicit value "
+             "(including overlap) overrides the policies saved in the ROI "
+             "file; when omitted, each ROI keeps its saved policy and "
+             "defaults to overlap. mask_only = cover patch only, recognized "
+             "text written as Comment lines for hand re-typesetting; "
+             "unavailable modes fall back whitespace->mask->external, "
+             "mask_only->external",
     )
     parser.add_argument(
         "--motion-quad", action="append", metavar="SPEC",
