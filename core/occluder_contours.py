@@ -274,6 +274,7 @@ def apply_screen_occlusion(
     *,
     fps: float,
     event_geometry: Mapping[str, object],
+    default_status: str = "unknown",
 ) -> List[dict]:
     r"""策略后按事件几何/绝对时间切片,把屏幕轮廓写成时间局部 ``\iclip``。
 
@@ -313,7 +314,12 @@ def apply_screen_occlusion(
             t = round(frame / float(fps) * 100) if fps > 0 else 0
             if t < st or t > en:
                 continue
-            result = screen_occlusions.get(frame)  # 缺失 = unknown
+            result = screen_occlusions.get(frame)
+            if result is None and default_status == "clear":
+                # 缺失帧按 clear(有证据窗口外的帧无前景证据)。
+                clip = None
+                points.append((t, clip))
+                continue
             clip = None
             if result is not None and result.valid:
                 ring_pts = [r for r in result.rings
@@ -325,7 +331,7 @@ def apply_screen_occlusion(
                         clip = None
                 last_valid = clip
                 last_valid_frame = frame
-            elif result is None or result.status == "unknown":
+            elif result is not None and result.status == "unknown":
                 # unknown(未采样/失败/缺失):仅复用不超过一帧的上一有效
                 # 轮廓并留痕,之后不应用裁剪(不无限期延用过期轮廓)。
                 if (last_valid is not None
@@ -339,6 +345,7 @@ def apply_screen_occlusion(
                     last_valid = None
             else:  # clear:有证据确认无前景
                 last_valid = None
+                last_valid_frame = None
             points.append((t, clip))
         if not any(clip for _t, clip in points):
             out.append(ev)

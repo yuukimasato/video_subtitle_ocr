@@ -1478,6 +1478,7 @@ def build_motion_events(
     #     重建事件时自然丢弃,mask 的文本事件标签原样保留):展开图 vs 锚定
     #     帧灰度差 → 遮挡多边形 → 事件跨度内与行框相交者以 \iclip(± \t
     #     动画)裁掉,字幕不再渲染到手上。
+    occlusion_hit_frames: List[int] = []
     if cfg.occlusion_clip:
         import cv2 as _cv2
 
@@ -1502,6 +1503,7 @@ def build_motion_events(
             video_path, tracks, anchor_gray=anchor_gray,
             plane_size=plane_size, origin=origin, cfg=occl_cfg, log=log,
             samples=occl_samples)
+        occlusion_hit_frames = sorted(occlusions)
         # 逐行对齐结果:从合成事件自身的 \an 标签回读(与合成时使用的
         # 判定同源),离散切片按同一锚点重建位姿。
         import re as _re
@@ -1631,6 +1633,9 @@ def build_motion_events(
         # A3:策略/遮挡扩增前的行级可见区间(原始行身份 + 阅读序),供主流
         # 水线在轨迹接管前对照静态 OCR 文本证据;纯报告字段,不影响事件。
         "pre_policy_events": pre_policy_events,
+        # B4:平面空间遮挡检测的命中帧(经单应对齐的可靠窗口),供静态路径
+        # 的屏幕轮廓细化限定在候选帧内。
+        "occlusion_hit_frames": occlusion_hit_frames,
         # --- 以下为纯报告字段(新增,不影响任何事件几何/.ass 输出/决策)---
         # 丢锁原因直方图(零出现的原因此处不出现;旧 tracker 无该字段时为 {});
         "lost_reasons": lost_reasons,

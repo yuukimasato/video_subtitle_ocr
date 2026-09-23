@@ -521,6 +521,10 @@ class PipelineWorker(QThread):
                 )
                 self.motion_evidence.setdefault(roi_id, []).extend(
                     summary.get("pre_policy_events") or [])
+                if not hasattr(self, "occlusion_hit_frames"):
+                    self.occlusion_hit_frames: Dict[str, List[int]] = {}
+                self.occlusion_hit_frames[roi_id] = list(
+                    summary.get("occlusion_hit_frames") or [])
                 ok, coverage = trajectory_takeover_ok(
                     events, self._roi_by_id(roi_id), self.fps)
                 if not ok:
@@ -795,6 +799,8 @@ class PipelineWorker(QThread):
                     self.roi_data) or None,
                 roi_occlusion_clip=collect_roi_occlusion_clip(
                     self.roi_data) or None,
+                occlusion_hit_frames=getattr(
+                    self, "occlusion_hit_frames", None) or None,
             )
             converter.convert_from_memory(
                 iter(restored_results),

@@ -574,6 +574,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # A3:roi_id → 轨迹预策略证据(summary["pre_policy_events"]),交给
         # 生成器在接管前做文本保真对照。
         motion_evidence: dict = {}
+        occlusion_hit_frames: dict = {}
         from core.pipeline_worker import (
             collect_motion_roi_specs,
             trajectory_takeover_ok,
@@ -690,6 +691,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     ) or {}
                     motion_evidence.setdefault(str(spec["roi_id"]), []).extend(
                         last_motion_summary.get("pre_policy_events") or [])
+                    occlusion_hit_frames[str(spec["roi_id"])] = list(
+                        last_motion_summary.get("occlusion_hit_frames") or [])
                     # 覆盖门限(与 GUI 主流水线同契约):轨迹事件只覆盖 ROI
                     # 的一小段时(固定文字带跟踪常只在头几行锁定),残段远
                     # 不如静态路径完整——丢弃轨迹事件、不接管该 ROI。
@@ -892,6 +895,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             motion_evidence=motion_evidence or None,
             roi_auto_brightness=roi_auto_brightness or None,
             roi_occlusion_clip=roi_occlusion_clip or None,
+            occlusion_hit_frames=occlusion_hit_frames or None,
         )
         converter.convert_from_memory(iter(restored_results))
         t4 = time.perf_counter()

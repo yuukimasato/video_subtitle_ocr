@@ -205,6 +205,7 @@ class OCRToASSOptimizer(
         motion_evidence: Optional[Dict[str, List[Dict]]] = None,
         roi_auto_brightness: Optional[Dict[str, bool]] = None,
         roi_occlusion_clip: Optional[Dict[str, bool]] = None,
+        occlusion_hit_frames: Optional[Dict[str, List[int]]] = None,
         analysis_frame_mode: str = "single",
         font_compliance: Optional["FontComplianceConfig"] = None,
         font_identifications: Optional[Any] = None,
@@ -255,6 +256,11 @@ class OCRToASSOptimizer(
         # B4:roi_id → 前景轮廓遮挡裁剪开关;开启时该 ROI 的静态策略事件
         # (文字与同物体有色遮罩)按帧计算屏幕前景轮廓并写时间局部 iclip。
         self.roi_occlusion_clip = dict(roi_occlusion_clip or {})
+        # B4:roi_id → 平面空间遮挡检测的命中帧窗口(经单应对齐的可靠
+        # 证据);屏幕轮廓细化限定在这些帧附近,其余帧按 clear 处理。
+        self.occlusion_hit_frames = {
+            k: [int(f) for f in v] for k, v in (occlusion_hit_frames or {}).items()
+        }
         # A3:保真门控拒绝接管的 ROI——其轨迹候选事件在写出前整体移除,
         # 不只清 motion_roi_ids(否则候选会作为附加输出漏进最终 .ass)。
         self._rejected_motion_rois: set = set()
@@ -412,7 +418,8 @@ class OCRToASSOptimizer(
         ]
         return check_text_fidelity(static_spans, motion_spans)
 
-    def _contour_screen_occlusion(self, events, boxes, t0_sec, t1_sec):
+    def _contour_screen_occlusion(self, events, boxes, t0_sec, t1_sec,
+                                  hit_frames=None):
         """B4:静态事件的时间局部前景轮廓裁剪(策略路径与普通 Scene 路径
         共用)。
 
@@ -437,6 +444,16 @@ class OCRToASSOptimizer(
         f1 = int(round(t1_sec * fps))
         frame_list = sorted({f for f in range(f0, f1 + 1, 3)} | {f0, f1})
         if f1 < f0:
+            return events
+        # 屏幕细化限定在平面检测的命中窗口(±5 帧)内:该窗口来自经单应
+        # 对齐的可靠检测(只有那里能区分「手」与「内容漂移」);无窗口
+        # 证据(未跟踪/未检出)时不猜测,直接不做轮廓裁剪。
+        if not hit_frames:
+            return events
+        hit_window = (min(hit_frames) - 5, max(hit_frames) + 5)
+        frame_list = [f for f in frame_list
+                      if hit_window[0] <= f <= hit_window[1]]
+        if not frame_list:
             return events
 
         margin = 24.0
@@ -845,6 +862,10 @@ class OCRToASSOptimizer(
             f1 = int(round(sl.end_cs / 100.0 * fps))
             frame_list = sorted({f for f in range(f0, f1 + 1, 3)}
                                 | {f0, f1}) if f1 >= f0 else []
+            hit_frames_roi = self.occlusion_hit_frames.get(str(roi_id)) or []
+            if hit_frames_roi:
+                hw = (min(hit_frames_roi) - 5, max(hit_frames_roi) + 5)
+                frame_list = [f for f in frame_list if hw[0] <= f <= hw[1]]
             if auto_brightness and slice_events:
                 from core.scene_brightness import (
                     apply_scene_brightness,
@@ -998,7 +1019,8 @@ class OCRToASSOptimizer(
                         slice_events = apply_screen_occlusion(
                             slice_events, screen_occlusions,
                             fps=float(self.fps) if self.fps else 25.0,
-                            event_geometry=event_geometry)
+                            event_geometry=event_geometry,
+                            default_status="clear")
             for e in slice_events:
                 e.pop("_mask_box", None)
                 e.pop("_screen_box", None)
@@ -1192,7 +1214,9 @@ class OCRToASSOptimizer(
                     t1 = max(self._parse_ass_time_to_seconds(e["end_time"])
                              for e in occ_events)
                     subtitle_events.extend(self._contour_screen_occlusion(
-                        occ_events, occ_boxes, t0, t1))
+                        occ_events, occ_boxes, t0, t1,
+                        hit_frames=self.occlusion_hit_frames.get(
+                            str(roi_id)) or None))
 
                 if policy_ctx is not None:
                     subtitle_events.extend(
