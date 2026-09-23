@@ -428,9 +428,9 @@ def test_scene_group_left_aligned_uses_an4_at_box_left_edge(tmp_path):
              _text_line("早速だけど。", (460, 380, 1100, 400))]
     out = conv._determine_style_and_position(_scene_group(lines))
     assert [d["tags"] for d in out] == [
-        "{\\an4\\pos(460,310)}",
-        "{\\an4\\pos(460,350)}",
-        "{\\an4\\pos(460,390)}",
+        "{\\an4\\pos(460,310)\\fs20}",
+        "{\\an4\\pos(460,350)\\fs20}",
+        "{\\an4\\pos(460,390)\\fs20}",
     ]
 
 
@@ -451,10 +451,10 @@ def test_scene_group_chat_mixed_sides_pos_pipeline(tmp_path):
              _text_line("左二", (500, 510, 690, 530))]
     out = conv._determine_style_and_position(_scene_group(lines))
     assert [d["tags"] for d in out] == [
-        "{\\an4\\pos(500,360)}",
-        "{\\an6\\pos(810,440)}",
-        "{\\an6\\pos(810,480)}",
-        "{\\an4\\pos(500,520)}",
+        "{\\an4\\pos(500,360)\\fs20}",
+        "{\\an6\\pos(810,440)\\fs20}",
+        "{\\an6\\pos(810,480)\\fs20}",
+        "{\\an4\\pos(500,520)\\fs20}",
     ]
 
 
@@ -470,11 +470,11 @@ def test_scene_group_sheared_long_group_detrend_votes_left(tmp_path):
         lines.append(_text_line(f"行{k}", (x1, y, x1 + 60 + 13 * (k % 3), y + 30)))
     out = conv._determine_style_and_position(_scene_group(lines))
     assert [d["tags"] for d in out] == [
-        "{\\an4\\pos(300,215)}",
-        "{\\an4\\pos(312,255)}",
-        "{\\an4\\pos(324,295)}",
-        "{\\an4\\pos(336,335)}",
-        "{\\an4\\pos(348,375)}",
+        "{\\an4\\pos(300,215)\\fs30}",
+        "{\\an4\\pos(312,255)\\fs30}",
+        "{\\an4\\pos(324,295)\\fs30}",
+        "{\\an4\\pos(336,335)\\fs30}",
+        "{\\an4\\pos(348,375)\\fs30}",
     ]
 
 
@@ -484,8 +484,8 @@ def test_scene_group_equal_widths_keeps_an5_center(tmp_path):
              _text_line("乙乙乙", (400, 340, 600, 360))]
     out = conv._determine_style_and_position(_scene_group(lines))
     assert [d["tags"] for d in out] == [
-        "{\\an5\\pos(500,310)}",
-        "{\\an5\\pos(500,350)}",
+        "{\\an5\\pos(500,310)\\fs20}",
+        "{\\an5\\pos(500,350)\\fs20}",
     ]
 
 

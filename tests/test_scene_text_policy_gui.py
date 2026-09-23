@@ -147,8 +147,13 @@ def test_mask_policy_falls_back_to_external_when_text_moves(scene_video, tmp_pat
     text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
 
     assert "\\p1" not in text  # 未产出静态遮罩
+    # A2:文本移动回退 external 后,两个分离可见窗口各自出 NoteBox——
+    # 旧契约的一条跨窗联合事件正是 V2 缺陷(窗口间文字离场仍常驻)。
     notes = [ln for ln in _dialogues(text) if ",NoteBox," in ln]
-    assert len(notes) == 1 and "店铺招牌" in notes[0]
+    assert len(notes) == 2
+    assert all("店铺招牌" in ln for ln in notes)
+    spans = [(ln.split(",")[1], ln.split(",")[2]) for ln in notes]
+    assert spans[0][1] <= spans[1][0]  # 时间不重叠,窗间离场
 
 
 def test_external_policy_single_notebox_event(scene_video, tmp_path):
