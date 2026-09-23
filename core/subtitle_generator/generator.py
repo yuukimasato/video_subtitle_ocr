@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QCoreApplication
 
+from utils.atomic_write import atomic_write_text
+
 from core.line_restoration import merge_restoration_tags
 from core.scene_text_policy import (
     POLICY_MODES,
@@ -621,8 +623,8 @@ class OCRToASSOptimizer(
                     self._write_final_file([])
                 else:
                     logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found, an empty ASS file will be generated."))
-                    with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-                        f.write(self._get_ass_header())
+                    atomic_write_text(self.output_path, self._get_ass_header(),
+                                      encoding='utf-8-sig')
                 return
 
             subtitle_events: List[Dict[str, str]] = []
@@ -1072,8 +1074,8 @@ class OCRToASSOptimizer(
 
         if not all_dialogue_entries:
             logger.warning(_tr("OCRToASSOptimizer", "No valid subtitle groups formed for any ROI, an empty ASS file will be generated."))
-            with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-                f.write(self._get_ass_header())
+            atomic_write_text(self.output_path, self._get_ass_header(),
+                              encoding='utf-8-sig')
             return
 
         # Sort by parsed start time — lexicographic order on "H:MM:SS.CC"
@@ -1085,5 +1087,4 @@ class OCRToASSOptimizer(
         header_content = self._get_ass_header()
         final_content = header_content + "\n".join(all_dialogue_entries)
 
-        with open(self.output_path, 'w', encoding='utf-8-sig') as f:
-            f.write(final_content)
+        atomic_write_text(self.output_path, final_content, encoding='utf-8-sig')
