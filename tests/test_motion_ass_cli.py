@@ -1685,7 +1685,8 @@ def test_summary_existing_keys_unchanged_by_reporting_fields(tmp_path,
         "lines", "width", "height", "plane_size", "quad_window_origin",
         "ocr_engine", "tracks"}
     assert set(summary_new) == legacy_keys | {"lost_reasons", "chains",
-                                        "pre_policy_events"}
+                                        "pre_policy_events",
+                                        "occlusion_hit_frames"}
 
     # 旧键的值(与改动前的语义一致)
     assert summary_new["ok_frames"] == len(_DIAG_OK_FRAMES) == 7
