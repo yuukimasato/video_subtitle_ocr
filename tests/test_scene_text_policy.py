@@ -1005,6 +1005,67 @@ class TestDuplicateBodyEventIdentity:
         assert out[0]["start_time"] == "0:00:00.00"
         assert out[0]["end_time"] == "0:00:01.00"
 
+    def test_partial_overlap_lays_out_active_rows_only(self):
+        # A2:行 1 活跃期间行 0 已离场——切片内的正文只含当时有效的行,
+        # 不再把整块(或全程)的行拼接进同一条 NoteBox。
+        rows = [("标题", (20.0, 20.0, 200.0, 36.0)),
+                ("正文一", (20.0, 60.0, 200.0, 76.0))]
+        events = [dict(simple_event("标题", 0.0, 2.0), line_idx=0),
+                  dict(simple_event("正文一", 1.0, 3.0), line_idx=1)]
+        out, applied, _notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert [(ev["start_time"], ev["end_time"], ev["body"])
+                for ev in out] == [
+            ("0:00:00.00", "0:00:01.00", "标题"),
+            ("0:00:01.00", "0:00:02.00", "标题\\N正文一"),
+            ("0:00:02.00", "0:00:03.00", "正文一"),
+        ]
+
+    def test_gap_between_instances_outputs_no_event(self):
+        # A2:行离场的间隔不产出任何事件(空区间不输出)。
+        rows = [("标题", (20.0, 20.0, 200.0, 36.0))]
+        events = [dict(simple_event("标题", 0.0, 1.0), line_idx=0),
+                  dict(simple_event("标题", 4.0, 5.0), line_idx=0)]
+        out, applied, _notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert [(ev["start_time"], ev["end_time"]) for ev in out] == [
+            ("0:00:00.00", "0:00:01.00"), ("0:00:04.00", "0:00:05.00")]
+
+    def test_ambiguous_duplicate_text_legacy_events_kept(self):
+        # A2:无 line_idx 且同文多行——归属歧义,原事件保留并记录诊断,
+        # 不虚构时间,也不退回「全轨迹跨度拼所有行」。
+        rows = [("重复台词", (20.0, 20.0, 200.0, 36.0)),
+                ("重复台词", (20.0, 60.0, 200.0, 76.0))]
+        events = [simple_event("重复台词", 0.0, 1.0),
+                  simple_event("重复台词", 4.0, 5.0)]
+        out, applied, notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert len(out) == 2
+        assert all(ev["style"] == "Scene" for ev in out)
+        assert any("ambiguous" in n for n in notes)
+
+    def test_slice_identity_changes_at_half_open_boundary(self):
+        # A2:半开区间边界 ±1cs,活动身份在端点处切换,不重叠不泄漏。
+        rows = [("甲", (20.0, 20.0, 200.0, 36.0)),
+                ("乙", (20.0, 60.0, 200.0, 76.0))]
+        events = [dict(simple_event("甲", 0.0, 2.0), line_idx=0),
+                  dict(simple_event("乙", 2.0, 4.0), line_idx=1)]
+        out, applied, _notes = apply_policy(
+            events, rows, make_white_plane(), make_translation_tracks(),
+            policy_cfg("external"), PLANE_W, PLANE_H)
+        assert applied == "external"
+        assert [(ev["start_time"], ev["end_time"], ev["body"])
+                for ev in out] == [
+            ("0:00:00.00", "0:00:02.00", "甲"),
+            ("0:00:02.00", "0:00:04.00", "乙"),
+        ]
+
 
 # ---------------------------------------------------------------------------
 # style 传递:自定义 style 必须出现在 mask/whitespace 事件

@@ -77,6 +77,7 @@ from core.motion_ass import (
     smooth_line_track,
     synthesize_events,
 )
+from core.scene_timeline import TimedRow, active_slices
 from core.text_alignment import (
     ALIGN_CENTER,
     ALIGN_LEFT,
@@ -1208,6 +1209,19 @@ def _apply_mask(
     return out, mode_label, notes
 
 
+def _merge_span_instances(
+    spans: List[Tuple[float, float]],
+) -> List[Tuple[float, float]]:
+    """同一行的多个事件跨度 → 连续可见实例(重叠/相接合并,间隔保留)。"""
+    instances: List[List[float]] = []
+    for start, end in sorted(spans):
+        if instances and start <= instances[-1][1]:
+            instances[-1][1] = max(instances[-1][1], end)
+        else:
+            instances.append([start, end])
+    return [(s, e) for s, e in instances if e > s]
+
+
 def _apply_external(
     events: List[Dict],
     rows: List[Row],
@@ -1222,44 +1236,62 @@ def _apply_external(
     *,
     orig_indices: Optional[Sequence[int]] = None,
 ) -> List[Dict]:
-    """external 模式:文本挪出原区域,时间跨度重叠的块合并为一条 NoteBox 事件。
+    """external 模式：按活动行集合切片布局 NoteBox(A2 时间契约)。
 
-    ``orig_indices`` 为排序后行位置 → ``blocks_meta`` 输入序下标的映射。
-    事件归属优先用 ``line_idx``(:func:`synthesize_events` 写入的行下标 =
-    ``blocks_meta`` 输入序):同文案多行(body 相同)不会把别行的事件时间
-    并入本块跨度;事件不带 ``line_idx`` 时按正文匹配兼容回退(旧路径)。
+    每个半开时间切片(:func:`core.scene_timeline.active_slices`)只把该时刻
+    **有效**的行折行进一条 NoteBox;没有行活跃的区间不输出事件,相邻切片
+    仅在活跃行身份与布局完全一致时呈现连续时间。行→事件归属优先用
+    ``line_idx``(:func:`synthesize_events` 写入的 ``blocks_meta`` 输入序
+    下标;``orig_indices`` 把 ``rows`` 行序映射回同一输入序);同一行的多
+    个事件跨度合并成连续实例,不重叠的间隔即该行的离场时段。事件不带
+    ``line_idx`` 时按正文**唯一**匹配兼容回退;同文多行无法确定归属——
+    记录诊断并原样保留该事件(不虚构其时间,也不退回「全轨迹跨度拼所有
+    行」的旧行为,V2)。
+
+    ``blocks`` 仅为保持既有调用形状保留(切片身份已取代块分组);空行集合
+    输出空列表。
     """
-    ok_times = [t.time_sec for t in tracks if t.status == "ok"]
-    full_span = ((min(ok_times), max(ok_times)) if ok_times else (0.0, 0.0))
-
-    # 块时间跨度 = 块内行事件时间的并集(无匹配用全程兜底)
+    del blocks  # 切片身份取代块分组;参数保留以兼容调用方
+    row_spans: List[List[Tuple[float, float]]] = [[] for _ in rows]
+    kept_events: List[Dict] = []
+    ambiguous = 0
     have_ids = (orig_indices is not None
                 and any(isinstance(ev.get("line_idx"), int) for ev in events))
-    spans: List[Tuple[float, float]] = []
-    for (s, e) in blocks:
-        if have_ids:
-            ids = {orig_indices[k] for k in range(s, e + 1)}
-            mine = [ev for ev in events
-                    if isinstance(ev.get("line_idx"), int)
-                    and ev["line_idx"] in ids]
-        else:
-            want = {t for t, _b in rows[s:e + 1]}
-            mine = [ev for ev in events if ev.get("body") in want]
-        starts, ends = [], []
-        for ev in mine:
-            starts.append(_parse_ass_time(ev["start_time"]))
-            ends.append(_parse_ass_time(ev["end_time"]))
-        spans.append((min(starts), max(ends)) if starts else full_span)
-
-    # 时间跨度重叠的块合并为一组(行序保持画面自上而下)
-    groups: List[Dict] = []
-    for bi in sorted(range(len(blocks)), key=lambda i: spans[i]):
-        if groups and spans[bi][0] <= groups[-1]["end"]:
-            groups[-1]["end"] = max(groups[-1]["end"], spans[bi][1])
-            groups[-1]["blocks"].append(bi)
-        else:
-            groups.append({"start": spans[bi][0], "end": spans[bi][1],
-                           "blocks": [bi]})
+    if have_ids:
+        pos_by_input: Dict[int, int] = {}
+        for pos in range(len(rows)):
+            src = orig_indices[pos]
+            if isinstance(src, int):
+                pos_by_input.setdefault(int(src), pos)
+        for ev in events:
+            idx = ev.get("line_idx")
+            pos = pos_by_input.get(int(idx)) if isinstance(idx, int) else None
+            if pos is None:
+                # 不属于本策略行集合的事件:原样保留,不静默丢内容。
+                kept_events.append(ev)
+                continue
+            row_spans[pos].append(
+                (_parse_ass_time(ev["start_time"]),
+                 _parse_ass_time(ev["end_time"])))
+    else:
+        text_positions: Dict[str, List[int]] = {}
+        for pos, (text, _box) in enumerate(rows):
+            text_positions.setdefault(str(text), []).append(pos)
+        for ev in events:
+            poss = text_positions.get(str(ev.get("body", "")), [])
+            if len(poss) == 1:
+                row_spans[poss[0]].append(
+                    (_parse_ass_time(ev["start_time"]),
+                     _parse_ass_time(ev["end_time"])))
+            else:
+                if len(poss) > 1:
+                    # 同文多行:归属歧义,保留原事件(时间不可虚构)。
+                    ambiguous += 1
+                kept_events.append(ev)
+    if ambiguous:
+        notes.append(
+            f"external: {ambiguous} event(s) with ambiguous duplicate-text "
+            f"rows kept as-is (no line_idx; timing not fabricable)")
 
     margin = float(cfg.external_margin)
     band_w = max(1.0, float(video_w) - 2.0 * margin)
@@ -1268,26 +1300,32 @@ def _apply_external(
     an, pos_y = ((8, margin) if str(cfg.external_pos).lower() == "top"
                  else (2, float(video_h) - margin))
 
+    timed: List[TimedRow] = []
+    for pos, spans in enumerate(row_spans):
+        for start, end in _merge_span_instances(spans):
+            timed.append(TimedRow(pos,
+                                  int(round(start * 100.0)),
+                                  int(round(end * 100.0))))
     out: List[Dict] = []
-    for g in groups:
+    for sl in active_slices(timed):
         parts: List[str] = []
-        for bi in g["blocks"]:  # 组内块保持自上而下
-            s, e = blocks[bi]
-            for text, _box in rows[s:e + 1]:
-                parts.extend(wrap_cjk(text, max_chars))
+        for pos in sl.row_ids:  # row_id 升序 = 画面自上而下
+            parts.extend(wrap_cjk(rows[pos][0], max_chars))
+        parts = [p for p in parts if p]
         if not parts:
             continue
         longest = max(len(p) for p in parts)
         fs = fit_font_size(len(parts), band_h, longest, band_w)
         out.append({
-            "start_time": format_ass_time(g["start"]),
-            "end_time": format_ass_time(g["end"]),
+            "start_time": format_ass_time(sl.start_cs / 100.0),
+            "end_time": format_ass_time(sl.end_cs / 100.0),
             "style": _NOTE_STYLE,
             "name": "motion",
             "tags": f"{{\\an{an}\\pos({_fmt1(float(video_w) / 2.0)},"
                     f"{_fmt1(pos_y)})\\fs{fs}}}",
             "body": "\\N".join(parts),
         })
+    out.extend(dict(ev) for ev in kept_events)
     return out
 
 
@@ -1522,11 +1560,11 @@ def apply_policy(
             ref_frame=ref, orig_indices=orig_indices, diag_extra=diag_extra,
             include_text=(mode == "mask"), row_anchor=anchors)
     elif mode == "external":
-        out, applied, notes = (_apply_external(list(events), rows, blocks,
-                                               tracks, cfg, video_w, video_h,
-                                               mcfg, style, [],
-                                               orig_indices=orig_indices),
-                               "external", [])
+        ext_notes: List[str] = []
+        out = _apply_external(list(events), rows, blocks, tracks, cfg,
+                              video_w, video_h, mcfg, style, ext_notes,
+                              orig_indices=orig_indices)
+        applied, notes = "external", ext_notes
     elif mode == "whitespace":
         out, applied, notes = _apply_whitespace(
             list(events), rows, blocks, plane_img_bgr, tracks, cfg,

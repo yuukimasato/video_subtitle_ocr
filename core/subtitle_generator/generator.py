@@ -460,6 +460,13 @@ class OCRToASSOptimizer(
     def _finish_scene_policy_events(self, ctx: Dict, roi_id: str) -> List[Dict]:
         """收集完成后生成策略事件,替换该 ROI 的原 SCENE styled 事件。
 
+        A2 时间契约:不再对整个 ROI 做一次布局、也不再对 note/scene_ws 取
+        全 ROI 时间并集——先由 :func:`core.scene_timeline.active_slices`
+        把逐行可见区间切成「活跃行集合恒定」的半开时间片,每片只对当时
+        有效的行调用 :func:`apply_policy_static`,产生的 text/mask/note/
+        scene_ws 事件时间都夹在本片内;结束后仅合并所有显示属性完全相同
+        的相邻事件(同一行跨片延续时保持连续,不重新取并集)。
+
         pose 开启(``roi_pose_tags[roi_id]`` 为真)时,``kind == "text"``
         的策略文本事件按 ctx["row_meta"] 的逐行素材追加还原标签:逐行
         ``\\frz``(该行多边形的长边方向角,视频坐标)+ 帧像素采样得到的
@@ -501,18 +508,6 @@ class OCRToASSOptimizer(
         # 行框:视频坐标 − 外接框原点 → 平面坐标,与纯函数对接
         rows = [(text, (x1 - ox, y1 - oy, x2 - ox, y2 - oy))
                 for text, (x1, y1, x2, y2) in rows_video]
-        cfg = SceneTextPolicyConfig(mode=policy)
-        specs, applied, notes = apply_policy_static(
-            rows, ctx["plane"], cfg, float(self.width), float(self.height),
-            base_font_size=int(self.height * 0.04))
-        for note in notes:
-            logger.warning(
-                _tr("OCRToASSOptimizer",
-                    "Scene text policy: {} (ROI {}).").format(note, roi_id))
-        logger.info(
-            _tr("OCRToASSOptimizer",
-                "Scene text policy for {}: {} applied ({} spec(s)).").format(
-                    roi_id, applied, len(specs)))
 
         def _ts(value: str) -> float:
             try:
@@ -520,9 +515,37 @@ class OCRToASSOptimizer(
             except Exception:
                 return 0.0
 
-        # note/scene_ws 单条事件的时间 = 全部 SCENE 组跨度的并集
-        union_start = min((s for s, _e in row_times), key=_ts)
-        union_end = max((e for _s, e in row_times), key=_ts)
+        # A2:逐行可见区间 → 连续实例 → 活动集合时间片。非正时长(空组等
+        # 退化输入)不进切片并留痕;实例 = 该行重叠跨度合并后的连续段。
+        from core.scene_timeline import TimedRow, active_slices
+
+        row_spans: Dict[int, List[Tuple[float, float]]] = {}
+        invalid_rows = 0
+        for i, (s_str, e_str) in enumerate(row_times):
+            start_sec, end_sec = _ts(s_str), _ts(e_str)
+            if end_sec <= start_sec:
+                invalid_rows += 1
+                continue
+            row_spans.setdefault(i, []).append((start_sec, end_sec))
+        if invalid_rows:
+            logger.warning(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy: {} row(s) with non-positive duration "
+                    "excluded from the active-set timeline (ROI {}).").format(
+                        invalid_rows, roi_id))
+        timed: List[TimedRow] = []
+        for i, spans in row_spans.items():
+            merged: List[List[float]] = []
+            for start, end in sorted(spans):
+                if merged and start <= merged[-1][1]:
+                    merged[-1][1] = max(merged[-1][1], end)
+                else:
+                    merged.append([start, end])
+            for start, end in merged:
+                timed.append(TimedRow(i, int(round(start * 100.0)),
+                                      int(round(end * 100.0))))
+        slices = active_slices(timed)
+
         # 逐行还原(仅 pose 开启的 ROI):策略行的多边形/行高/代表帧由
         # convert_from_memory 按行记录在 row_meta(与 rows 同序)。
         pose = self.roi_pose_tags.get(str(roi_id))
@@ -544,53 +567,96 @@ class OCRToASSOptimizer(
                     frame_cache[num] = None
             return frame_cache[num]
 
+        cfg = SceneTextPolicyConfig(mode=policy)
+        base_fs = int(self.height * 0.04)
         events: List[Dict] = []
-        for spec in specs:
-            kind = spec["kind"]
-            if kind == "mask":
-                times = [row_times[i] for i in spec.get("rows", [])]
-                start = min((s for s, _e in times), key=_ts) if times else union_start
-                end = max((e for _s, e in times), key=_ts) if times else union_end
-                tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
-                events.append({
-                    "roi": roi_id, "start_time": start, "end_time": end,
-                    "style": "Scene", "tags": tags, "body": "",
-                    "layer": int(spec.get("layer", 0)), "policy": True,
-                })
-            elif kind == "text":
-                start, end = row_times[spec["row"]]
-                tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
-                if pose:
-                    # Scene 行进策略路径后不再经过 styling._apply_roi_pose_tags,
-                    # 逐行还原标签(行 frz + 取色)在此追加;几何标签必须并入
-                    # 既有 override 块内部(见 merge_restoration_tags)。
-                    meta = (row_meta[spec["row"]]
-                            if spec["row"] < len(row_meta) else {})
-                    tags = merge_restoration_tags(
-                        tags, meta.get("poly") or [], _row_frame(meta),
-                        float(meta.get("height") or 0.0), frx, fry)
-                event = {
-                    "roi": roi_id, "start_time": start, "end_time": end,
-                    "style": "Scene", "tags": tags, "body": spec.get("body", ""),
-                    "layer": int(spec.get("layer", 0)), "policy": True,
-                }
-                if spec.get("comment"):  # mask_only:排版参考行 → Comment 行
-                    event["comment"] = True
-                events.append(event)
-            elif kind == "note":
-                events.append({
-                    "roi": roi_id, "start_time": union_start, "end_time": union_end,
-                    "style": spec.get("style", "NoteBox"), "tags": spec["tags"],
-                    "body": spec.get("body", ""), "policy": True,
-                })
-            elif kind == "scene_ws":
-                events.append({
-                    "roi": roi_id, "start_time": union_start, "end_time": union_end,
-                    "style": spec.get("style", "Scene"),
-                    "tags": _shift_pos_tag(spec["tags"], float(ox), float(oy)),
-                    "body": spec.get("body", ""), "policy": True,
-                })
-        return events
+        for sl in slices:
+            slice_rows = [rows[i] for i in sl.row_ids]
+            slice_meta = [row_meta[i] if i < len(row_meta) else {}
+                          for i in sl.row_ids]
+            specs, applied, notes = apply_policy_static(
+                slice_rows, ctx["plane"], cfg, float(self.width),
+                float(self.height), base_font_size=base_fs)
+            for note in notes:
+                logger.warning(
+                    _tr("OCRToASSOptimizer",
+                        "Scene text policy: {} (ROI {}, slice {}).").format(
+                            note, roi_id,
+                            (sl.start_cs / 100.0, sl.end_cs / 100.0)))
+            logger.info(
+                _tr("OCRToASSOptimizer",
+                    "Scene text policy for {}: {} applied on slice "
+                    "[{}, {}) with {} row(s), {} spec(s).").format(
+                        roi_id, applied, sl.start_cs / 100.0,
+                        sl.end_cs / 100.0, len(sl.row_ids), len(specs)))
+            start_time = self._format_time_seconds(sl.start_cs / 100.0)
+            end_time = self._format_time_seconds(sl.end_cs / 100.0)
+            for spec in specs:
+                kind = spec["kind"]
+                if kind == "mask":
+                    tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                    events.append({
+                        "roi": roi_id,
+                        "start_time": start_time, "end_time": end_time,
+                        "style": "Scene", "tags": tags, "body": "",
+                        "layer": int(spec.get("layer", 0)), "policy": True,
+                    })
+                elif kind == "text":
+                    tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                    if pose:
+                        # Scene 行进策略路径后不再经过 styling._apply_roi_pose_tags,
+                        # 逐行还原标签(行 frz + 取色)在此追加;几何标签必须并入
+                        # 既有 override 块内部(见 merge_restoration_tags)。
+                        meta = (slice_meta[spec["row"]]
+                                if spec["row"] < len(slice_meta) else {})
+                        tags = merge_restoration_tags(
+                            tags, meta.get("poly") or [], _row_frame(meta),
+                            float(meta.get("height") or 0.0), frx, fry)
+                    event = {
+                        "roi": roi_id,
+                        "start_time": start_time, "end_time": end_time,
+                        "style": "Scene", "tags": tags,
+                        "body": spec.get("body", ""),
+                        "layer": int(spec.get("layer", 0)), "policy": True,
+                    }
+                    if spec.get("comment"):  # mask_only:排版参考行 → Comment 行
+                        event["comment"] = True
+                    events.append(event)
+                elif kind == "note":
+                    events.append({
+                        "roi": roi_id,
+                        "start_time": start_time, "end_time": end_time,
+                        "style": spec.get("style", "NoteBox"),
+                        "tags": spec["tags"],
+                        "body": spec.get("body", ""), "policy": True,
+                    })
+                elif kind == "scene_ws":
+                    events.append({
+                        "roi": roi_id,
+                        "start_time": start_time, "end_time": end_time,
+                        "style": spec.get("style", "Scene"),
+                        "tags": _shift_pos_tag(spec["tags"], float(ox),
+                                               float(oy)),
+                        "body": spec.get("body", ""), "policy": True,
+                    })
+        # 仅合并「显示属性完全相同」的相邻事件(同行跨片延续);不做任何
+        # 时间并集/最小最大回填。
+        def _disp_key(ev: Dict) -> tuple:
+            return (ev.get("roi"), ev.get("style"), ev.get("tags"),
+                    ev.get("body"), int(ev.get("layer", 0)),
+                    bool(ev.get("comment")))
+
+        merged_events: List[Dict] = []
+        for ev in sorted(events, key=lambda e: (_ts(e["start_time"]),
+                                                _ts(e["end_time"]))):
+            if (merged_events
+                    and _disp_key(merged_events[-1]) == _disp_key(ev)
+                    and abs(_ts(merged_events[-1]["end_time"])
+                            - _ts(ev["start_time"])) < 0.005):
+                merged_events[-1]["end_time"] = ev["end_time"]
+            else:
+                merged_events.append(ev)
+        return merged_events
 
     def convert_from_memory(
         self,
