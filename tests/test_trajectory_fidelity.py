@@ -94,9 +94,12 @@ def test_static_sampling_edges_do_not_reject_motion_extension():
     跨度内部文本完全一致)。"""
     texts = [f"行{i}" for i in range(12)]
     static = [TextSpan(20, 354, texts[i], i) for i in range(12)]
-    motion = [TextSpan(0, 200, texts[i], i) for i in range(12)]
+    motion = [TextSpan(0, 400, texts[i], i) for i in range(12)]
     result = check_text_fidelity(static, motion)
     assert result.ok, result.reason
+    # 反向边缘:轨迹覆盖不足静态跨度 → 仍拒绝(内容缺失)。
+    short = [TextSpan(0, 200, texts[i], i) for i in range(12)]
+    assert not check_text_fidelity(static, short).ok
 
 
 def test_mismatch_inside_static_span_still_rejected():
