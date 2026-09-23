@@ -189,3 +189,40 @@ def test_extract_and_ocr_stage_passes_decode_start_to_extractor(monkeypatch):
     pipeline_stages.extract_and_ocr_stage(
         _ctx(0), progress_cb=lambda p, m: None, cancel_check=lambda: False)
     assert captured["start_frame"] == 0  # single-process default unchanged
+
+
+@pytest.mark.parametrize('extractor', [roi_extractor.extract_roi_frames,
+                                       roi_extractor.extract_merged_roi_frames])
+@pytest.mark.parametrize('ranges, expected', [([(2, 4)], [2, 3, 4]),
+    ([(2, 4), (8, 9)], [2, 3, 4, 8, 9]), ([(99, 99)], [99]), ([], [])])
+def test_no_decode_after_last_active_roi(monkeypatch, extractor, ranges, expected):
+    class Capture:
+        grabs = 0
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def grab(self):
+            self.grabs += 1
+            return self.grabs <= 100
+
+        def retrieve(self):
+            return True, np.full((20, 20, 3), 255, np.uint8)
+
+        def get(self, prop):
+            return 0
+
+        def release(self):
+            self.released = True
+
+    cap = Capture()
+    monkeypatch.setattr(roi_extractor.cv2, 'VideoCapture', lambda _: cap)
+    monkeypatch.setattr(roi_extractor, '_has_cuda_gpu', False)
+    rois = [{'type': 'rect', 'points': [0, 0, 10, 10],
+             'start_frame': start, 'end_frame': end} for start, end in ranges]
+    records = list(extractor('fake.mp4', rois, 100, 25, '', save_to_disk=False))
+    assert [r[2] for r in records] == expected
+    assert cap.grabs == (max(expected) + 1 if expected else 0)
+    if expected:
+        assert cap.released

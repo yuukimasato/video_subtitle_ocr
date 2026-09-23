@@ -428,6 +428,7 @@ def extract_merged_roi_frames(
     # start_frame parameter must stay unshadowed for the seek below.
     start_events: DefaultDict[int, List[int]] = defaultdict(list)
     end_events: DefaultDict[int, List[int]] = defaultdict(list)
+    last_active_frame = -1
     for idx, roi_entry in enumerate(roi_data):
         ev_start = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
         ev_end = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
@@ -435,6 +436,7 @@ def extract_merged_roi_frames(
         ev_end = max(0, min(int(ev_end), total_frames - 1))
         if ev_end < ev_start:
             ev_start, ev_end = ev_end, ev_start
+        last_active_frame = max(last_active_frame, ev_end)
         start_events[ev_start].append(idx)
         if ev_end + 1 <= total_frames - 1:
             end_events[ev_end + 1].append(idx)
@@ -476,7 +478,7 @@ def extract_merged_roi_frames(
         roi_entry_merged = {"type": "full", "points": [0, 0, 0, 0], "full_frame": True}
 
         while True:
-            if current_frame_num > total_frames - 1:
+            if current_frame_num > last_active_frame:
                 break
 
             if current_frame_num in start_events:
@@ -552,6 +554,7 @@ def extract_roi_frames(
 
     start_events: DefaultDict[int, List[int]] = defaultdict(list)
     end_events: DefaultDict[int, List[int]] = defaultdict(list)
+    last_active_frame = -1
     for idx, roi_entry in enumerate(roi_data):
         ev_start = get_roi_frame_number(roi_entry, fps, 'start_time', 'start_frame')
         ev_end = get_roi_frame_number(roi_entry, fps, 'end_time', 'end_frame')
@@ -559,6 +562,7 @@ def extract_roi_frames(
         ev_end = max(0, min(int(ev_end), total_frames - 1))
         if ev_end < ev_start:
             ev_start, ev_end = ev_end, ev_start
+        last_active_frame = max(last_active_frame, ev_end)
         start_events[ev_start].append(idx)
         # Removal at end+1 (if within bounds).
         if ev_end + 1 <= total_frames - 1:
@@ -616,7 +620,7 @@ def extract_roi_frames(
         current_frame_num, active_rois = _seek_decode_start(
             cap, start_frame, total_frames, start_events, end_events)
         while True:
-            if current_frame_num > total_frames - 1:
+            if current_frame_num > last_active_frame:
                 break
             
             # Apply interval events at this frame index.
