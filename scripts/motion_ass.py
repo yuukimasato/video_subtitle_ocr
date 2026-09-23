@@ -1075,6 +1075,43 @@ def merge_pass_events(
     return sorted(merged, key=lambda ev: _parse_ass_time(ev["start_time"]))
 
 
+def merged_line_intervals(events: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+    """按原始行身份(line_idx)合并事件为连续可见区间(A3 接管证据)。
+
+    返回 list[dict]:``{"row_order", "start_cs", "end_cs", "text"}``。同一行
+    的重叠/相接段合并为一个区间(不把逐帧重复样本或同链分段重复计为共存
+    行),不重叠的间隔保留为离场时段;缺 ``line_idx`` 的事件跳过
+    (:func:`core.motion_ass.synthesize_events` 产物必带该字段)。
+    """
+    by_line: Dict[int, List[Tuple[float, float, str]]] = {}
+    for ev in events:
+        li = ev.get("line_idx")
+        if not isinstance(li, int):
+            continue
+        by_line.setdefault(li, []).append(
+            (_parse_ass_time(ev["start_time"]),
+             _parse_ass_time(ev["end_time"]),
+             str(ev.get("body", ""))))
+    out: List[Dict[str, Any]] = []
+    for li in sorted(by_line):
+        merged: List[List[Any]] = []
+        for start, end, text in sorted(by_line[li]):
+            if merged and start <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end, text])
+        for start, end, text in merged:
+            if end <= start:
+                continue
+            out.append({
+                "row_order": li,
+                "start_cs": int(round(start * 100.0)),
+                "end_cs": int(round(end * 100.0)),
+                "text": text,
+            })
+    return out
+
+
 def build_motion_events(
     video_path: str,
     quad: Sequence[Sequence[float]],
@@ -1437,6 +1474,9 @@ def build_motion_events(
             n_fade = attach_step_fades(events, holds_by_line, cfg)
             log(f"      step-seg: {len(holds_by_line)} line(s) hold-split, "
                 f"{n_fade} fade boundary(ies)")
+    # A3 内容保真证据:任何遮挡/hold 渐隐/策略重建扩增之前的行级可见区间
+    # (按原始行身份合并;转换器用它对静态 OCR 证据做文本保真对照)。
+    pre_policy_events = merged_line_intervals(events)
     log(f"      line alignments: shear_slope={align_diag.get('shear_slope')} "
         f"{[(d.get('row'), d.get('align')) for d in align_diag.get('rows') or []]}")
 
@@ -1568,6 +1608,9 @@ def build_motion_events(
         "plane_size": [int(plane_size[0]), int(plane_size[1])],
         "quad_window_origin": [int(qx1), int(qy1)],
         "ocr_engine": str(ocr_engine) if ocr_engine else "default",
+        # A3:策略/遮挡扩增前的行级可见区间(原始行身份 + 阅读序),供主流
+        # 水线在轨迹接管前对照静态 OCR 文本证据;纯报告字段,不影响事件。
+        "pre_policy_events": pre_policy_events,
         # --- 以下为纯报告字段(新增,不影响任何事件几何/.ass 输出/决策)---
         # 丢锁原因直方图(零出现的原因此处不出现;旧 tracker 无该字段时为 {});
         "lost_reasons": lost_reasons,

@@ -233,6 +233,27 @@ class TestGeneratorMotionEvents:
         assert "受信メール" in lines[0]
 
     def test_motion_roi_ids_suppress_static_events(self, tmp_path):
+        """A3:接管 = coverage 通过 + 文本保真通过(证据与静态一致)。"""
+        conv = _build_converter(
+            "no-video.avi", tmp_path / "out.ass",
+            motion_events=[_motion_event()],
+            motion_roi_ids={"roi_0"},
+            motion_evidence={"roi_0": [
+                {"start_cs": 20, "end_cs": 84, "text": "店铺招牌",
+                 "row_order": 0},
+            ]})
+        items = [_make_ocr_item(f, "店铺招牌", (100, 85, 220, 115))
+                 for f in range(5, 21)]
+        conv.convert_from_memory(iter(items))
+        text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+        lines = _dialogues(text)
+        assert len(lines) == 1
+        assert "motion,0,0,0" in lines[0]
+        assert "店铺招牌" not in text
+
+    def test_unverified_takeover_keeps_static(self, tmp_path):
+        """A3:无轨迹证据(unverified)→ 恢复静态;无 roi 候选是附加输出,
+        不虚构归属、不删除。"""
         conv = _build_converter(
             "no-video.avi", tmp_path / "out.ass",
             motion_events=[_motion_event()],
@@ -242,9 +263,28 @@ class TestGeneratorMotionEvents:
         conv.convert_from_memory(iter(items))
         text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
         lines = _dialogues(text)
+        assert len(lines) == 2
+        assert any("店铺招牌" in ln for ln in lines)
+        assert any("受信メール" in ln for ln in lines)
+
+    def test_rejected_takeover_removes_roi_candidates(self, tmp_path):
+        """A3:证据与静态文本不一致 → 静态保留,该 ROI 的候选整体移除。"""
+        conv = _build_converter(
+            "no-video.avi", tmp_path / "out.ass",
+            motion_events=[dict(_motion_event(), roi="roi_0")],
+            motion_roi_ids={"roi_0"},
+            motion_evidence={"roi_0": [
+                {"start_cs": 20, "end_cs": 84, "text": "别的东西",
+                 "row_order": 0},
+            ]})
+        items = [_make_ocr_item(f, "店铺招牌", (100, 85, 220, 115))
+                 for f in range(5, 21)]
+        conv.convert_from_memory(iter(items))
+        text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+        lines = _dialogues(text)
         assert len(lines) == 1
-        assert "motion,0,0,0" in lines[0]
-        assert "店铺招牌" not in text
+        assert "店铺招牌" in lines[0]
+        assert "受信メール" not in text
 
     def test_static_events_survive_for_other_rois(self, tmp_path):
         conv = _build_converter(
@@ -325,6 +365,30 @@ class TestWorkerMotionStage:
         assert kwargs["start_frame"] == 5 and kwargs["end_frame"] == 50
         assert kwargs["scene_text_policy"] == "whitespace"
         assert kwargs["auto_brightness"] is True
+
+    def test_worker_collects_pre_policy_evidence(self, tmp_path, monkeypatch):
+        """A3:worker 把 summary["pre_policy_events"] 按 ROI 收集给生成器。"""
+
+        def fake_build(video_path, quad, **kwargs):
+            event = _motion_event()
+            event["line_idx"] = 0
+            return [event], {"ok_frames": 10, "total_frames": 10,
+                             "keyframes": [], "policy": "overlap",
+                             "lines": 1,
+                             "pre_policy_events": [
+                                 {"row_order": 0, "start_cs": 0,
+                                  "end_cs": 180, "text": "テスト"}]}
+
+        monkeypatch.setattr(motion_cli, "build_motion_events", fake_build)
+        roi = {"type": "poly", "write_pose_tags": True,
+               "points": [[100, 100], [180, 100], [180, 160], [100, 160]],
+               "start_frame": 5, "end_frame": 50}
+        worker = _make_worker([roi], tmp_path)
+        events, roi_ids = worker._run_motion_stage()
+        assert roi_ids == {"roi_0"}
+        assert worker.motion_evidence["roi_0"] == [
+            {"row_order": 0, "start_cs": 0, "end_cs": 180, "text": "テスト"}]
+        assert events and events[0]["roi"] == "roi_0"
 
     def test_auto_detect_runs_when_enabled_and_no_manual_specs(
             self, tmp_path, monkeypatch):

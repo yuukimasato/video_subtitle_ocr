@@ -202,6 +202,7 @@ class OCRToASSOptimizer(
         roi_analysis_rects: Optional[Dict[str, Tuple]] = None,
         motion_events: Optional[List[Dict[str, str]]] = None,
         motion_roi_ids: Optional[set] = None,
+        motion_evidence: Optional[Dict[str, List[Dict]]] = None,
         analysis_frame_mode: str = "single",
         font_compliance: Optional["FontComplianceConfig"] = None,
         font_identifications: Optional[Any] = None,
@@ -242,6 +243,13 @@ class OCRToASSOptimizer(
         # 轨迹接管成功的 ROI:该 ROI 的静态 OCR 事件整体跳过(避免同区域
         # 双份文本);轨迹失败回退时为空,静态路径照常。
         self.motion_roi_ids = set(motion_roi_ids or ())
+        # A3:roi_id → 轨迹管线策略扩增前的行级可见区间(build_motion_events
+        # summary["pre_policy_events"]),接管前与静态 OCR 证据做文本保真
+        # 对照;缺省(旧调用方未传)时接管一律按 unverified 拒绝,保留静态。
+        self.motion_evidence = dict(motion_evidence or {})
+        # A3:保真门控拒绝接管的 ROI——其轨迹候选事件在写出前整体移除,
+        # 不只清 motion_roi_ids(否则候选会作为附加输出漏进最终 .ass)。
+        self._rejected_motion_rois: set = set()
         # 策略分析图取帧模式:single=单帧最高亮度(旧规则,缺省,行为
         # 不变);median=每个候选帧取时间邻域多帧中位合成(动态背景更稳)。
         if analysis_frame_mode not in ANALYSIS_FRAME_MODES:
@@ -348,6 +356,53 @@ class OCRToASSOptimizer(
                     ).format(rect))
             return None, None
         return frame[oy1:oy2, ox1:ox2].copy(), (ox1, oy1)
+
+    def _static_evidence_spans(self, groups, frame_list) -> List[Any]:
+        """静态分组 → 文本保真证据(A3,只读现有分组,不新增 OCR)。
+
+        每组按帧时间推导组窗口(与静态事件的时间推导同一规则),组内行依
+        屏幕 y/x 确定稳定 ``row_order``。
+        """
+        from core.trajectory_fidelity import TextSpan
+
+        fps = float(self.fps) if self.fps else 25.0
+        spans: List[TextSpan] = []
+        for group in groups:
+            group_frames = group.frames or [
+                f for f in frame_list
+                if group.start_frame <= f.frame_num <= group.end_frame]
+            start_sec = next(
+                (f.time_sec for f in group_frames
+                 if f.time_sec and f.time_sec > 0), 0.0)
+            if start_sec > 0:
+                end_sec = self._estimate_end_time(group_frames)
+            else:
+                start_sec = group.start_frame / fps
+                end_sec = (group.end_frame + 1) / fps
+            ordered = sorted(group.lines, key=lambda ln: (ln.box[1], ln.box[0]))
+            for order, line in enumerate(ordered):
+                spans.append(TextSpan(
+                    int(round(start_sec * 100.0)),
+                    int(round(end_sec * 100.0)),
+                    line.text, order))
+        return spans
+
+    def _trajectory_takeover_fidelity(self, roi_id: str, groups,
+                                      frame_list) -> Any:
+        """A3 门控:轨迹证据与静态 OCR 文本对照;coverage 只是前置必要条件。
+
+        无轨迹证据(旧调用方未传)→ unverified,保留静态;对照失败 → 拒绝。
+        """
+        from core.trajectory_fidelity import TextSpan, check_text_fidelity
+
+        evidence = self.motion_evidence.get(str(roi_id)) or []
+        static_spans = self._static_evidence_spans(groups, frame_list)
+        motion_spans = [
+            TextSpan(int(e.get("start_cs", 0)), int(e.get("end_cs", 0)),
+                     str(e.get("text", "")), int(e.get("row_order", 0)))
+            for e in evidence
+        ]
+        return check_text_fidelity(static_spans, motion_spans)
 
     def _prepare_scene_policy_context(self, roi_id: str, groups) -> Optional[Dict]:
         """为该 ROI 构建策略上下文;不适用/不可用时返回 None(走原路径)。"""
@@ -696,12 +751,6 @@ class OCRToASSOptimizer(
             subtitle_events: List[Dict[str, str]] = []
             for roi_id, frame_list in organized_data.items():
                 logger.info(_tr("OCRToASSOptimizer", "Processing ROI: {}, containing {} valid frames.").format(roi_id, len(frame_list)))
-                if str(roi_id) in self.motion_roi_ids:
-                    # 该 ROI 已由移动文字轨迹管线接管(轨迹事件在写文件时
-                    # 并入),跳过静态事件生成避免同区域双份文本;轨迹失败
-                    # 回退时该 ROI 不在 motion_roi_ids,静态路径照常。
-                    logger.info(_tr("OCRToASSOptimizer", "ROI {} handled by motion-trajectory pipeline; static events skipped.").format(roi_id))
-                    continue
                 groups = self._group_consecutive_frames(frame_list)
                 for group in groups:
                     group.lines = self._select_representative_lines(group)
@@ -711,6 +760,22 @@ class OCRToASSOptimizer(
                     # 静默丢弃任一类。
                     groups = self._filter_groups_by_roi_profile(groups)
                 logger.info(_tr("OCRToASSOptimizer", "ROI: {} generated {} subtitle groups.").format(roi_id, len(groups)))
+                if str(roi_id) in self.motion_roi_ids:
+                    # A3:coverage 只是前置必要条件——接管前先用轨迹预策略
+                    # 证据对照静态 OCR 文本;缺证据(unverified)或对照失败
+                    # (缺字/出现超前文本)都保留静态结果,并把该 ROI 的轨迹
+                    # 候选从最终输出移除(不只清 motion_roi_ids)。
+                    verdict = self._trajectory_takeover_fidelity(
+                        str(roi_id), groups, frame_list)
+                    if verdict.ok:
+                        # 该 ROI 已由移动文字轨迹管线接管(轨迹事件在写文件时
+                        # 并入),跳过静态事件生成避免同区域双份文本;轨迹失败
+                        # 回退时该 ROI 不在 motion_roi_ids,静态路径照常。
+                        logger.info(_tr("OCRToASSOptimizer", "ROI {} handled by motion-trajectory pipeline (text fidelity: {}); static events skipped.").format(roi_id, verdict.reason))
+                        continue
+                    self.motion_roi_ids.discard(str(roi_id))
+                    self._rejected_motion_rois.add(str(roi_id))
+                    logger.warning(_tr("OCRToASSOptimizer", "ROI {} trajectory takeover rejected by text fidelity ({}); static events restored and trajectory candidates removed.").format(roi_id, verdict.reason))
 
                 # 场景文字显示策略(仅非 overlap 生效;准备失败回退原路径)。
                 policy_ctx = self._prepare_scene_policy_context(str(roi_id), groups)
@@ -783,6 +848,21 @@ class OCRToASSOptimizer(
                 if policy_ctx is not None:
                     subtitle_events.extend(
                         self._finish_scene_policy_events(policy_ctx, str(roi_id)))
+
+            # A3:构造唯一的 selected_motion 列表——通过的 ROI 事件保留,
+            # 拒绝/unverified ROI 的候选整体移除,无 roi 的显式 quad(手工
+            # --motion-quad)作为附加输出保留。字体/翻译/写出只消费这里的
+            # 结果,禁止把已丢弃的候选混进最终输出。
+            if self._rejected_motion_rois:
+                selected = [
+                    ev for ev in self.motion_events
+                    if str(ev.get("roi")) not in self._rejected_motion_rois]
+                removed = len(self.motion_events) - len(selected)
+                logger.warning(_tr(
+                    "OCRToASSOptimizer",
+                    "Removed {} trajectory candidate event(s) from rejected ROI(s): {}.").format(
+                        removed, ", ".join(sorted(self._rejected_motion_rois))))
+                self.motion_events[:] = selected
 
             subtitle_events_pre_merge = [dict(e) for e in subtitle_events]
             subtitle_events_pre_merge = self._filter_events(subtitle_events_pre_merge)

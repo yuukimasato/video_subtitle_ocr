@@ -565,6 +565,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # contract as the GUI worker.
         motion_events_all: list = []
         motion_roi_ids: set = set()
+        # A3:roi_id → 轨迹预策略证据(summary["pre_policy_events"]),交给
+        # 生成器在接管前做文本保真对照。
+        motion_evidence: dict = {}
         from core.pipeline_worker import (
             collect_motion_roi_specs,
             trajectory_takeover_ok,
@@ -600,7 +603,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                                  auto_brightness, occlusion_clip=None,
                                  start_frame=None, end_frame=None,
                                  scene_text_policy=None,
-                                 engine_options=None):
+                                 engine_options=None, roi_id=None):
                 nonlocal motion_events_all
                 quad = validate_quad(normalize_quad_winding(quad))
                 if start_frame is None:
@@ -627,6 +630,11 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     engine_options=engine_options,
                     log=lambda m: _info(f"      {m}", args.quiet),
                 )
+                if roi_id is not None:
+                    # ROI 绑定的轨迹事件显式带 roi(与 GUI 主流水线同契约):
+                    # 生成器据此在拒绝接管时移除候选、翻译按 ROI 路由源语言。
+                    for ev in events:
+                        ev["roi"] = roi_id
                 motion_events_all.extend(events)
                 _info(
                     f"      motion-quad {label}: {len(events)} event(s) "
@@ -634,6 +642,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     f"frames ok, keyframes {summary['keyframes']})",
                     args.quiet,
                 )
+                return summary
 
             for (quad, start_sec, end_sec), label in motion_specs:
                 try:
@@ -657,7 +666,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     spec_engine_options = effective_ocr_options(
                         engine_options, spec,
                         file_lang=file_lang, cli_lang=cli_lang)
-                    _run_motion_quad(
+                    last_motion_summary = _run_motion_quad(
                         spec["quad"],
                         None,
                         None,
@@ -671,7 +680,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         end_frame=spec["end_frame"],
                         scene_text_policy=spec.get("scene_text_policy"),
                         engine_options=spec_engine_options,
-                    )
+                        roi_id=str(spec["roi_id"]),
+                    ) or {}
+                    motion_evidence.setdefault(str(spec["roi_id"]), []).extend(
+                        last_motion_summary.get("pre_policy_events") or [])
                     # 覆盖门限(与 GUI 主流水线同契约):轨迹事件只覆盖 ROI
                     # 的一小段时(固定文字带跟踪常只在头几行锁定),残段远
                     # 不如静态路径完整——丢弃轨迹事件、不接管该 ROI。
@@ -732,7 +744,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         continue
                     for k, region in enumerate(regions):
                         try:
-                            _run_motion_quad(
+                            summary = _run_motion_quad(
                                 region.quad,
                                 region.start_frame / info["fps"],
                                 region.end_frame / info["fps"],
@@ -741,7 +753,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
                                 occlusion_clip=args.occlusion_clip,
                                 engine_options=effective_ocr_options(
                                     engine_options, roi_entries[idx],
-                                    file_lang=file_lang, cli_lang=cli_lang))
+                                    file_lang=file_lang, cli_lang=cli_lang),
+                                roi_id=f"roi_{idx}") or {}
+                            motion_evidence.setdefault(f"roi_{idx}", []).extend(
+                                summary.get("pre_policy_events") or [])
                             motion_roi_ids.add(f"roi_{idx}")
                             detected_any = True
                         except Exception as exc:
@@ -868,6 +883,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             watermark_filter_config=watermark_config,
             motion_events=motion_events_all or None,
             motion_roi_ids=motion_roi_ids or None,
+            motion_evidence=motion_evidence or None,
         )
         converter.convert_from_memory(iter(restored_results))
         t4 = time.perf_counter()

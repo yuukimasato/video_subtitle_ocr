@@ -495,6 +495,9 @@ class PipelineWorker(QThread):
         gui_lang = str(self.engine_options.get("lang") or "").strip() or None
         events_all: List[Dict[str, Any]] = []
         taken_over: set = set()
+        # A3:轨迹预策略证据,接管前由生成器做文本保真对照。
+        if not hasattr(self, "motion_evidence"):
+            self.motion_evidence: Dict[str, List[Dict[str, Any]]] = {}
         for spec in specs:
             roi_id = spec["roi_id"]
             try:
@@ -512,6 +515,8 @@ class PipelineWorker(QThread):
                     engine_options=engine_options,
                     log=logger.info,
                 )
+                self.motion_evidence.setdefault(roi_id, []).extend(
+                    summary.get("pre_policy_events") or [])
                 ok, coverage = trajectory_takeover_ok(
                     events, self._roi_by_id(roi_id), self.fps)
                 if not ok:
@@ -781,6 +786,7 @@ class PipelineWorker(QThread):
                 roi_analysis_rects=roi_analysis_rects or None,
                 motion_events=motion_events or None,
                 motion_roi_ids=motion_roi_ids or None,
+                motion_evidence=getattr(self, "motion_evidence", None) or None,
             )
             converter.convert_from_memory(
                 iter(restored_results),
