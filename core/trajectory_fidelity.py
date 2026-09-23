@@ -77,8 +77,15 @@ def check_text_fidelity(
             return FidelityResult(
                 False, f"rejected: non-positive span [{span.start_cs}, "
                        f"{span.end_cs}) (text={span.text!r})")
+    # 比较窗 = 静态证据的覆盖跨度:静态 OCR 只在其采样组时间轴上有证据,
+    # 跨度之外(首组之前/末组之后)是「未采样 = 未知」而非「文字不存在」,
+    # 轨迹在跨度边缘的合理延伸不算内容错误(采样端点归一,不放宽容差)。
+    static_lo = min(sp.start_cs for sp in static)
+    static_hi = max(sp.end_cs for sp in static)
     boundaries = sorted({b for span in static + motion
-                         for b in (span.start_cs, span.end_cs)})
+                         for b in (span.start_cs, span.end_cs)
+                         if static_lo <= b <= static_hi}
+                        | {static_lo, static_hi})
     compared = 0
     for start, end in zip(boundaries[:-1], boundaries[1:]):
         static_rows = _active_rows(static, start, end)

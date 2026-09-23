@@ -82,3 +82,25 @@ def test_empty_motion_rejected():
     result = check_text_fidelity([TextSpan(0, 100, "甲")], [])
     assert not result.ok
     assert isinstance(result, FidelityResult)
+
+
+# ---------------------------------------------------------------------------
+# 采样端点归一
+# ---------------------------------------------------------------------------
+
+def test_static_sampling_edges_do_not_reject_motion_extension():
+    """静态证据跨度之外的轨迹延伸是「未采样 = 未知」,不判内容错误
+    (mail 真实形态:轨迹从 0 帧起有事件,静态 OCR 首组从 0.20s 起)。"""
+    static = [TextSpan(20, 354, " ".join(f"行{i}" for i in range(12)), i)
+              for i in range(12)]
+    motion = [TextSpan(0, 200, " ".join(f"行{i}" for i in range(13)), i)
+              for i in range(13)]
+    result = check_text_fidelity(static, motion)
+    assert result.ok, result.reason
+
+
+def test_mismatch_inside_static_span_still_rejected():
+    # 静态跨度内部的内容不一致仍然拒绝(端点归一不放宽容差)。
+    static = [TextSpan(0, 100, "甲", 0), TextSpan(100, 200, "乙", 1)]
+    motion = [TextSpan(0, 200, "甲", 0)]
+    assert not check_text_fidelity(static, motion).ok
