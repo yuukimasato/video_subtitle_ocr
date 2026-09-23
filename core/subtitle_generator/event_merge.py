@@ -191,15 +191,22 @@ class _EventMergeMixin:
     def _clamp_same_roi_event_overlaps(
         self, events: List[Dict[str, str]]
     ) -> List[Dict[str, str]]:
-        """同一 ROI、同样式的相邻事件端点齐平：前一条结束不越过下一条开始。
+        """同一 ROI 的顺序字幕端点齐平：前一条结束不越过下一条开始。
 
         帧级时间推导（末帧时间 + 帧距）在取样/精修后可能比下一组首帧时间多出
         几毫秒，重叠会让播放器在切换帧上同时画出两条字幕；统一截到下一条的
-        开始时间，得到与人工字幕一致的首尾相接时间轴。只处理小重叠（毫秒级
-        误差），不触碰真正跨条的事件。
+        开始时间，得到与人工字幕一致的首尾相接时间轴。
+
+        只处理真正先后关系的毫秒级重叠，绝不制造零时长事件（V1）：
+        - Scene 事件完全不参与：同屏不同行（不同 ``\\pos``）是共存行，没有
+          行身份依据判定谁先谁后；
+        - 非 Scene 仅在「下一开始严格晚于上一开始」且 tags 相同（同一显示
+          通道）时齐平；等起点是共存行，不是先后字幕；
+        - 策略事件（遮罩等）时间由所属组推导，不做端点齐平；
+        - 输入字典先复制，不修改调用者原件。
         """
         events_sorted = sorted(
-            events,
+            (dict(e) for e in events),
             key=lambda e: (
                 str(e["roi"]),
                 self._parse_ass_time_to_seconds(e["start_time"]),
@@ -211,8 +218,18 @@ class _EventMergeMixin:
             if prev.get("policy") or cur.get("policy"):
                 # 策略事件的时间由所属组推导,不做端点齐平(避免遮罩被截短)。
                 continue
-            prev_end = self._parse_ass_time_to_seconds(prev["end_time"])
+            if prev.get("style") == "Scene":
+                # Scene:同屏不同行共存,端点齐平会把它们截成零时长。
+                continue
+            if prev.get("tags", "") != cur.get("tags", ""):
+                # tags 不同 = 不同显示通道,不存在先后接续关系。
+                continue
+            prev_start = self._parse_ass_time_to_seconds(prev["start_time"])
             cur_start = self._parse_ass_time_to_seconds(cur["start_time"])
+            if cur_start <= prev_start:
+                # 等起点(或乱序)是共存/并列事件,不是先后字幕。
+                continue
+            prev_end = self._parse_ass_time_to_seconds(prev["end_time"])
             if 0 < prev_end - cur_start <= 0.2:
                 prev["end_time"] = cur["start_time"]
         return events_sorted

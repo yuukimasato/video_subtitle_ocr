@@ -199,14 +199,26 @@ def test_substring_merge_still_works_for_contiguous_flicker(tmp_path):
 
 
 def test_same_roi_event_endpoints_clamped(tmp_path):
+    """先后字幕的毫秒级端点重叠仍齐平(前条开始严格早于后条)。"""
+    opt = _make_optimizer(tmp_path)
+    events = [
+        _ev("roi_0", "0:00:57.06", "0:00:57.10", "好熱"),
+        _ev("roi_0", "0:00:57.09", "0:01:04.60", "祝你生日快樂"),
+    ]
+    merged = opt._merge_temporal_near_duplicate_events(events)
+    assert merged[0]["end_time"] == "0:00:57.09"
+    assert merged[1]["start_time"] == "0:00:57.09"
+
+
+def test_same_start_events_are_coexisting_not_clamped(tmp_path):
+    """A1:等起点事件没有先后依据,不再齐平(旧契约曾把前条截成零时长)。"""
     opt = _make_optimizer(tmp_path)
     events = [
         _ev("roi_0", "0:00:57.09", "0:00:57.10", "好熱"),
         _ev("roi_0", "0:00:57.09", "0:01:04.60", "祝你生日快樂"),
     ]
     merged = opt._merge_temporal_near_duplicate_events(events)
-    assert merged[0]["end_time"] == "0:00:57.09"
-    assert merged[1]["start_time"] == "0:00:57.09"
+    assert merged[0]["end_time"] == "0:00:57.10"
 
 
 # ── 代表行逐槽多数投票 ──────────────────────────────────────────
