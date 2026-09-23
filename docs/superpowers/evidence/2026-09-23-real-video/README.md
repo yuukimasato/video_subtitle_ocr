@@ -49,7 +49,7 @@ cd /home/hope/Tools/video_subtitle_ocr/test_run/visual_review_after_fixes
 
 邮件控制按 all_runs.json 的 mail_protected 命令执行并把输出/日志改为新目录；之后执行 `render_review.py mail_protected` 与 `extra_frames.py`。diagnose.py会重新运行邮件运动路径，不是只读JSON的统计脚本。素材/ROI不变，生产改动后模型与分段数量可能改变。
 
-[分析与优化设计](../../specs/2026-09-23-real-video-optimization-design.md) · [下一轮实施总表](../../plans/2026-09-23-real-video-implementation.md)
+[最终优化方案](../../../FINAL_OPTIMIZATION_DESIGN.md) · [最终实施计划](../../../FINAL_IMPLEMENTATION_PLAN.md)
 
 `SHA256SUMS` 覆盖此目录除自身外的归档文件；执行 `sha256sum -c SHA256SUMS` 可检验。
 
