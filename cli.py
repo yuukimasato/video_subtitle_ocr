@@ -482,6 +482,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # while an omitted flag keeps them (defaulting to overlap).
     from core.roi_runtime_config import (
         collect_roi_auto_brightness,
+        collect_roi_occlusion_clip,
         collect_roi_pose_tags,
         effective_ocr_options,
         resolve_roi_policies,
@@ -494,6 +495,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     roi_pose_tags = collect_roi_pose_tags(roi_entries)
     roi_auto_brightness = collect_roi_auto_brightness(
         roi_entries, bool(getattr(args, "auto_brightness", False)))
+    roi_occlusion_clip = collect_roi_occlusion_clip(
+        roi_entries, bool(getattr(args, "occlusion_clip", False)))
     _info(
         "Effective config: engine={} lang={} model_tier={} "
         "file_lang={} scene_text_policy={} pose_rois={}".format(
@@ -888,6 +891,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             motion_roi_ids=motion_roi_ids or None,
             motion_evidence=motion_evidence or None,
             roi_auto_brightness=roi_auto_brightness or None,
+            roi_occlusion_clip=roi_occlusion_clip or None,
         )
         converter.convert_from_memory(iter(restored_results))
         t4 = time.perf_counter()

@@ -16,6 +16,7 @@ from core.pipeline_stages import PipelineContext, PipelineCancelled
 from core.scene_text_policy import POLICY_MODES
 from core.roi_runtime_config import (
     collect_roi_auto_brightness,
+    collect_roi_occlusion_clip,
     collect_roi_pose_tags,
 )
 from core.subtitle_llm_polish import SubtitlePolisherConfig
@@ -791,6 +792,8 @@ class PipelineWorker(QThread):
                 motion_roi_ids=motion_roi_ids or None,
                 motion_evidence=getattr(self, "motion_evidence", None) or None,
                 roi_auto_brightness=collect_roi_auto_brightness(
+                    self.roi_data) or None,
+                roi_occlusion_clip=collect_roi_occlusion_clip(
                     self.roi_data) or None,
             )
             converter.convert_from_memory(

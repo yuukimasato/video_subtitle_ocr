@@ -177,3 +177,53 @@ def test_static_mask_brightness_follows_dimming(tmp_path):
     # 亮段基色与暗段缩放色并存(\t 或分段 \1c)。
     joined = "\n".join(tagged)
     assert re.search(r"\\1c&H[0-9A-F]{6}&", joined)
+
+
+def test_static_screen_occlusion_clips_text(tmp_path):
+    """B4:前景轮廓(非肤色合成块)遮挡期间,静态文字事件被时间局部
+    iclip 裁剪;前景离开后恢复完整渲染。"""
+    from core.subtitle_generator import OCRToASSOptimizer
+
+    video = tmp_path / "occl.avi"
+    frame_clean = np.full((H, W, 3), 200, np.uint8)
+    frame_clean[100:106, 40:120] = 20
+    frame_occ = frame_clean.copy()
+    frame_occ[60:140, 30:90] = (200, 60, 30)  # 蓝色前景块盖住文字左半
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"FFV1"),
+                             FPS, (W, H))
+    assert writer.isOpened()
+    for i in range(60):
+        writer.write(frame_occ if 20 <= i < 40 else frame_clean)
+    writer.release()
+
+    sign_box = (30, 85, 130, 115)
+    poly = [[sign_box[0], sign_box[1]], [sign_box[2], sign_box[1]],
+            [sign_box[2], sign_box[3]], [sign_box[0], sign_box[3]]]
+    items = []
+    for f in range(5, 55):
+        data = {
+            "dt_polys": [poly], "rec_polys": [poly],
+            "rec_texts": ["店铺招牌"], "rec_scores": [0.95],
+            "rec_boxes": [list(sign_box)],
+        }
+        items.append((data, f, "roi_0", f / FPS))
+
+    out = tmp_path / "out.ass"
+    conv = OCRToASSOptimizer(
+        video_path=str(video), output_path=str(out), fps=FPS, width=W,
+        height=H,
+        roi_scene_text_policies={"roi_0": "mask"},
+        roi_analysis_rects={"roi_0": (20, 80, 140, 130)},
+        roi_occlusion_clip={"roi_0": True})
+    conv.convert_from_memory(iter(items))
+    text = out.read_text(encoding="utf-8-sig")
+    clipped = [ln for ln in text.splitlines()
+               if ln.startswith("Dialogue:") and "\\iclip(" in ln]
+    assert clipped, "occluded interval must produce iclip events"
+    assert all("\\t(" not in ln for ln in clipped), (
+        "no vector clip animation inside \\t")
+    # 前景离开后存在无裁剪段。
+    unclipped = [ln for ln in text.splitlines()
+                 if ln.startswith("Dialogue:") and "店铺招牌" in ln
+                 and "\\iclip(" not in ln and "\\p1" not in ln]
+    assert unclipped, "text must render unclipped after occluder leaves"

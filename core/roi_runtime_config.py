@@ -147,6 +147,25 @@ def collect_roi_pose_tags(
     return tags
 
 
+def collect_roi_occlusion_clip(
+    rois: Optional[List[Dict[str, Any]]],
+    global_enabled: bool = False,
+) -> Dict[str, bool]:
+    """收集 ``roi_N`` → 是否启用前景轮廓遮挡裁剪(逐 ROI 开关 OR 全局)。
+
+    CLI 的 ``--occlusion-clip`` 与 ROI 文件的 ``motion_occlusion_clip``
+    统一合成;开启时生成器为该 ROI 的静态策略事件按帧计算屏幕前景轮廓
+    (:mod:`core.occluder_contours`)并写时间局部 ``\iclip``。
+    """
+    out: Dict[str, bool] = {}
+    for idx, roi in enumerate(rois or []):
+        if not isinstance(roi, dict):
+            continue
+        out[f"roi_{idx}"] = bool(roi.get("motion_occlusion_clip", False)) \
+            or bool(global_enabled)
+    return out
+
+
 def collect_roi_auto_brightness(
     rois: Optional[List[Dict[str, Any]]],
     global_enabled: bool = False,

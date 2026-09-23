@@ -204,6 +204,7 @@ class OCRToASSOptimizer(
         motion_roi_ids: Optional[set] = None,
         motion_evidence: Optional[Dict[str, List[Dict]]] = None,
         roi_auto_brightness: Optional[Dict[str, bool]] = None,
+        roi_occlusion_clip: Optional[Dict[str, bool]] = None,
         analysis_frame_mode: str = "single",
         font_compliance: Optional["FontComplianceConfig"] = None,
         font_identifications: Optional[Any] = None,
@@ -251,6 +252,9 @@ class OCRToASSOptimizer(
         # B3:roi_id → 自动亮度开关;开启时该 ROI 的静态策略事件(遮罩与
         # 文字)按帧采样屏幕背景亮度并叠加 \1c/\alpha 曲线标签。
         self.roi_auto_brightness = dict(roi_auto_brightness or {})
+        # B4:roi_id → 前景轮廓遮挡裁剪开关;开启时该 ROI 的静态策略事件
+        # (文字与同物体有色遮罩)按帧计算屏幕前景轮廓并写时间局部 iclip。
+        self.roi_occlusion_clip = dict(roi_occlusion_clip or {})
         # A3:保真门控拒绝接管的 ROI——其轨迹候选事件在写出前整体移除,
         # 不只清 motion_roi_ids(否则候选会作为附加输出漏进最终 .ass)。
         self._rejected_motion_rois: set = set()
@@ -668,13 +672,19 @@ class OCRToASSOptimizer(
                 kind = spec["kind"]
                 if kind == "mask":
                     tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
+                    box = spec.get("box") or []
                     slice_events.append({
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": "Scene", "tags": tags, "body": "",
                         "layer": int(spec.get("layer", 0)), "policy": True,
                         "base_color": spec.get("base_color"),
-                        "_mask_box": spec.get("box"),
+                        "_mask_box": box,
+                        # B4:屏幕坐标几何框(平面坐标 + 分析窗原点)。
+                        "_screen_box": (float(box[0]) + ox, float(box[1]) + oy,
+                                        float(box[2]) + ox,
+                                        float(box[3]) + oy)
+                        if len(box) == 4 else None,
                     })
                 elif kind == "text":
                     tags = _shift_pos_tag(spec["tags"], float(ox), float(oy))
@@ -696,6 +706,12 @@ class OCRToASSOptimizer(
                     }
                     if spec.get("comment"):  # mask_only:排版参考行 → Comment 行
                         event["comment"] = True
+                    row_box = (slice_rows[spec["row"]][1]
+                               if spec["row"] < len(slice_rows) else None)
+                    if row_box is not None:
+                        event["_screen_box"] = (
+                            float(row_box[0]) + ox, float(row_box[1]) + oy,
+                            float(row_box[2]) + ox, float(row_box[3]) + oy)
                     slice_events.append(event)
                 elif kind == "note":
                     slice_events.append({
@@ -714,6 +730,11 @@ class OCRToASSOptimizer(
                                                float(oy)),
                         "body": spec.get("body", ""), "policy": True,
                     })
+            fps = float(self.fps) if self.fps else 25.0
+            f0 = max(0, int(round(sl.start_cs / 100.0 * fps)))
+            f1 = int(round(sl.end_cs / 100.0 * fps))
+            frame_list = sorted({f for f in range(f0, f1 + 1, 3)}
+                                | {f0, f1}) if f1 >= f0 else []
             if auto_brightness and slice_events:
                 from core.scene_brightness import (
                     apply_scene_brightness,
@@ -721,7 +742,6 @@ class OCRToASSOptimizer(
                 )
 
                 t0, t1 = sl.start_cs / 100.0, sl.end_cs / 100.0
-                fps = float(self.fps) if self.fps else 25.0
                 mask_events = [e for e in slice_events if e.get("_mask_box")]
                 text_events = [e for e in slice_events
                                if not e.get("_mask_box")]
@@ -753,8 +773,125 @@ class OCRToASSOptimizer(
                 else:
                     curved.extend(text_events)
                 slice_events = curved
+            # B4:前景轮廓遮挡裁剪——同一物体的文字与有色遮罩同受
+            # 时间局部 iclip;clear 段不裁,unknown 不复用过期轮廓。
+            if self.roi_occlusion_clip.get(str(roi_id)) and slice_events:
+                import cv2 as _cv2
+
+                from core.occluder_contours import (
+                    ContourResult,
+                    apply_screen_occlusion,
+                    build_seeds,
+                    refine_occluder_contours,
+                )
+
+                boxes = [e["_screen_box"] for e in slice_events
+                         if e.get("_screen_box")]
+                if boxes and f1 >= f0:
+                    plane_h, plane_w = ctx["plane"].shape[:2]
+                    margin = 24.0
+                    ux1 = max(0, int(min(b[0] for b in boxes) - ox - margin))
+                    uy1 = max(0, int(min(b[1] for b in boxes) - oy - margin))
+                    ux2 = min(float(plane_w), max(b[2] for b in boxes) - ox
+                              + margin)
+                    uy2 = min(float(plane_h), max(b[3] for b in boxes) - oy
+                              + margin)
+                    if ux2 > ux1 and uy2 > uy1:
+                        domain = np.zeros((int(plane_h), int(plane_w)),
+                                          np.uint8)
+                        domain[uy1:int(uy2), ux1:int(ux2)] = 1
+                        plane_gray = _cv2.cvtColor(ctx["plane"],
+                                                   _cv2.COLOR_BGR2GRAY)
+
+                        def _crop(f: int) -> Optional[np.ndarray]:
+                            img = _read_frame(f)
+                            if img is None:
+                                return None
+                            return img[oy:oy + int(plane_h),
+                                       ox:ox + int(plane_w)]
+
+                        screen_occlusions: Dict[int, Any] = {}
+
+                        def _contours_for(f: int) -> ContourResult:
+                            crop = _crop(f)
+                            if crop is None:
+                                return ContourResult([], "unknown",
+                                                     "frame unavailable")
+                            gray = _cv2.cvtColor(crop, _cv2.COLOR_BGR2GRAY)
+                            fg, bg, status, reason = build_seeds(
+                                gray, plane_gray, domain)
+                            if status != "valid":
+                                return ContourResult([], status, reason)
+                            result = refine_occluder_contours(
+                                crop, fg, bg, domain,
+                                resolution_height=float(self.height or 1080))
+                            if result.valid:
+                                # 裁剪坐标 → 视频屏幕坐标(到 PlayRes 恰好
+                                # 一次;apply_screen_occlusion 直接消费)。
+                                from core.occluder_contours import ContourRing
+
+                                result.rings = [
+                                    ContourRing(
+                                        r.points + np.array([ox, oy]),
+                                        r.is_hole, r.parent)
+                                    for r in result.rings]
+                            return result
+
+                        for f in frame_list:
+                            screen_occlusions[f] = _contours_for(f)
+                        # 相邻有效轮廓 IoU < 0.9 时补中间帧(单轮)。
+                        sampled = sorted(screen_occlusions)
+
+                        def _raster(result: ContourResult) -> np.ndarray:
+                            m = np.zeros((int(plane_h), int(plane_w)),
+                                         np.uint8)
+                            outer = [r.points.astype(np.int32)
+                                     for r in result.rings if not r.is_hole]
+                            inner = [r.points.astype(np.int32)
+                                     for r in result.rings if r.is_hole]
+                            if outer:
+                                _cv2.fillPoly(m, outer, 1)
+                            if inner:
+                                _cv2.fillPoly(m, inner, 0)
+                            return m
+
+                        extra: Dict[int, Any] = {}
+                        for a, b in zip(sampled, sampled[1:]):
+                            ra, rb = screen_occlusions[a], screen_occlusions[b]
+                            if not (ra.valid and rb.valid):
+                                continue
+                            ma, mb = _raster(ra), _raster(rb)
+                            inter = int(((ma > 0) & (mb > 0)).sum())
+                            union = int(((ma > 0) | (mb > 0)).sum())
+                            if union and inter / union >= 0.9:
+                                continue
+                            mid = (a + b) // 2
+                            if mid not in screen_occlusions:
+                                extra[mid] = _contours_for(mid)
+                        screen_occlusions.update(extra)
+                        event_geometry = {}
+                        for e in slice_events:
+                            if e.get("_screen_box") is not None:
+                                box = e["_screen_box"]
+
+                                class _Geom:
+                                    def __init__(self, box, frames):
+                                        self._box = box
+                                        self._frames = frames
+
+                                    def frames(self):
+                                        return [(f, self._box)
+                                                for f in self._frames]
+
+                                event_geometry[str(id(e))] = _Geom(
+                                    box, sorted(screen_occlusions))
+                        slice_events = apply_screen_occlusion(
+                            slice_events, screen_occlusions,
+                            fps=float(self.fps) if self.fps else 25.0,
+                            event_geometry=event_geometry)
             for e in slice_events:
                 e.pop("_mask_box", None)
+                e.pop("_screen_box", None)
             events.extend(slice_events)
         # 仅合并「显示属性完全相同」的相邻事件(同行跨片延续);不做任何
         # 时间并集/最小最大回填。
