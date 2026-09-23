@@ -679,7 +679,7 @@ for row in manifest:
 | B4 | `263664c` + `0484fa9`（窗口门控） | 新增 `core/occluder_contours.py`（build_seeds/refine_occluder_contours/contours_to_iclip/apply_screen_occlusion，ContourResult 三态、RETR_CCOMP 保留指缝洞、顶点≤512）；静态策略路径与普通 Scene 路径接入；屏幕细化限定在平面检测命中窗口（±5 帧）内，无窗口证据不猜测；合成 IoU≥0.95/指缝不吞/unknown 反例通过 |
 | D1 | `c0c244b` | 新增 `core/text_motion_evidence.py`（classify_text_centers/masked_text_match/glyph_mask_from_reference）；图像端到端（移动背景+固定 TEST 字形：静字漂移≤1px、真运动 2px/帧被测得、背景组 unknown、调暗不变）；step_segmentation 回退前判定并留痕（`HoldSplitResult.motion_states`），unknown 诊断供 A3 把关 |
 | C2 | `c37838b` | 新增 `core/line_geometry.py`（fit_line_size/measure_local_text，LRU≤256）；Scene 行无模板时写 per-line `\fs`（行框约束）；TOP 多行事件 pose 时取各行 fit 最小值；libass 渲染回归（字号层级保持、框间无字形泄漏）；模板传参时不写自动 fs |
-| G1 | `672457f`/`79d6a95`/`53d0cad` | 最终全量 **1721 passed, 1 skipped, 14 warnings**（final-tests.log/xml）；ruff F 与 git diff --check 通过；GUI 烟测 49 passed（quick_mode/roi_canvas_editing/scene_text_policy_gui）；五次真实视频全部 exit 0（新目录 `test_run/visual_review_after_fixes/`），渲染审阅帧 + f120/f144/f168/f222 额外帧齐全 |
+| G1 | `672457f`/`79d6a95`/`53d0cad` | 最终全量 **1721 passed, 1 skipped, 14 warnings**（归档 final-tests.log/xml 生成于 53d0cad 之前、记录 1718；2026-09-24 在 HEAD `8d1a8ba` 复跑确认 1721，见 final-tests-head8d1a8ba.log/xml，ruff F 与 git diff --check 同次复验通过）；GUI 烟测 49 passed（quick_mode/roi_canvas_editing/scene_text_policy_gui）；五次真实视频全部 exit 0（新目录 `test_run/visual_review_after_fixes/`），渲染审阅帧 + f120/f144/f168/f222 额外帧齐全；2026-09-24 独立复核：五份 ASS 结构检查（零时长/move/iclip 计数）与 acceptance_summary.json 完全一致 |
 
 ### G1 真实验收结果（acceptance_summary.json）
 
