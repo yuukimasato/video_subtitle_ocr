@@ -48,6 +48,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from core.motion_ass import LinePose, LineTrack, MotionAssConfig
+from core.text_motion_evidence import classify_text_centers
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,9 @@ class HoldSplitResult:
     orig_index_of: List[int] = field(default_factory=list)
     # 原始行下标 → hold 段列表(仅分段成功的行;fallback 行不出现)。
     holds_by_line: Dict[int, List[HoldSegment]] = field(default_factory=dict)
+    # D1:回退行的文字运动判定留痕(行下标 → [(run, state, 理由, 样本数)])。
+    # unknown = 背景污染/证据不足,该行的 \move 候选由 A3 保真门控最终把关。
+    motion_states: Dict[int, List[tuple]] = field(default_factory=dict)
 
 
 def segment_line_holds(
@@ -331,6 +335,9 @@ def _run(
     # —— 阶段三:校验 + 拆轨迹(逐行;失败回退原轨迹) ——
     split_of: Dict[int, List[LineTrack]] = {}
     holds_of: Dict[int, List[HoldSegment]] = {}
+    # D1:回退行的文字运动判定留痕(run 序号, state, 理由, 样本数)。
+    motion_states: Dict[int, List[tuple]] = {}
+    fallback_states: Dict[int, List[tuple]] = {}
     n_split = n_fallback = 0
     for li, lt in enumerate(line_tracks):
         if li not in plans:
@@ -338,13 +345,37 @@ def _run(
         runs, bounds, devs = plans[li]
         n = len(runs)
         ok = True
+        rep = reports.get(li) if reports else None
+        measured_scores = (getattr(rep, "measured", {}) or {}) if rep is not None else {}
         for k, run in enumerate(runs):
             if devs[k] > hold_tol:
-                log(f"line {li} ({lt.text!r}) fallback: run drift "
-                    f"{devs[k]:.1f}px > hold_tol {hold_tol:.1f}px "
-                    f"(continuous motion?)")
+                # D1:漂移回退前做文字运动判定并留痕。unknown(背景污染/
+                # 证据不足)不在此处冻结输出——回退 \move 的候选由 A3 的
+                # 文本保真门控最终把关;此处诊断供其与离线分析消费。
+                state = classify_text_centers(
+                    {f: (c[0], c[1]) for f, c in run},
+                    {f: float(measured_scores.get(f, (0.0, 0.0, -1.0))[2])
+                     for f, _c in run},
+                    tolerance_px=max(hold_tol, 1.0),
+                    min_score=cfg.verify_min_score,
+                    min_samples=min(3, len(run)))
+                motion_states.setdefault(li, []).append(
+                    (k, state.state, state.reason, len(run)))
+                if state.state == "moving":
+                    log(f"line {li} ({lt.text!r}) fallback: run drift "
+                        f"{devs[k]:.1f}px > hold_tol {hold_tol:.1f}px "
+                        f"(confirmed moving text: {state.reason})")
+                else:
+                    log(f"line {li} ({lt.text!r}) fallback: run drift "
+                        f"{devs[k]:.1f}px > hold_tol {hold_tol:.1f}px "
+                        f"but text-motion evidence is {state.state} "
+                        f"({state.reason}; {len(run)} sample(s)); takeover "
+                        "candidates remain subject to the fidelity gate")
                 ok = False
                 break
+        if ok is False and li in motion_states:
+            fallback_states[li] = motion_states[li]
+        for k, run in enumerate(runs):
             if len(run) >= max(1, int(cfg.min_hold_samples)):
                 continue
             left = True if k == 0 else bool(bounds[k - 1]["confirmed"])
@@ -382,6 +413,7 @@ def _run(
             result.tracks.append(lt)
             result.orig_index_of.append(li)
     result.holds_by_line = holds_of
+    result.motion_states = fallback_states
     if n_split or n_fallback:
         log(f"{n_split} line(s) hold-split, {n_fallback} fallback, "
             f"{len(line_tracks) - n_split - n_fallback} unchanged")

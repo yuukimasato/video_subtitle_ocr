@@ -462,3 +462,60 @@ def test_fades_anchor_at_hold_boundaries_after_slicing():
     assert events2[0]["tags"] == "{\\fad(0,80)}"
     assert events2[1]["tags"] == "{\\fad(80,0)}"
     assert "\\fad" not in events2[2]["tags"]
+
+
+# ---------------------------------------------------------------------------
+# D1:背景污染漂移不产生假 \move
+# ---------------------------------------------------------------------------
+
+def test_inconsistent_drift_falls_back_with_unknown_diagnosis():
+    """方向不一致的慢漂移(背景污染形态):回退 \\move 候选的同时留痕
+    unknown 判定,供 A3 保真门控与离线分析消费。"""
+    line = make_line()
+    # 漫游漂移:单步 ≤2.4px(低于换位阈值,不切 run),累计偏差 >hold_tol。
+    offsets = [0.0, 2.0, 4.0, 2.0, 4.0, 6.0, 3.0, 5.0, 7.0, 4.0]
+    drift = {10 + 12 * i: (A_CENTER[0] + offsets[i], A_CENTER[1])
+             for i in range(len(offsets))}
+    rep = make_report(measured_at(drift))
+    out = segment_line_holds([line], {0: rep}, base_cfg(), video_height=1080)
+    assert out.holds_by_line == {}
+    assert out.tracks == [line]
+    states = out.motion_states.get(0) or []
+    assert states, "fallback must record the text-motion diagnosis"
+    assert states[0][0] == 0  # run 序号
+    assert states[0][1] in ("unknown", "moving")
+    assert states[0][3] >= 3  # 样本数
+
+
+def test_confirmed_moving_still_falls_back_to_trajectory():
+    """一致方向的连续位移(真运动)仍整行回退轨迹路径。"""
+    line = make_line()
+    drift = {10 + 12 * i: (A_CENTER[0] + 4.0 * i, A_CENTER[1])
+             for i in range(16)}
+    rep = make_report(measured_at(drift))
+    out = segment_line_holds([line], {0: rep}, base_cfg(), video_height=1080)
+    assert out.holds_by_line == {}
+    assert out.tracks == [line]
+    assert out.orig_index_of == [0]
+
+
+def test_hold_synthesis_outputs_pos_without_geometry_tags():
+    """分段成功行合成的事件:静止片段无 \\move、\\t 中无几何标签。"""
+    import re
+
+    from core.motion_ass import MotionAssConfig, synthesize_events
+
+    tracks = make_tracks()
+    line = make_line()
+    static = {10 + 12 * i: A_CENTER for i in range(16)}
+    rep = make_report(measured_at(static))
+    out = segment_line_holds([line], {0: rep}, base_cfg(),
+                             video_height=1080)
+    synth = out.tracks
+    events = synthesize_events(synth, tracks, MotionAssConfig(step_fade_ms=0),
+                               video_height=1080)
+    assert events
+    for ev in events:
+        assert "\\move(" not in ev["tags"]
+        for t in re.findall(r"\\t\([^)]*\)", ev["tags"]):
+            assert not re.search(r"\\fr[zxy]|\\fsc[xy]", t), t
