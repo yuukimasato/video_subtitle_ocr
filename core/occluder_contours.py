@@ -305,13 +305,13 @@ def apply_screen_occlusion(
         if not frame_boxes:
             out.append(ev)
             continue
-        st, en = _cs(ev["start_time"]), _cs(ev["end_time"])
+        st, en = round(_cs(ev["start_time"]) * 100), round(_cs(ev["end_time"]) * 100)
         points: List[Tuple[float, Optional[str]]] = [(st, None)]
         last_valid: Optional[str] = None
         last_valid_frame: Optional[int] = None
         for frame, box in frame_boxes:
-            t = frame / float(fps) if fps > 0 else 0.0
-            if t < st - 1e-6 or t > en + 1e-6:
+            t = round(frame / float(fps) * 100) if fps > 0 else 0
+            if t < st or t > en:
                 continue
             result = screen_occlusions.get(frame)  # 缺失 = unknown
             clip = None
@@ -357,18 +357,21 @@ def apply_screen_occlusion(
                 break
             nxt_t = runs[i + 1][1]
             if clip is not None:
-                # clip 只延伸到其末帧 + 1 帧与下一段起点中的较小者。
-                frame_dt = 1.0 / max(fps, 1e-6)
-                seg_end = min(nxt_t, _t1 + frame_dt)
-                seg_end = max(seg_end, t0 + frame_dt * 1e-3)
+                # clip 只延伸到其末帧 + 1 帧与下一段起点中的较小者
+                # (厘秒域;段长不足 1cs 时延伸到 1cs,绝不产出零时长)。
+                frame_dt_cs = max(1, round(100.0 / max(fps, 1e-6)))
+                seg_end = min(nxt_t, _t1 + frame_dt_cs)
+                seg_end = max(seg_end, t0 + 1)
                 seg_end = min(seg_end, nxt_t)
+                if seg_end <= t0:
+                    seg_end = t0 + 1
             else:
                 seg_end = nxt_t
             if seg_end <= t0:
                 continue
             new_ev = dict(ev)
-            new_ev["start_time"] = _fmt_ass(t0)
-            new_ev["end_time"] = _fmt_ass(seg_end)
+            new_ev["start_time"] = _fmt_ass(t0 / 100.0)
+            new_ev["end_time"] = _fmt_ass(seg_end / 100.0)
             if clip:
                 new_ev["tags"] = f"{new_ev['tags']}{{{clip}}}"
             out.append(new_ev)

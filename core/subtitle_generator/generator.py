@@ -412,6 +412,116 @@ class OCRToASSOptimizer(
         ]
         return check_text_fidelity(static_spans, motion_spans)
 
+    def _contour_screen_occlusion(self, events, boxes, t0_sec, t1_sec):
+        """B4:静态事件的时间局部前景轮廓裁剪(策略路径与普通 Scene 路径
+        共用)。
+
+        ``events``/``boxes`` 同序(事件屏幕坐标几何框);参考帧 = 跨度内
+        每 3 帧 + 边界采样中亮度最高者;轮廓在参考帧裁剪坐标系上细化后
+        一次性映射回视频屏幕坐标。
+        """
+        import cv2 as _cv2
+
+        from core.occluder_contours import (
+            ContourResult,
+            ContourRing,
+            apply_screen_occlusion,
+            build_seeds,
+            refine_occluder_contours,
+        )
+
+        if not events or not boxes or t1_sec <= t0_sec:
+            return events
+        fps = float(self.fps) if self.fps else 25.0
+        f0 = max(0, int(round(t0_sec * fps)))
+        f1 = int(round(t1_sec * fps))
+        frame_list = sorted({f for f in range(f0, f1 + 1, 3)} | {f0, f1})
+        if f1 < f0:
+            return events
+
+        margin = 24.0
+        ux1 = min(b[0] for b in boxes) - margin
+        uy1 = min(b[1] for b in boxes) - margin
+        ux2 = max(b[2] for b in boxes) + margin
+        uy2 = max(b[3] for b in boxes) + margin
+
+        def _read_full(num: int) -> Optional[np.ndarray]:
+            try:
+                return self._get_analysis_reader().read(num)
+            except Exception:
+                return None
+
+        def _crop_to_plane(img: np.ndarray):
+            h, w = img.shape[:2]
+            x1 = max(0, int(ux1))
+            y1 = max(0, int(uy1))
+            x2 = min(w, int(round(ux2)))
+            y2 = min(h, int(round(uy2)))
+            if x2 - x1 < 2 or y2 - y1 < 2:
+                return None, None, None
+            return img[y1:y2, x1:x2], x1, y1
+
+        # 参考帧 = 亮度最接近采样中位的典型帧:最亮帧可能落在切镜亮帧上
+        # (以它为参考会把全部正常帧判成前景);中位帧代表dominant外观。
+        samples_luma = []
+        for f in frame_list:
+            img = _read_full(f)
+            if img is None:
+                continue
+            crop, ox, oy = _crop_to_plane(img)
+            if crop is None:
+                continue
+            luma = float(_cv2.cvtColor(crop, _cv2.COLOR_BGR2GRAY).mean())
+            samples_luma.append((f, crop, (ox, oy), luma))
+        if not samples_luma:
+            return events
+        med_luma = float(np.median([s[3] for s in samples_luma]))
+        ref_f, ref_img, ref_origin, _ = min(
+            samples_luma, key=lambda s: abs(s[3] - med_luma))
+        ox, oy = ref_origin
+        plane_h, plane_w = ref_img.shape[:2]
+        plane_gray = _cv2.cvtColor(ref_img, _cv2.COLOR_BGR2GRAY)
+        domain = np.zeros((plane_h, plane_w), np.uint8)
+        domain[:, :] = 1  # 裁剪窗即待保护物体区域(已含外扩)
+
+        def _contours_for(f: int) -> ContourResult:
+            img = _read_full(f)
+            if img is None:
+                return ContourResult([], "unknown", "frame unavailable")
+            crop, cx, cy = _crop_to_plane(img)
+            if crop is None:
+                return ContourResult([], "unknown", "frame unavailable")
+            gray = _cv2.cvtColor(crop, _cv2.COLOR_BGR2GRAY)
+            fg, bg, status, reason = build_seeds(gray, plane_gray, domain)
+            if status != "valid":
+                return ContourResult([], status, reason)
+            result = refine_occluder_contours(
+                crop, fg, bg, domain,
+                resolution_height=float(self.height or 1080))
+            if result.valid:
+                result.rings = [
+                    ContourRing(r.points + np.array([cx, cy]),
+                                r.is_hole, r.parent)
+                    for r in result.rings]
+            return result
+
+        screen_occlusions = {f: _contours_for(f) for f in frame_list}
+        event_geometry = {}
+
+        class _Geom:
+            def __init__(self, box, frames):
+                self._box = box
+                self._frames = frames
+
+            def frames(self):
+                return [(f, self._box) for f in self._frames]
+
+        for ev, box in zip(events, boxes):
+            event_geometry[str(id(ev))] = _Geom(box, sorted(screen_occlusions))
+        return apply_screen_occlusion(
+            events, screen_occlusions,
+            fps=fps, event_geometry=event_geometry)
+
     def _prepare_scene_policy_context(self, roi_id: str, groups) -> Optional[Dict]:
         """为该 ROI 构建策略上下文;不适用/不可用时返回 None(走原路径)。"""
         policy = str(self.roi_scene_text_policies.get(roi_id) or "overlap")
@@ -978,6 +1088,9 @@ class OCRToASSOptimizer(
 
                 # 场景文字显示策略(仅非 overlap 生效;准备失败回退原路径)。
                 policy_ctx = self._prepare_scene_policy_context(str(roi_id), groups)
+                # B4:普通 Scene 路径的事件 + 行框对(轮廓裁剪用;策略路径
+                # 在 _finish_scene_policy_events 内部处理)。
+                plain_occl_pairs: List[tuple] = []
 
                 for group in groups:
                     # Prefer real timestamps when available. group.frames was
@@ -1055,16 +1168,31 @@ class OCRToASSOptimizer(
                         styled_lines = self._apply_roi_pose_tags(
                             styled_lines, pose, frame_num=mid_frame)
                     for line_info in styled_lines:
-                        subtitle_events.append(
-                            {
-                                "roi": str(roi_id),
-                                "start_time": start_time,
-                                "end_time": end_time,
-                                "style": line_info["style"],
-                                "tags": line_info["tags"],
-                                "body": line_info["text"],
-                            }
-                        )
+                        event = {
+                            "roi": str(roi_id),
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "style": line_info["style"],
+                            "tags": line_info["tags"],
+                            "body": line_info["text"],
+                        }
+                        if (self.roi_occlusion_clip.get(str(roi_id))
+                                and line_info.get("box")):
+                            # B4:先收集,统一做轮廓切片后再并入(见循环后)。
+                            plain_occl_pairs.append(
+                                (event, line_info["box"]))
+                        else:
+                            subtitle_events.append(event)
+
+                if plain_occl_pairs:
+                    occ_events = [e for e, _b in plain_occl_pairs]
+                    occ_boxes = [b for _e, b in plain_occl_pairs]
+                    t0 = min(self._parse_ass_time_to_seconds(e["start_time"])
+                             for e in occ_events)
+                    t1 = max(self._parse_ass_time_to_seconds(e["end_time"])
+                             for e in occ_events)
+                    subtitle_events.extend(self._contour_screen_occlusion(
+                        occ_events, occ_boxes, t0, t1))
 
                 if policy_ctx is not None:
                     subtitle_events.extend(

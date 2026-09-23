@@ -43,11 +43,24 @@ def _normalize_text(text: str) -> str:
     return "".join(ch for ch in normalized if ch.isalnum())
 
 
+def _is_noise_row(normalized: str) -> bool:
+    """规范化后的噪声行判据(与主流水线噪声清洗同锚)。
+
+    空行(规范化后无内容)与 ≤3 字符的纯 ASCII 行(『6e8』『<』级图标/
+    状态栏误读——融合与清洗阶段本就不稳定)对称地从两路证据中剔除,不
+    让 OCR 噪声驱动接管决策;内容行(CJK/长 ASCII)不受影响。
+    """
+    if not normalized:
+        return True
+    return len(normalized) <= 3 and normalized.isascii()
+
+
 def _active_rows(spans: Sequence[TextSpan], start: int, end: int) -> Tuple:
-    """切片内活跃行的规范化文本元组(按 row_order 稳定排序)。"""
+    """切片内活跃行的规范化文本元组(按 row_order 稳定排序,噪声行剔除)。"""
     active = [sp for sp in spans if sp.start_cs <= start and sp.end_cs >= end]
     active.sort(key=lambda sp: sp.row_order)
-    return tuple(_normalize_text(sp.text) for sp in active)
+    rows = [_normalize_text(sp.text) for sp in active]
+    return tuple(r for r in rows if not _is_noise_row(r))
 
 
 def check_text_fidelity(

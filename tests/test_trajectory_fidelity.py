@@ -107,3 +107,21 @@ def test_mismatch_inside_static_span_still_rejected():
     static = [TextSpan(0, 100, "甲", 0), TextSpan(100, 200, "乙", 1)]
     motion = [TextSpan(0, 200, "甲", 0)]
     assert not check_text_fidelity(static, motion).ok
+
+
+def test_noise_rows_are_dropped_symmetrically():
+    """静态空行与轨迹短 ASCII 噪声行('6e8')对称剔除,不驱动接管决策
+    (mail 真实形态;与主流水线噪声清洗同锚)。"""
+    texts = ["受信メールー覧", "安芸倫也", " Title金曜日サークルあります"]
+    static = [TextSpan(0, 100, texts[0], 0),
+              TextSpan(0, 100, "", 1),
+              TextSpan(0, 100, texts[1], 2),
+              TextSpan(0, 100, texts[2], 3)]
+    motion = [TextSpan(0, 300, texts[0], 0),
+              TextSpan(0, 300, texts[1], 1),
+              TextSpan(0, 300, texts[2], 2),
+              TextSpan(0, 300, "6e8", 3)]
+    assert check_text_fidelity(static, motion).ok
+    # 短 ASCII 噪声判据不伤内容行:单字 CJK 行保留。
+    assert not check_text_fidelity(
+        [TextSpan(0, 100, "甲", 0)], [TextSpan(0, 100, "乙", 0)]).ok
