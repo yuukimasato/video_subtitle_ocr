@@ -93,7 +93,8 @@ def test_streaming_progress_never_goes_backwards(harness):
     assert seen == sorted(set(seen))
 
 
-def test_stream_failure_joins_running_task_before_return(harness, monkeypatch):
+@pytest.mark.parametrize("stream", [False, True])
+def test_failure_joins_running_task_before_return(harness, monkeypatch, stream):
     ctx, optimizer, instances, _, closed = harness
     started = threading.Event()
     finished = threading.Event()
@@ -116,7 +117,7 @@ def test_stream_failure_joins_running_task_before_return(harness, monkeypatch):
     monkeypatch.setattr(optimizer, 'process_roi_group', process)
     with pytest.raises(RuntimeError, match='bucket failed'):
         stages.extract_and_ocr_stage(
-            replace(ctx, time_slice_enabled=True, time_slice_seconds=1),
+            replace(ctx, time_slice_enabled=stream, time_slice_seconds=1),
             progress_cb=lambda *a: None, cancel_check=lambda: False)
     assert finished.is_set()
     assert all(obj.cleaned for obj in instances)

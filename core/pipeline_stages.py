@@ -490,28 +490,35 @@ def extract_and_ocr_stage(
                 )
                 with ThreadPoolExecutor(max_workers=max_workers) as ex:
                     futures = []
-                    for roi_id, frames in sorted(roi_groups.items()):
-                        if cancel_check():
-                            break
-                        futures.append(ex.submit(process_one_group, roi_id, list(frames)))
+                    try:
+                        for roi_id, frames in sorted(roi_groups.items()):
+                            if cancel_check():
+                                break
+                            futures.append(ex.submit(process_one_group, roi_id, list(frames)))
 
-                    for fut in as_completed(futures):
-                        if cancel_check():
-                            break
-                        roi_id, roi_res, calls, filled, frame_cnt, group_reported = fut.result()
-                        ocr_results.extend(roi_res)
-                        with stats_lock:
-                            total_ocr_calls += calls
-                            total_frames_filled += filled
-                        # Ensure the global counter accounts for any tail that wasn't reported
-                        # (e.g. very small groups or early returns).
-                        if frame_cnt and group_reported is not None:
-                            remaining = int(frame_cnt) - int(group_reported)
-                            if remaining > 0:
-                                with processed_lock:
-                                    processed_count += remaining
-                                    current_total_processed = min(processed_count, total_roi_frames)
-                                _emit_ocr_progress(current_total_processed)
+                        for fut in as_completed(futures):
+                            if cancel_check():
+                                break
+                            roi_id, roi_res, calls, filled, frame_cnt, group_reported = fut.result()
+                            ocr_results.extend(roi_res)
+                            with stats_lock:
+                                total_ocr_calls += calls
+                                total_frames_filled += filled
+                            # Ensure the global counter accounts for any tail that wasn't reported
+                            # (e.g. very small groups or early returns).
+                            if frame_cnt and group_reported is not None:
+                                remaining = int(frame_cnt) - int(group_reported)
+                                if remaining > 0:
+                                    with processed_lock:
+                                        processed_count += remaining
+                                        current_total_processed = min(processed_count, total_roi_frames)
+                                    _emit_ocr_progress(current_total_processed)
+                    except BaseException:
+                        stop_event.set()
+                        for future in futures:
+                            future.cancel()
+                        raise
+
             else:
                 logger.info(
                     QCoreApplication.translate(
