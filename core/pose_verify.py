@@ -55,6 +55,7 @@ import numpy as np
 
 from core.motion_ass import LinePose, LineTrack
 from core.scene_plane_tracker import TrackedQuad
+from core.text_motion_evidence import glyph_mask_from_reference, masked_text_match
 
 __all__ = [
     "VerifyConfig",
@@ -192,6 +193,9 @@ class LineVerifyReport:
     # 不改变任何采纳结果;后者若被真实素材暴露,「消失段校正不得把行移
     # 出 ROI」的行为约束以该计数为定位依据单独立项。
     n_roi_fallback: int = 0
+    # 字形匹配不可用时回退到整块模板匹配的次数;用于确认 D1 是否在
+    # 生产视频上真正提供了首选证据,而不是只存在于单测。
+    glyph_fallbacks: int = 0
 
 
 class _FrameCursor:
@@ -654,7 +658,8 @@ def _match_center(frame: np.ndarray, patch: np.ndarray,
 def _probe_frame(img: np.ndarray, patch: np.ndarray,
                  center: Tuple[float, float], cfg: VerifyConfig,
                  restrict: Optional[Tuple[np.ndarray, float]] = None,
-                 stats: Optional[Dict[str, int]] = None
+                 stats: Optional[Dict[str, int]] = None,
+                 glyph_context=None,
                  ) -> Tuple[float, float, float, Optional[float]]:
     """单帧分级匹配:常规半径失配(< drop_score)时以更大半径重试一次。
 
@@ -668,6 +673,23 @@ def _probe_frame(img: np.ndarray, patch: np.ndarray,
     ``restrict``/``stats`` 透传给两次 :func:`_match_center`(ROI 钳制与
     诊断计数)。
     """
+    # D1 首选:只在 OCR 行字形支持上做相关匹配。字形 mask 无法建立或
+    # 峰不明确时才回退旧整块模板,并把回退次数记录到诊断。
+    if glyph_context is not None:
+        glyph_hit = _probe_glyph_frame(
+            img, glyph_context, center, cfg.search_radius_px, restrict)
+        glyph_retry: Optional[float] = None
+        if glyph_hit is None and cfg.retry_radius_px > cfg.search_radius_px:
+            retry_hit = _probe_glyph_frame(
+                img, glyph_context, center, cfg.retry_radius_px, restrict)
+            if retry_hit is not None:
+                glyph_hit = retry_hit
+                glyph_retry = retry_hit[2]
+        if glyph_hit is not None:
+            return (*glyph_hit, glyph_retry)
+        if stats is not None:
+            stats["glyph_fallback"] = stats.get("glyph_fallback", 0) + 1
+
     size = (patch.shape[1], patch.shape[0])
     mx, my, score = _match_center(
         img, patch, center, cfg.search_radius_px, size,
@@ -756,6 +778,68 @@ class _LineWork:
     # 补解码,避免逐行多次开视频)
     confirm_picks: Dict[Tuple[int, int], List[int]] = field(
         default_factory=dict)
+    # D1 字形支持:参考整帧灰度、字形 mask、字形包围盒中心与行框中心。
+    reference_gray: Optional[np.ndarray] = None
+    glyph_mask: Optional[np.ndarray] = None
+    glyph_anchor: Optional[Tuple[float, float]] = None
+    line_anchor: Optional[Tuple[float, float]] = None
+
+
+def _glyph_context_from_reference(
+    img: np.ndarray, lt: LineTrack, ref_ok: int,
+) -> Optional[Tuple[np.ndarray, np.ndarray, Tuple[float, float],
+                    Tuple[float, float]]]:
+    """从参考帧 OCR 行框建立字形匹配上下文;失败返回 None。"""
+    import cv2
+
+    if img is None or img.ndim != 3:
+        return None
+    try:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        mask = glyph_mask_from_reference(gray, lt.ref_box)
+    except (ValueError, TypeError, cv2.error):
+        return None
+    if mask is None:
+        return None
+    ys, xs = np.nonzero(mask)
+    if len(xs) < 1:
+        return None
+    glyph_anchor = (float((xs.min() + xs.max()) / 2.0),
+                    float((ys.min() + ys.max()) / 2.0))
+    line_anchor = tuple(float(v) for v in lt.poses[ref_ok].center)
+    return gray, mask, glyph_anchor, line_anchor
+
+
+def _probe_glyph_frame(
+    img: np.ndarray,
+    glyph_context: Tuple[np.ndarray, np.ndarray, Tuple[float, float],
+                         Tuple[float, float]],
+    center: Tuple[float, float], radius: float,
+    restrict: Optional[Tuple[np.ndarray, float]] = None,
+) -> Optional[Tuple[float, float, float]]:
+    """以字形 mask 匹配并把字形中心换算回行框中心。"""
+    reference_gray, mask, glyph_anchor, line_anchor = glyph_context
+    hit = masked_text_match(
+        cv2_gray(img), reference_gray, mask,
+        (center[0] - radius, center[1] - radius,
+         center[0] + radius, center[1] + radius),
+    )
+    if hit is None:
+        return None
+    mx = float(hit[0] + line_anchor[0] - glyph_anchor[0])
+    my = float(hit[1] + line_anchor[1] - glyph_anchor[1])
+    if restrict is not None:
+        quad, margin = restrict
+        if not bool(_quad_inside_mask(np.array([mx]), np.array([my]),
+                                      quad, margin)[0, 0]):
+            return None
+    return mx, my, float(hit[2])
+
+
+def cv2_gray(img: np.ndarray) -> np.ndarray:
+    """局部导入 OpenCV，保持 pose_verify 的轻量导入行为。"""
+    import cv2
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 
 def _match_line_samples(
@@ -794,6 +878,20 @@ def _match_line_samples(
     if work.patch is None:
         return work
 
+    # 参考帧上建立字形支持。行框本身仍由 OCR/轨迹提供，字形 mask 只
+    # 作为匹配权重，不改变输出几何尺寸。
+    ref_img = frames_img.get(ref_ok)
+    if ref_img is not None:
+        glyph_ctx = _glyph_context_from_reference(ref_img, lt, ref_ok)
+        if glyph_ctx is not None:
+            (work.reference_gray, work.glyph_mask, work.glyph_anchor,
+             work.line_anchor) = glyph_ctx
+    glyph_context = None
+    if (work.reference_gray is not None and work.glyph_mask is not None
+            and work.glyph_anchor is not None and work.line_anchor is not None):
+        glyph_context = (work.reference_gray, work.glyph_mask,
+                         work.glyph_anchor, work.line_anchor)
+
     sample_data = work.sample_data
     clamp_stats: Dict[str, int] = {}
     for f in samples:
@@ -808,7 +906,7 @@ def _match_line_samples(
             center = pred
         mx, my, score, retry = _probe_frame(
             img, work.patch, center, cfg, restrict=restrict,
-            stats=clamp_stats)
+            stats=clamp_stats, glyph_context=glyph_context)
         if retry is not None:
             rep.retry_scores[f] = retry
         rep.scores[f] = score
@@ -821,6 +919,7 @@ def _match_line_samples(
     rep.n_good = len(sample_data)
     rep.n_clamped = clamp_stats.get("clamped", 0)
     rep.n_roi_fallback = clamp_stats.get("fallback_outside", 0)
+    rep.glyph_fallbacks = clamp_stats.get("glyph_fallback", 0)
 
     # 预选超长失配跨度的跨内确认帧(阶段 B 前整块统一补解码)。
     # 确认帧数随跨度恢复:min(cap, max(1, 跨度帧长 // long_span_frames))
@@ -884,13 +983,13 @@ def _finalize_line(
         picks = work.confirm_picks.get((a, b)) if long_span else None
         visible = False
         tested = 0
+        clamp_stats: Dict[str, int] = {}
         if picks:
             # 确认帧的窗口中心同样带该行实测偏移外推;探到边界分也算
             # 可见(分级语义倾向保留)。缺帧(解码不到)不计入 tested,
             # 视同未测——与采样缺帧(视同失配)的处理刻意不同:采样帧
             # 的失配是「测到分数低」,确认帧缺失是「没测成」。
             priors = _interp_offsets(work.sample_data, picks)
-            clamp_stats: Dict[str, int] = {}
             for f in picks:
                 img = frames_img.get(f)
                 if img is None:
@@ -900,13 +999,22 @@ def _finalize_line(
                 dx, dy = priors[f]
                 _mx, _my, sc, _retry = _probe_frame(
                     img, work.patch, (pred[0] + dx, pred[1] + dy), cfg,
-                    restrict=restrict, stats=clamp_stats)
+                    restrict=restrict, stats=clamp_stats,
+                    glyph_context=(
+                        (work.reference_gray, work.glyph_mask,
+                         work.glyph_anchor, work.line_anchor)
+                        if (work.reference_gray is not None
+                            and work.glyph_mask is not None
+                            and work.glyph_anchor is not None
+                            and work.line_anchor is not None)
+                        else None))
                 evidence[f] = sc
                 if sc >= cfg.drop_score:
                     visible = True
                     break
-            work.rep.n_clamped += clamp_stats.get("clamped", 0)
-            work.rep.n_roi_fallback += clamp_stats.get("fallback_outside", 0)
+        work.rep.n_clamped += clamp_stats.get("clamped", 0)
+        work.rep.n_roi_fallback += clamp_stats.get("fallback_outside", 0)
+        work.rep.glyph_fallbacks += clamp_stats.get("glyph_fallback", 0)
         if long_span and not visible and not tested:
             # 未测(一个确认帧都没测到):不得按「已确认」删除,整段保留
             # 并给出独立 reason,让日志/离线分析能区分「确认后删除」
@@ -1001,7 +1109,9 @@ def _finalize_line(
                 f"dropped {rep.dropped_frames} invisible frame(s)"
                 + (f" spans={span_txt}" if span_txt else "")
                 + (f" roi_fallback={rep.n_roi_fallback}"
-                   if rep.n_roi_fallback else ""))
+                   if rep.n_roi_fallback else "")
+                + (f" glyph_fallback={rep.glyph_fallbacks}"
+                   if rep.glyph_fallbacks else ""))
     else:
         return None, rep
 

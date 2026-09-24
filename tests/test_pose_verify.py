@@ -156,6 +156,7 @@ def test_static_text_with_drifting_homography_snaps_to_const(tmp_path):
     new_tracks, reports = verify_line_tracks(video, tracks, line_tracks, VCFG)
 
     assert reports[0].static, reports[0]
+    assert reports[0].n_samples > reports[0].glyph_fallbacks
     poses = new_tracks[0].poses
     centers = {p.center for p in poses.values()}
     assert len(centers) == 1  # 常量位姿
@@ -186,6 +187,7 @@ def test_moving_text_with_identity_homography_gets_corrected(tmp_path):
     new_tracks, reports = verify_line_tracks(video, tracks, line_tracks, VCFG)
 
     assert not reports[0].static
+    assert reports[0].n_samples > reports[0].glyph_fallbacks
     assert reports[0].corrected
     # 末帧实测中心 ≈ 初值 + 2*(n-1)
     last = max(new_tracks[0].poses)
