@@ -267,6 +267,25 @@ class TestGeneratorMotionEvents:
         assert any("店铺招牌" in ln for ln in lines)
         assert any("受信メール" in ln for ln in lines)
 
+    def test_roi_motion_without_static_evidence_is_removed(self, tmp_path):
+        """A3:静态 OCR 完全为空时,带 ROI 的轨迹候选不能绕过保真门控。"""
+        conv = _build_converter(
+            "no-video.avi", tmp_path / "out.ass",
+            motion_events=[dict(_motion_event(), roi="roi_0")],
+            motion_roi_ids={"roi_0"})
+        conv.convert_from_memory(iter([]))
+        text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+        assert "受信メール" not in text
+
+    def test_unbound_motion_without_static_evidence_is_preserved(self, tmp_path):
+        """显式 quad 事件没有 ROI 归属时仍可作为附加输出保留。"""
+        conv = _build_converter(
+            "no-video.avi", tmp_path / "out.ass",
+            motion_events=[_motion_event()])
+        conv.convert_from_memory(iter([]))
+        text = (tmp_path / "out.ass").read_text(encoding="utf-8-sig")
+        assert "受信メール" in text
+
     def test_rejected_takeover_removes_roi_candidates(self, tmp_path):
         """A3:证据与静态文本不一致 → 静态保留,该 ROI 的候选整体移除。"""
         conv = _build_converter(

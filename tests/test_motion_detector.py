@@ -162,7 +162,7 @@ class TestDetectMovingText:
 # ---------------------------------------------------------------------------
 
 class TestCliMotionAuto:
-    def test_auto_runs_trajectory_and_suppresses_static(
+    def test_auto_requires_static_evidence_before_takeover(
             self, tmp_path, monkeypatch):
         from test_motion_ass_cli import build_case, make_mock_ocr
 
@@ -190,8 +190,9 @@ class TestCliMotionAuto:
         text = open(out, encoding="utf-8-sig").read()
         motion_lines = [ln for ln in text.splitlines()
                         if ln.startswith("Dialogue:") and ",Scene,motion," in ln]
-        assert len(motion_lines) == 2  # 两行"文字"黑条 → 两条轨迹事件
-        assert all("\\move(" in ln for ln in motion_lines)
+        # 默认静态 ROI 是底部条带,该合成卡片不在其中;A3 不允许
+        # 自动轨迹在没有对应静态证据时绕过保真门控写出候选。
+        assert motion_lines == []
 
     def test_auto_without_detection_continues(self, tmp_path, monkeypatch):
         from test_motion_ass_cli import build_case, make_mock_ocr

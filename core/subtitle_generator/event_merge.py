@@ -218,7 +218,8 @@ class _EventMergeMixin:
             if prev.get("policy") or cur.get("policy"):
                 # 策略事件的时间由所属组推导,不做端点齐平(避免遮罩被截短)。
                 continue
-            if prev.get("style") == "Scene":
+            if (prev.get("style") == "Scene"
+                    or cur.get("style") == "Scene"):
                 # Scene:同屏不同行共存,端点齐平会把它们截成零时长。
                 continue
             if prev.get("tags", "") != cur.get("tags", ""):

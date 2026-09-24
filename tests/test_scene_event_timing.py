@@ -75,6 +75,18 @@ def test_scene_rows_survive_merge_chain(tmp_path):
     assert all(e["end_time"] == "0:00:01.12" for e in merged)
 
 
+def test_non_scene_event_before_scene_is_not_clamped(tmp_path):
+    """Scene 事件出现在后一条时,前一条也不能被误截短。"""
+    opt = _make_optimizer(tmp_path)
+    events = [
+        _ch_event("roi_0", "0:00:01.00", "0:00:02.04", "甲",
+                  tags="{\\an2}"),
+        _scene_row("roi_0", "0:00:02.00", "0:00:03.00", 100, "场景"),
+    ]
+    out = opt._clamp_same_roi_event_overlaps(events)
+    assert out[0]["end_time"] == "0:00:02.04"
+
+
 def test_default_same_tags_sequential_still_clamped(tmp_path):
     """传统字幕：后条开始严格晚于前条开始、tags 相同 → 毫秒重叠齐平。"""
     opt = _make_optimizer(tmp_path)

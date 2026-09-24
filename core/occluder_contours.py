@@ -312,7 +312,10 @@ def apply_screen_occlusion(
         last_valid_frame: Optional[int] = None
         for frame, box in frame_boxes:
             t = round(frame / float(fps) * 100) if fps > 0 else 0
-            if t < st or t > en:
+            # Events use the half-open interval [start, end).  A contour
+            # sampled exactly at the end frame belongs to the next event (or
+            # no event), and must never create an end..end+1cs tail.
+            if t < st or t >= en:
                 continue
             result = screen_occlusions.get(frame)
             if result is None and default_status == "clear":

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 所有下方待办尚未实施；上一轮已完成基础优化见方案，不能重复执行。
+- 本文保留实施契约、验收标准和交接信息；任务表中的基础优化已落实，后续修改必须以当前源码和交付记录为准，不要按旧的“尚未实施”描述重复重做。
 - 生产源码基准为 `20231ba3f296c1149eddd691f33c962699e68f1d`，原始基线 `ead48f9` 和既有备份保留。
 - 不修改 `/home/hope/Tools/video_subtitle_ocr/test/` 中的视频与 ROI；新输出使用新目录，不覆盖本轮证据。
 - 不新增运行依赖、不自动安装字体、不调用真实翻译/VLM、不发布包；既有有界 429 重试保持。
@@ -698,6 +698,30 @@ for row in manifest:
 3. **zero_duration_repro.json 等基准证据**：原 5 次输出为缺陷基准，非逐字节 golden；本轮新输出按契约改变。
 4. GUI 有形环境烟测以离屏单测覆盖（49 项）；未做带显示器的手工 GUI 全流程，无图形环境部分如实未测。
 
+5. D1 生产接线仍不完整：classify_text_centers 已参与 step segmentation，但 masked_text_match/glyph_mask_from_reference 尚未成为 verify_line_tracks 的首选证据；移动背景下仍保留整块模板匹配的降级路径，不能把 D1 宣称为完全闭环。
+6. B3 缺少真实有色 mask 端到端验收：亮度函数与静态策略单测通过，mail_protected 记录主要验证 overlap/brightness/occlusion；尚未用 ROI 副本生成并审阅独立 mask 输出，因此真实彩色遮罩与背景亮度绑定仍需补验。
+7. phone11 活动行仍需逐帧身份复核：50 条切片和指定短句已恢复，但聊天记录中持续可见的历史行不能仅凭文本在后段出现判为泄漏；后续验收应对 f24/f240/f527 前后帧按屏幕行身份核对。
+
+### 2026-09-24 代码复核修正（待提交）
+
+本次复核相对 1cbfe94 直接修正了四类逻辑缺陷，并保留原基线可回退：
+
+- core/subtitle_generator/generator.py：A3 在静态 OCR 为空或某 ROI 被过滤为空时，移除该 ROI 的轨迹候选；无 ROI 的显式 motion-quad 仍保留。普通静态 occlusion_clip 没有平面命中帧时按事件跨度采样，避免配置静默失效。
+- cli.py：motion-auto 汇总同一 ROI 的所有自动区域后统一执行覆盖率门控；覆盖不足时回退静态路径，并清理该轮 motion evidence、命中帧和候选事件。
+- core/subtitle_generator/event_merge.py：前后任一事件为 Scene 都不参与端点齐平。
+- scripts/motion_ass.py：同一 line_idx 的正文变化即使时间重叠也保留独立 fidelity 区间。
+
+对应回归覆盖新增 A3 空静态证据、Scene 前后端点、同一行正文变化和无命中帧静态遮挡；旧的自动运动测试已按 A3 契约改为确认无静态证据时不输出轨迹。复核验证结果：
+
+    QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
+    1726 passed, 1 skipped, 14 warnings
+    .venv/bin/python -m ruff check --select F . --exclude docs
+    All checks passed
+    git diff --check
+    通过
+
+提交前应先审阅上述未提交文件，单独提交本次修正；不要把真实视频中尚未解决的手部边缘、B3 彩色 mask 或 D1 glyph 接线写成完全达标。
+
 ## 给另一位AI的启动指令
 
-> 请在当前源码分支实施 `docs/FINAL_OPTIMIZATION_DESIGN.md` 和 `docs/FINAL_IMPLEMENTATION_PLAN.md`。先读两份最终文件和相应源码；不要从旧main或旧计划重新设计。基础优化已完成，A/B/C/D质量修复尚未实施。先完成G0保护和基线测试，再按任务顺序最小修改、红绿回归、独立提交。保留原素材/ROI和基准证据，不调用付费服务、不安装新模型字体、不发布。真实视频和libass抽帧验收是必需项；不能删除有效事件、关闭能力或提高模型档位掩盖问题。最终将提交与验证结果填回本计划，输出新证据并明确局限。
+> 请在当前源码分支阅读 `docs/FINAL_OPTIMIZATION_DESIGN.md` 和 `docs/FINAL_IMPLEMENTATION_PLAN.md`，再以当前源码核对已落实功能和已知局限。基础优化与 A/B/C/D 的主要实现已经存在；后续只做有证据的缺陷修复和真实视频补验，不要从旧main或旧计划重新设计。保留原素材/ROI和基准证据，不调用付费服务、不安装新模型字体、不发布。真实视频和libass抽帧验收仍是必需项；不能删除有效事件、关闭能力或提高模型档位掩盖问题。最终将提交与验证结果填回本计划，输出新证据并明确局限。

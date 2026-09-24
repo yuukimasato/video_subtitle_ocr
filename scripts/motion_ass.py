@@ -1096,7 +1096,10 @@ def merged_line_intervals(events: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     for li in sorted(by_line):
         merged: List[List[Any]] = []
         for start, end, text in sorted(by_line[li]):
-            if merged and start <= merged[-1][1]:
+            # 同一视觉行更换正文时必须保留独立证据区间;否则把后文
+            # 错并到前文会令 A3 保真门控产生错误结论。
+            if (merged and start <= merged[-1][1]
+                    and text == merged[-1][2]):
                 merged[-1][1] = max(merged[-1][1], end)
             else:
                 merged.append([start, end, text])

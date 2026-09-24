@@ -185,3 +185,22 @@ def test_apply_screen_occlusion_time_local_clipping():
     assert clipped[1]["start_time"] == "0:00:00.48"
     assert clipped[1]["end_time"] == "0:00:00.52"
     assert "60.0" in clipped[1]["tags"]
+
+
+def test_apply_screen_occlusion_excludes_event_end_frame():
+    """采样恰好落在 end 的帧不能把半开事件延长到 end 之后。"""
+    event = {
+        "start_time": "0:00:00.00", "end_time": "0:00:01.00",
+        "style": "Scene", "tags": "{\\pos(10,10)}", "body": "x",
+    }
+
+    class _Geom:
+        def frames(self):
+            return [(10, (0.0, 0.0, 100.0, 100.0))]
+
+    ring = ContourRing(np.array([[1.0, 1.0], [20.0, 1.0],
+                                 [20.0, 20.0], [1.0, 20.0]]))
+    out = apply_screen_occlusion(
+        [event], {10: ContourResult([ring], "valid", "")},
+        fps=10.0, event_geometry={str(id(event)): _Geom()})
+    assert out == [event]

@@ -445,16 +445,16 @@ class OCRToASSOptimizer(
         frame_list = sorted({f for f in range(f0, f1 + 1, 3)} | {f0, f1})
         if f1 < f0:
             return events
-        # 屏幕细化限定在平面检测的命中窗口(±5 帧)内:该窗口来自经单应
-        # 对齐的可靠检测(只有那里能区分「手」与「内容漂移」);无窗口
-        # 证据(未跟踪/未检出)时不猜测,直接不做轮廓裁剪。
-        if not hit_frames:
-            return events
-        hit_window = (min(hit_frames) - 5, max(hit_frames) + 5)
-        frame_list = [f for f in frame_list
-                      if hit_window[0] <= f <= hit_window[1]]
-        if not frame_list:
-            return events
+        # 有平面跟踪命中时只在命中窗口附近细化,避免把移动背景当成
+        # 前景。静态 ROI/仅启用 --occlusion-clip 时没有该窗口,仍对显式
+        # 事件跨度采样;这是用户主动开启的抠图路径,未知帧会由
+        # apply_screen_occlusion 保持原样,不会复用过期轮廓。
+        if hit_frames:
+            hit_window = (min(hit_frames) - 5, max(hit_frames) + 5)
+            frame_list = [f for f in frame_list
+                          if hit_window[0] <= f <= hit_window[1]]
+            if not frame_list:
+                return events
 
         margin = 24.0
         ux1 = min(b[0] for b in boxes) - margin
@@ -1062,9 +1062,27 @@ class OCRToASSOptimizer(
             if self.source_filter_config and self.source_filter_config.get("enabled"):
                 organized_data = self._classify_and_filter_text_lines(organized_data)
 
+            # A3:轨迹接管必须有对应 ROI 的静态 OCR 证据。若过滤后该
+            # ROI 已无任何数据，不能让其轨迹候选绕过保真门控直接写出。
+            missing_motion_rois = {
+                str(roi_id) for roi_id in self.motion_roi_ids
+                if str(roi_id) not in {str(k) for k in organized_data}
+            }
+            if missing_motion_rois:
+                self.motion_roi_ids.difference_update(missing_motion_rois)
+                self._rejected_motion_rois.update(missing_motion_rois)
+                self.motion_events[:] = [
+                    ev for ev in self.motion_events
+                    if str(ev.get("roi")) not in missing_motion_rois
+                ]
+                logger.warning(_tr(
+                    "OCRToASSOptimizer",
+                    "Removed trajectory candidates for ROI(s) without static OCR evidence: {}."
+                ).format(", ".join(sorted(missing_motion_rois))))
+
             if not organized_data:
                 if self.motion_events:
-                    logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found; writing motion-trajectory events only."))
+                    logger.warning(_tr("OCRToASSOptimizer", "No valid OCR data found; writing only unbound motion-trajectory events."))
                     # 纯轨迹输出同样过翻译拆分（原文 Comment / 译文 Dialogue）。
                     if self.translation_config is not None:
                         self._translate_subtitle_events(

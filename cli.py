@@ -728,6 +728,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
                 detected_any = False
                 for idx, entry in enumerate(roi_entries):
+                    roi_id = f"roi_{idx}"
+                    roi_prev_count = len(motion_events_all)
+                    roi_detected = False
                     rect = _entry_rect(entry)
                     if rect is None:
                         continue
@@ -766,7 +769,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                                 roi_id=f"roi_{idx}") or {}
                             motion_evidence.setdefault(f"roi_{idx}", []).extend(
                                 summary.get("pre_policy_events") or [])
-                            motion_roi_ids.add(f"roi_{idx}")
+                            roi_detected = True
                             detected_any = True
                         except Exception as exc:
                             _info(
@@ -775,6 +778,23 @@ def run_pipeline(args: argparse.Namespace) -> int:
                                 "events remain.",
                                 args.quiet,
                             )
+                    if roi_detected:
+                        roi_events = motion_events_all[roi_prev_count:]
+                        takeover_ok, coverage = trajectory_takeover_ok(
+                            roi_events, entry, info["fps"])
+                        if not takeover_ok:
+                            del motion_events_all[roi_prev_count:]
+                            motion_evidence.pop(roi_id, None)
+                            occlusion_hit_frames.pop(roi_id, None)
+                            motion_roi_ids.discard(roi_id)
+                            _info(
+                                f"Warning: motion auto {roi_id} covers only "
+                                f"{coverage * 100:.0f}% of the ROI time range; "
+                                "falling back to its static events.",
+                                args.quiet,
+                            )
+                        else:
+                            motion_roi_ids.add(roi_id)
                 if not detected_any:
                     _info(
                         "motion-auto: no moving text detected (detection is "

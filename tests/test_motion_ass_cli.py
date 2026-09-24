@@ -2306,3 +2306,19 @@ def test_run_pipeline_warns_when_chunk_reports_out_of_range_ok(tmp_path,
         "outside its own range (e.g. [77])" in err, err
     assert summary["passes"][1]["ok_frames"] == 2  # 只算区间内的 25/26
     assert summary["ok_frames"] == 20 + 2
+
+
+def test_merged_line_intervals_preserves_overlapping_text_changes():
+    """同一视觉行正文变化时,保真证据必须保留两个独立区间。"""
+    from scripts.motion_ass import merged_line_intervals
+
+    events = [
+        {"line_idx": 0, "start_time": "0:00:01.00",
+         "end_time": "0:00:02.00", "body": "旧文"},
+        {"line_idx": 0, "start_time": "0:00:01.50",
+         "end_time": "0:00:02.50", "body": "新文"},
+    ]
+    out = merged_line_intervals(events)
+    assert [(item["start_cs"], item["end_cs"], item["text"])
+            for item in out] == [
+                (100, 200, "旧文"), (150, 250, "新文")]
