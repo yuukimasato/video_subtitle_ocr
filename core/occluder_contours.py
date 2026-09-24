@@ -155,6 +155,7 @@ def refine_occluder_contours(
     previous_mask: Optional["np.ndarray"] = None,
     epsilon_px: Optional[float] = None,
     resolution_height: float = 1080.0,
+    edge_dilate_px: float = 0.0,
 ) -> ContourResult:
     """GrabCut 精化 + 洞结构保留 → 屏幕(视频)坐标轮廓。
 
@@ -204,6 +205,17 @@ def refine_occluder_contours(
         return ContourResult(
             [], "clear", "grabCut found no foreground near seeds")
     final = np.isin(comp_labels, list(keep_labels)).astype(np.uint8)
+    # A small outward expansion closes the anti-aliased hand/text boundary
+    # gap that otherwise leaves subtitle fragments on the finger edge.  Keep
+    # the operation opt-in and constrain it to the domain so synthetic contour
+    # callers retain the exact segmentation contract by default.
+    dilate_px = max(0.0, float(edge_dilate_px))
+    if dilate_px > 0.0:
+        radius = max(1, int(round(dilate_px)))
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+        final = cv2.dilate(final, kernel, iterations=1)
+        final[~dom] = 0
     contours, hierarchy = cv2.findContours(
         final, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -327,6 +339,13 @@ def apply_screen_occlusion(
             if result is not None and result.valid:
                 ring_pts = [r for r in result.rings
                             if _ring_intersects_box(r.points, box)]
+                if not ring_pts:
+                    # 行框来自 OCR/姿态估计,在滚动或透视变化时可能比
+                    # 当前渲染字形落后数像素。inverse clip 对框外文字
+                    # 没有影响,因此可安全使用当前 ROI 的全部有效前景环
+                    # 作为兜底,避免手下残片因几何框未相交而漏裁。
+                    ring_pts = [r for r in result.rings
+                                if r is not None and len(r.points) >= 3]
                 if ring_pts:
                     try:
                         clip = contours_to_iclip(ring_pts)

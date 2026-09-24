@@ -698,11 +698,11 @@ for row in manifest:
 3. **zero_duration_repro.json 等基准证据**：原 5 次输出为缺陷基准，非逐字节 golden；本轮新输出按契约改变。
 4. GUI 有形环境烟测以离屏单测覆盖（49 项）；未做带显示器的手工 GUI 全流程，无图形环境部分如实未测。
 
-5. D1 生产接线仍不完整：classify_text_centers 已参与 step segmentation，但 masked_text_match/glyph_mask_from_reference 尚未成为 verify_line_tracks 的首选证据；移动背景下仍保留整块模板匹配的降级路径，不能把 D1 宣称为完全闭环。
-6. B3 缺少真实有色 mask 端到端验收：亮度函数与静态策略单测通过，mail_protected 记录主要验证 overlap/brightness/occlusion；尚未用 ROI 副本生成并审阅独立 mask 输出，因此真实彩色遮罩与背景亮度绑定仍需补验。
-7. phone11 活动行仍需逐帧身份复核：50 条切片和指定短句已恢复，但聊天记录中持续可见的历史行不能仅凭文本在后段出现判为泄漏；后续验收应对 f24/f240/f527 前后帧按屏幕行身份核对。
+5. D1 生产样本仍有局限：`masked_text_match`/`glyph_mask_from_reference` 已接入 `verify_line_tracks` 首选路径，但真实小字仍大量回退到整块模板匹配，不能把 D1 宣称为完全闭环（详见 2026-09-24 后续记录）。
+6. B3 真实彩色 mask 仍未命中：亮度函数与静态策略单测通过，独立 mail ROI 运行因文字滚动按契约回退到 external；因此真实彩色遮罩与背景亮度绑定仍需后续专门样本验收（详见 2026-09-24 后续记录）。
+7. phone11 已完成 f24/f240/f527 逐帧行身份复核并拒绝错误轨迹接管；剩余限制是 OCR 噪声，以及该 ROI 遮挡检测在后段产生的局部 `\\iclip`，不能把该样本标记为视觉完全通过。
 
-### 2026-09-24 代码复核修正（待提交）
+### 2026-09-24 代码复核修正（已提交）
 
 本次复核相对 1cbfe94 直接修正了四类逻辑缺陷，并保留原基线可回退：
 
@@ -720,8 +720,67 @@ for row in manifest:
     git diff --check
     通过
 
-提交前应先审阅上述未提交文件，单独提交本次修正；不要把真实视频中尚未解决的手部边缘、B3 彩色 mask 或 D1 glyph 接线写成完全达标。
+上述修正已在提交 `dc6587e` 中落地；不要把真实视频中尚未解决的手部边缘、B3 彩色 mask 或 D1 glyph 接线写成完全达标。
 
 ## 给另一位AI的启动指令
 
 > 请在当前源码分支阅读 `docs/FINAL_OPTIMIZATION_DESIGN.md` 和 `docs/FINAL_IMPLEMENTATION_PLAN.md`，再以当前源码核对已落实功能和已知局限。基础优化与 A/B/C/D 的主要实现已经存在；后续只做有证据的缺陷修复和真实视频补验，不要从旧main或旧计划重新设计。保留原素材/ROI和基准证据，不调用付费服务、不安装新模型字体、不发布。真实视频和libass抽帧验收仍是必需项；不能删除有效事件、关闭能力或提高模型档位掩盖问题。最终将提交与验证结果填回本计划，输出新证据并明确局限。
+
+## 2026-09-24 后续验收记录
+
+本节覆盖 D1、B3、B4 和 phone11 四项后续补验，证据目录为
+`/home/hope/Tools/video_subtitle_ocr/video_subtitle_ocr/test_run/followup_verification_20260924/`。
+该目录是工作区验收产物，未纳入源码提交；提交前必须保留其日志和抽帧，或复制到外部证据归档。
+
+### D1 glyph mask
+
+- `verify_line_tracks` 已优先尝试 `glyph_mask_from_reference` 与
+  `masked_text_match`，失败后才回退到整块模板匹配；`LineVerifyReport.glyph_fallbacks`
+  记录回退次数。
+- 现有合成回归仍通过：固定字形+移动背景输出静态 `\\pos`，真正移动字形保留
+  `\\move`。
+- phone11/mail 真实日志仍出现大量 `glyph_fallback`（phone11 多数行每行
+  15--16 次）。因此 D1 只能标记为“接线完成、真实小字证据仍回退”，不能宣称
+  glyph 证据已在生产样本闭环。
+
+### B3 亮度自适应彩色 mask
+
+- 合成测试证明静态 mask 写入 `\\1c`，不写 `\\alpha`，并随画面亮度改变颜色。
+- 真实 mail ROI 副本以 `--scene-text-policy mask --auto-brightness` 运行成功，
+  但文字在样本中发生滚动，策略按契约回退到 `external/NoteBox`；`mail_mask.ass`
+  和 `mail_mask_static.ass` 均没有 `\\p1`/彩色 mask。因此真实彩色 mask 端到端验收
+  仍是“未命中”，不是通过。
+
+### B4 手部轮廓裁剪
+
+- `refine_occluder_contours` 增加可选约 1px 外扩，策略事件和 external fallback
+  事件都携带屏幕框并进入统一 `\\iclip` 裁剪；合成轮廓/指缝/unknown 回归通过。
+- 最新 mail_protected 运行返回码为 0，日志记录 `55 clipped event(s)`。最新抽帧为
+  `frames/mail_protected_f216_rendered_latest.png`、
+  `frames/mail_protected_f222_rendered_latest.png`、
+  `frames/mail_protected_f228_rendered_latest.png` 及对应 `*_ass_only_latest.png`。
+- f216/f228 手部主体已干净；f222 手指主体基本遮住，边缘外仍可见未被手覆盖的文字，
+  未发现新的整块漏裁。该项标记为“部分达标”，不能把局部边缘残留写成完全解决。
+
+### phone11 逐帧行身份
+
+- 使用当前代码重新处理 `test/11.mp4`（651 帧，Paddle small，RC=0）。A3 日志明确
+  拒绝把三条轨迹事件接管整段 ROI：`trajectory takeover rejected by text fidelity`，
+  随后移除 3 个轨迹候选并恢复静态路径。
+- 最新 ASS 共 309 条 `Dialogue`，f24、f240、f527 的纯 ASS 抽帧分别显示前段、
+  中段、后段活动行集合；三帧均无 `\\move`，亮度变化只使用颜色/透明度标签。当前输出
+  没有把旧的整段单条 NoteBox 当作最终结果。
+- 逐帧结论：行身份随活动时间片变化，未发现把后段行提前到前段的轨迹接管错误；但仍有
+  OCR 噪声（如 `oeeeo ac`）以及 phone11 ROI 开启遮挡检测后段出现局部 `\\iclip`
+  裁剪，需在后续真实样本验收中决定是否关闭该 ROI 的遮挡选项或改进“文本变化≠前景
+  遮挡”的判别。此限制不能写成完全通过。
+
+### 本轮验证命令
+
+```bash
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check --select F . --exclude docs
+git diff --check
+```
+
+结果：`1726 passed, 1 skipped, 14 warnings`；ruff 与 diff 检查通过。

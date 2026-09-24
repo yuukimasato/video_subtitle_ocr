@@ -810,6 +810,40 @@ def _glyph_context_from_reference(
     return gray, mask, glyph_anchor, line_anchor
 
 
+def _glyph_context_from_patch(
+    patch: np.ndarray, full_gray: np.ndarray,
+    line_anchor: Tuple[float, float],
+) -> Optional[Tuple[np.ndarray, np.ndarray, Tuple[float, float],
+                    Tuple[float, float]]]:
+    """坐标框与解码帧不在同一坐标系时,从已选行 patch 建立全帧 mask。"""
+    if patch is None or full_gray is None:
+        return None
+    try:
+        local = glyph_mask_from_reference(
+            patch, (0.0, 0.0, float(patch.shape[1]), float(patch.shape[0])))
+    except (ValueError, TypeError):
+        return None
+    if local is None:
+        return None
+    ys, xs = np.nonzero(local)
+    if len(xs) < 1:
+        return None
+    ox = int(round(float(line_anchor[0]) - patch.shape[1] / 2.0))
+    oy = int(round(float(line_anchor[1]) - patch.shape[0] / 2.0))
+    full = np.zeros(full_gray.shape, np.uint8)
+    h, w = full.shape[:2]
+    x1, y1 = max(0, ox), max(0, oy)
+    x2, y2 = min(w, ox + patch.shape[1]), min(h, oy + patch.shape[0])
+    if x2 <= x1 or y2 <= y1:
+        return None
+    lx1, ly1 = x1 - ox, y1 - oy
+    full[y1:y2, x1:x2] = local[ly1:ly1 + (y2 - y1),
+                                lx1:lx1 + (x2 - x1)]
+    glyph_anchor = (float(ox + (xs.min() + xs.max()) / 2.0),
+                    float(oy + (ys.min() + ys.max()) / 2.0))
+    return full_gray, full, glyph_anchor, tuple(line_anchor)
+
+
 def _probe_glyph_frame(
     img: np.ndarray,
     glyph_context: Tuple[np.ndarray, np.ndarray, Tuple[float, float],
@@ -883,6 +917,10 @@ def _match_line_samples(
     ref_img = frames_img.get(ref_ok)
     if ref_img is not None:
         glyph_ctx = _glyph_context_from_reference(ref_img, lt, ref_ok)
+        if glyph_ctx is None and work.patch is not None:
+            ref_gray = cv2_gray(ref_img)
+            glyph_ctx = _glyph_context_from_patch(
+                work.patch, ref_gray, tuple(lt.poses[ref_ok].center))
         if glyph_ctx is not None:
             (work.reference_gray, work.glyph_mask, work.glyph_anchor,
              work.line_anchor) = glyph_ctx

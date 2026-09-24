@@ -514,7 +514,8 @@ class OCRToASSOptimizer(
                 return ContourResult([], status, reason)
             result = refine_occluder_contours(
                 crop, fg, bg, domain,
-                resolution_height=float(self.height or 1080))
+                resolution_height=float(self.height or 1080),
+                edge_dilate_px=max(1.0, float(self.height or 1080) / 1080.0))
             if result.valid:
                 result.rings = [
                     ContourRing(r.points + np.array([cx, cy]),
@@ -777,6 +778,14 @@ class OCRToASSOptimizer(
             slice_rows = [rows[i] for i in sl.row_ids]
             slice_meta = [row_meta[i] if i < len(row_meta) else {}
                           for i in sl.row_ids]
+            if slice_rows:
+                _sx1 = min(float(box[0]) for _text, box in slice_rows) + ox
+                _sy1 = min(float(box[1]) for _text, box in slice_rows) + oy
+                _sx2 = max(float(box[2]) for _text, box in slice_rows) + ox
+                _sy2 = max(float(box[3]) for _text, box in slice_rows) + oy
+                slice_screen_box = (_sx1, _sy1, _sx2, _sy2)
+            else:
+                slice_screen_box = None
             specs, applied, notes = apply_policy_static(
                 slice_rows, ctx["plane"], cfg, float(self.width),
                 float(self.height), base_font_size=base_fs)
@@ -841,22 +850,28 @@ class OCRToASSOptimizer(
                             float(row_box[2]) + ox, float(row_box[3]) + oy)
                     slice_events.append(event)
                 elif kind == "note":
-                    slice_events.append({
+                    event = {
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": spec.get("style", "NoteBox"),
                         "tags": spec["tags"],
                         "body": spec.get("body", ""), "policy": True,
-                    })
+                    }
+                    if slice_screen_box is not None:
+                        event["_screen_box"] = slice_screen_box
+                    slice_events.append(event)
                 elif kind == "scene_ws":
-                    slice_events.append({
+                    event = {
                         "roi": roi_id,
                         "start_time": start_time, "end_time": end_time,
                         "style": spec.get("style", "Scene"),
                         "tags": _shift_pos_tag(spec["tags"], float(ox),
                                                float(oy)),
                         "body": spec.get("body", ""), "policy": True,
-                    })
+                    }
+                    if slice_screen_box is not None:
+                        event["_screen_box"] = slice_screen_box
+                    slice_events.append(event)
             fps = float(self.fps) if self.fps else 25.0
             f0 = max(0, int(round(sl.start_cs / 100.0 * fps)))
             f1 = int(round(sl.end_cs / 100.0 * fps))
@@ -955,7 +970,9 @@ class OCRToASSOptimizer(
                                 return ContourResult([], status, reason)
                             result = refine_occluder_contours(
                                 crop, fg, bg, domain,
-                                resolution_height=float(self.height or 1080))
+                                resolution_height=float(self.height or 1080),
+                                edge_dilate_px=max(
+                                    1.0, float(self.height or 1080) / 1080.0))
                             if result.valid:
                                 # 裁剪坐标 → 视频屏幕坐标(到 PlayRes 恰好
                                 # 一次;apply_screen_occlusion 直接消费)。
@@ -1237,8 +1254,27 @@ class OCRToASSOptimizer(
                             str(roi_id)) or None))
 
                 if policy_ctx is not None:
-                    subtitle_events.extend(
-                        self._finish_scene_policy_events(policy_ctx, str(roi_id)))
+                    policy_events = self._finish_scene_policy_events(
+                        policy_ctx, str(roi_id))
+                    if self.roi_occlusion_clip.get(str(roi_id)):
+                        policy_pairs = [
+                            (e, e.get("_screen_box")) for e in policy_events
+                            if e.get("_screen_box") is not None]
+                        if policy_pairs:
+                            p_events = [e for e, _b in policy_pairs]
+                            p_boxes = [b for _e, b in policy_pairs]
+                            p0 = min(self._parse_ass_time_to_seconds(
+                                e["start_time"]) for e in p_events)
+                            p1 = max(self._parse_ass_time_to_seconds(
+                                e["end_time"]) for e in p_events)
+                            policy_events = self._contour_screen_occlusion(
+                                p_events, p_boxes, p0, p1,
+                                hit_frames=self.occlusion_hit_frames.get(
+                                    str(roi_id)) or None)
+                    for event in policy_events:
+                        event.pop("_mask_box", None)
+                        event.pop("_screen_box", None)
+                    subtitle_events.extend(policy_events)
 
             # A3:构造唯一的 selected_motion 列表——通过的 ROI 事件保留,
             # 拒绝/unverified ROI 的候选整体移除,无 roi 的显式 quad(手工
