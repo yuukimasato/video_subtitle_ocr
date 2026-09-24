@@ -42,3 +42,6 @@ Thumbs.db
 test_*.mp4
 test_*.json
 test_*.ass
+
+# Local verification evidence (renders/logs; archive externally before commits)
+test_run/

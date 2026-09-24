@@ -720,7 +720,7 @@ for row in manifest:
     git diff --check
     通过
 
-上述修正已在提交 `dc6587e` 中落地；不要把真实视频中尚未解决的手部边缘、B3 彩色 mask 或 D1 glyph 接线写成完全达标。
+上述修正已在提交 `26f9c60` 中落地（amend 前为 dc6587e）；不要把真实视频中尚未解决的手部边缘、B3 彩色 mask 或 D1 glyph 接线写成完全达标。
 
 ## 给另一位AI的启动指令
 

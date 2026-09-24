@@ -599,3 +599,25 @@ P
 | GUI 前端 | PySide6 离屏装配 `SubtitleOCRGUI` → `GUI OK: 视频字幕 OCR 工具`（§3 路径复验） |
 | deb 打包 | `video-subtitle-ocr_2.7.3_all.deb` 重建（6.0 MiB，186 条 md5sums，`-Zxz`）；包内已含本轮修正（translation.py / yuzu.py 内容核验通过） |
 | deb rootless 冒烟 | 暂装树 + 应用目录 venv 软链 + `VSO_APP_DIR` 指向应用目录：双启动器 2.7.3；真实视频 OCR 输出与开发机**逐字节一致**（3 条 Dialogue） |
+
+### 2026-09-24 · v2.8.0（真实视频质量修复线 optimize/source-analysis-20260923 合入）· Linux 7.2.4-070204-generic x86_64 · Python 3.12.3
+
+> 覆盖 C1/A1/A2/A3/B1–B4/C2/D1 九项真实视频质量修复与五项管线健壮性
+> 修复（方案与逐项交付记录见
+> [FINAL_OPTIMIZATION_DESIGN.md](FINAL_OPTIMIZATION_DESIGN.md) /
+> [FINAL_IMPLEMENTATION_PLAN.md](FINAL_IMPLEMENTATION_PLAN.md)）。
+> 已知局限如实记录：手部指缘仍有少量文字残留（f222，部分达标）；真实
+> 彩色 mask 端到端未命中（样本文字滚动按契约回退 external）；真实小字
+> 字形证据仍有较多回退到整块模板匹配；phone11 ROI 后段存在局部
+> `\iclip` 待后续判别。以上均不宣称完全达标。
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **1726 passed, 1 skipped, 14 warnings**（78.1 s；版本号统一 2.8.0 后复跑确认，零翻转；较 2.7.4 新增约 158 项） |
+| `ruff check . --select F` | 全绿（All checks passed） |
+| `git diff --check` | 通过 |
+| CLI 入口 | `--version` → `video-subtitle-ocr-cli 2.8.0`；`vso-font --version` → `vso-font 2.8.0 (video-subtitle-ocr 2.8.0)`；`--help` 正常 |
+| deb 打包 | `video-subtitle-ocr_2.8.0_all.deb`（6.1 MiB，201 条 md5sums，`-Zxz`）；`dpkg-deb -I` Version 2.8.0 / Architecture all；包内含 8 个新核心模块（roi_runtime_config / scene_timeline / trajectory_fidelity / occlusion_timeline / scene_brightness / occluder_contours / text_motion_evidence / line_geometry）与 `utils/atomic_write.py` |
+| deb 解包抽查 | 双入口 `__version__` = 2.8.0；man 页 `.TH` 版本串 2.8.0；无 `test_run/` / `tests/` / `__pycache__/` / `.venv`（本轮 rsync/tar 排除清单已补 `test_run/`） |
+| deb rootless 冒烟 | 暂装树 + `VSO_APP_DIR` 指向应用目录：双启动器报 2.8.0，`--help` 正常；无 venv 时启动器按设计给出可恢复指引（`dpkg --configure -a`） |
+| 真实视频端到端 | 五条样本（mail / phone11 / phone12 / opening4k / mail_protected）全部 exit 0；phone11 错误轨迹接管被 A3 门控拒绝（`trajectory takeover rejected by text fidelity`）并恢复静态输出 309 条 Dialogue；mail_protected 140 处 `\iclip` 全部集中在手部窗口；统计与已知局限见 FINAL_IMPLEMENTATION_PLAN.md 交付记录 |
